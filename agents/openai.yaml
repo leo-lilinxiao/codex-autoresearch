@@ -1,0 +1,8 @@
+interface:
+  display_name: "Codex Autoresearch"
+  short_description: "Autonomous iterate-verify-keep/discard loop"
+  brand_color: "#2563EB"
+  default_prompt: "Use $codex-autoresearch to iteratively improve this codebase toward a measurable goal."
+
+policy:
+  allow_implicit_invocation: true

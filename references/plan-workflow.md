@@ -1,0 +1,153 @@
+# Plan Workflow
+
+Convert a goal into a validated, ready-to-launch `$codex-autoresearch` configuration.
+
+## Purpose
+
+Use this mode when the user knows what they want but not how to define the loop.
+
+## Trigger
+
+- `$codex-autoresearch Mode: plan`
+- "help me set up autoresearch"
+- "plan an autoresearch run"
+- "what should my metric be"
+
+## Inputs
+
+Required:
+
+- Goal
+
+Derived or collected:
+
+- Scope
+- Metric
+- Direction
+- Verify
+- Guard
+- Iterations
+
+## Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--goal "<text>"` | Inline goal text |
+| `--scope "<glob>"` | Pre-fill scope |
+| `--metric "<name>"` | Pre-fill metric |
+| `--direction higher|lower` | Pre-fill direction |
+| `--verify "<command>"` | Pre-fill verify command |
+| `--guard "<command>"` | Pre-fill guard |
+| `--launch` | Launch immediately after validation |
+| `--iterations N` | Pre-fill bounded iteration count |
+
+## Wizard
+
+If any of `Goal`, `Scope`, `Metric`, `Direction`, or `Verify` is missing, use `interaction-wizard.md`.
+
+Preferred field order:
+
+1. Goal
+2. Scope
+3. Metric
+4. Direction
+5. Verify
+6. Guard
+7. Launch
+
+## Phases
+
+### Phase 1: Capture Goal
+
+Interpret the goal in one sentence.
+
+Examples:
+
+- "reduce type errors to zero"
+- "improve p95 API latency"
+- "raise coverage for auth middleware"
+
+### Phase 2: Analyze Context
+
+Inspect:
+
+- repo structure,
+- package and build files,
+- test runners,
+- benchmark scripts,
+- lint and typecheck commands.
+
+### Phase 3: Suggest Scope
+
+Produce 2-3 scope candidates when possible.
+
+Rules:
+
+- scope must resolve to at least one file,
+- warn when scope is too broad,
+- prefer implementation files over "entire repo" when a narrower scope is viable.
+
+### Phase 4: Suggest Metric
+
+Metric rules:
+
+- outputs a number,
+- can be parsed by a command,
+- is stable enough to compare runs,
+- is fast enough for iteration.
+
+### Phase 5: Define Direction
+
+Choose `higher` or `lower`.
+
+### Phase 6: Construct Verify
+
+The verify command must:
+
+1. run the underlying tool,
+2. expose the metric,
+3. fail non-zero when the run crashes.
+
+Dry-run the verify command when practical.
+
+### Phase 7: Define Guard
+
+Suggest a guard for regression-sensitive metrics.
+
+Typical guards:
+
+- tests
+- typecheck
+- build
+
+### Phase 8: Confirm and Launch
+
+Return a launch-ready block:
+
+```text
+$codex-autoresearch
+Goal:
+Scope:
+Metric:
+Direction:
+Verify:
+Guard:
+Iterations:
+```
+
+If the user says `launch`, switch to the generic loop with that config.
+
+## Structured Output
+
+Reply sections:
+
+1. Goal
+2. Suggested Scope
+3. Suggested Metric
+4. Verify Command
+5. Guard
+6. Launch Block
+
+## Success Criteria
+
+The workflow succeeds when the user can copy the generated block into `$codex-autoresearch` without ambiguity.
