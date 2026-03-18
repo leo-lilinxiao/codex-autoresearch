@@ -84,7 +84,7 @@ If required fields are missing, use the wizard contract in `references/interacti
 10. Discard gains under 1% that add disproportionate complexity.
 11. Unlimited runs by default unless the user explicitly asks for `Iterations: N`.
 12. External ship actions (deploy, publish, release) must be confirmed during the pre-launch wizard phase. If not confirmed before launch, skip them and log as blocker.
-13. NEVER STOP. NEVER ASK "should I continue?". Keep iterating until interrupted or a hard blocker appears. A hard blocker is: verify command no longer runnable, scope files deleted externally, git repo corrupted, disk full, or the same crash 5+ times in a row.
+13. NEVER STOP. NEVER ASK "should I continue?". Keep iterating until interrupted or a hard blocker appears (see `references/autonomous-loop-protocol.md` Stop Conditions for the full definition). Examples: verify command no longer runnable, scope files deleted externally, git repo corrupted, disk full, or the same crash 5+ times in a row.
 
 ## Structured Output
 

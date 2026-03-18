@@ -392,7 +392,7 @@ Progress summaries print every 5 iterations. Bounded runs print a final baseline
 | Hanging process | Kill after timeout, revert |
 | Stuck (5+ discards) | Re-read all context, review patterns, try bolder changes |
 | Ambiguity mid-loop | Apply best practices autonomously; never pause to ask the user |
-| External side effects | `ship` mode requires explicit confirmation |
+| External side effects | `ship` mode requires explicit confirmation during the pre-launch wizard |
 
 ---
 

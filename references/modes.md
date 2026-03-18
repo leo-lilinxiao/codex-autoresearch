@@ -20,6 +20,7 @@ All specialized modes must:
 1. load `core-principles.md`,
 2. follow `structured-output-spec.md`,
 3. use `interaction-wizard.md` when required fields are missing,
-4. keep all decisions mechanical where possible,
-5. write their documented logs and output files,
-6. preserve the official skill entrypoint in `SKILL.md`.
+4. load `autonomous-loop-protocol.md` for all iterating modes (loop, debug, fix, security),
+5. keep all decisions mechanical where possible,
+6. write their documented logs and output files,
+7. preserve the official skill entrypoint in `SKILL.md`.

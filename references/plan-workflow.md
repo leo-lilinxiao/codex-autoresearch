@@ -2,6 +2,8 @@
 
 Convert a goal into a validated, ready-to-launch `$codex-autoresearch` configuration.
 
+**Two-phase boundary:** All clarifying questions happen before launch. If `--launch` is used to start a loop from the plan output, the loop follows the autonomous-loop-protocol and never pauses to ask the user.
+
 ## Purpose
 
 Use this mode when the user knows what they want but not how to define the loop.
