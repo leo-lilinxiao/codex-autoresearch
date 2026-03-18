@@ -2,6 +2,8 @@
 
 Evidence-driven bug hunting based on hypotheses, experiments, and classification.
 
+**Two-phase boundary:** All clarifying questions happen before launch. Once the user says "go", this workflow is fully autonomous -- never pause to ask the user anything. If you encounter ambiguity, apply best practices and keep going.
+
 ## Purpose
 
 Use this mode when the user needs root-cause analysis rather than immediate blind fixes.

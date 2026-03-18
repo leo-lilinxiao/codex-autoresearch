@@ -2,6 +2,8 @@
 
 Universal shipment workflow for code, releases, deployments, content, campaigns, research artifacts, and similar outputs.
 
+**Two-phase boundary:** All clarifying questions and ship confirmations happen before launch. External ship actions (deploy, publish, release) must be explicitly approved during the pre-launch wizard. If not approved before launch, skip the Ship phase and log as blocker.
+
 ## Purpose
 
 Convert "ready enough" into a gated ship process:
@@ -93,7 +95,7 @@ Execute the actual delivery.
 
 Rule:
 
-- never perform this phase without explicit confirmation in the current conversation.
+- never perform this phase unless the user explicitly confirmed ship actions during the pre-launch wizard phase. If ship actions were not confirmed before launch, skip this phase and log as blocker. This is consistent with the two-phase boundary: all confirmations happen before launch.
 
 ### Phase 7: Verify
 

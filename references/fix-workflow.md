@@ -2,6 +2,8 @@
 
 Iterative repair loop for reducing tests, type errors, lint failures, build failures, or bug findings to zero.
 
+**Two-phase boundary:** All clarifying questions happen before launch. Once the user says "go", this workflow is fully autonomous -- never pause to ask the user anything. If you encounter ambiguity, apply best practices and keep going.
+
 ## Purpose
 
 Use this mode when the user wants the system repaired, not just diagnosed.
@@ -81,7 +83,7 @@ Run the guard if configured.
 ### Phase 7: Decide
 
 - improved + guard passed -> keep
-- improved + guard failed -> rework or discard
+- improved + guard failed -> rework (up to 2 attempts), then discard. Rollback follows the generic loop: prefer `git reset --hard HEAD~1`, fall back to `git revert`.
 - unchanged -> discard
 - worse -> discard immediately
 - crash -> recover or discard

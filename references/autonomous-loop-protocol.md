@@ -122,7 +122,7 @@ Rules:
 
 - the change should fit in one sentence,
 - do not edit guard artifacts merely to satisfy the guard,
-- do not broaden scope mid-iteration unless the user agrees.
+- do not broaden scope mid-iteration. If a change requires out-of-scope files, abandon the hypothesis, log the limitation, and try a different approach that stays within scope.
 
 ## Phase 5: Commit
 
@@ -140,10 +140,10 @@ Rules:
 
 - stage only files owned by the experiment,
 - inspect the staged file list before committing,
-- if there is no diff, log `no-op` and move on,
+- if there is no diff, log `no-op` and move on (counts toward the consecutive-discard threshold for stuck recovery),
 - prefer descriptive `experiment:` commit messages.
 
-If the workspace is not safe for commits, do not force an iterative git loop. Stop and ask for isolation.
+If the workspace is not safe for commits, log a hard blocker and stop the loop. Do not ask -- report the situation in the completion summary.
 
 ## Phase 6: Verify
 
@@ -269,10 +269,17 @@ Every 5 iterations and at completion, summarize:
 
 ## Stop Conditions
 
-Stop immediately if:
+A **hard blocker** is any condition that makes continued iteration unsafe or meaningless:
 
+- the verify command no longer exists or returns unparseable output,
+- scope files have been deleted externally,
+- the git repository is in a broken state,
+- disk space is exhausted,
+- the same crash appears 5+ times in a row with no variation,
 - the repo is not safe for iterative commits,
 - verification cannot produce a mechanical metric,
 - the environment is too flaky to trust the results,
 - the user interrupts,
-- or the loop requires external actions the user has not approved.
+- or the loop requires external actions not approved during the pre-launch wizard.
+
+Stop immediately if any hard blocker appears. Do not ask the user -- log the blocker in the completion summary.

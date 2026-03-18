@@ -2,6 +2,8 @@
 
 Structured security audit that combines code reconnaissance, STRIDE threat modeling, OWASP coverage, adversarial review lenses, attack-surface mapping, and evidence-backed findings.
 
+**Two-phase boundary:** All clarifying questions happen before launch. Once the user says "go", this workflow is fully autonomous -- never pause to ask the user anything. If you encounter ambiguity, apply best practices and keep going.
+
 ## Purpose
 
 Use this mode for a read-only audit first, then optional repair.

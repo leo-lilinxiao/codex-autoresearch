@@ -48,8 +48,8 @@ Use `Mode: <name>` in the prompt to force a specific subworkflow.
 2. `references/structured-output-spec.md`
 3. `references/results-logging.md` when a results log is needed
 4. `references/interaction-wizard.md` when required fields are missing
-5. the mode-specific workflow
-6. `references/autonomous-loop-protocol.md` for the generic loop
+5. `references/autonomous-loop-protocol.md` (always -- shared loop mechanics for all iterating modes)
+6. the mode-specific workflow (if different from the loop protocol)
 
 ## Required Config
 
@@ -73,18 +73,18 @@ If required fields are missing, use the wizard contract in `references/interacti
 ## Hard Rules
 
 1. **Ask before act.** ALWAYS scan the repo and ask at least one round of clarifying questions before starting any loop. Never silently infer all fields and start iterating.
-2. **Never ask after launch.** Once the user says "go", the loop is fully autonomous. NEVER pause to ask the user anything -- not for clarification, not for confirmation, not for permission. If you encounter ambiguity during the loop, apply best practices and keep going. The user may be asleep.
+2. **Never ask after launch.** Once the user says "go" (or equivalent: "start", "launch", or any clear approval), the loop is fully autonomous. NEVER pause to ask the user anything -- not for clarification, not for confirmation, not for permission. If you encounter ambiguity during the loop, apply best practices and keep going. The user may be asleep.
 3. Read all in-scope files before the first write.
 4. One focused change per iteration.
 5. Mechanical verification only.
-6. Commit before verification only when the workspace is isolated enough to do so safely.
+6. Commit before verification only when `git status --porcelain` shows no changes outside the experiment scope.
 7. Never stage or revert unrelated user changes.
 8. Keep results logs uncommitted.
 9. Prefer `git reset --hard HEAD~1` for rollback; fall back to `git revert` only when reset fails.
-10. Discard tiny gains that add disproportionate complexity.
+10. Discard gains under 1% that add disproportionate complexity.
 11. Unlimited runs by default unless the user explicitly asks for `Iterations: N`.
-12. Never perform external ship actions without explicit confirmation.
-13. NEVER STOP. NEVER ASK "should I continue?". Keep iterating until interrupted or a hard blocker appears.
+12. External ship actions (deploy, publish, release) must be confirmed during the pre-launch wizard phase. If not confirmed before launch, skip them and log as blocker.
+13. NEVER STOP. NEVER ASK "should I continue?". Keep iterating until interrupted or a hard blocker appears. A hard blocker is: verify command no longer runnable, scope files deleted externally, git repo corrupted, disk full, or the same crash 5+ times in a row.
 
 ## Structured Output
 
