@@ -73,21 +73,22 @@ Every iterating mode (loop, debug, fix, security) shares the same cycle:
 
 ```
   Pick hypothesis  -->  Edit files  -->  git commit  -->  Run verify + guard
-                                                               |
-                                                           improved?
-                                                          /         \
+  (consult lessons,                                            |
+   apply perspectives,                                     improved?
+   filter by environment)                                 /         \
                                                         yes          no
                                                         /              \
                                                      KEEP           REVERT
-                                                       \              /
-                                                        +-- Log -----+
-                                                             |
-                                                           repeat
-                                                   (never stop, never ask)
+                                                  (+lesson)            |
+                                                      \              /
+                                                       +-- Log -----+
+                                                            |
+                                                      Health check
+                                                            |
+                                                    3+ discards? --yes--> REFINE/PIVOT
+                                                            |
+                                                          repeat
 ```
-
-If stuck: REFINE (3 discards) -> PIVOT (5) -> web search -> soft blocker.
-A single keep resets all escalation counters.
 
 1. **Hypothesis** -- one focused idea based on what worked, what failed, what is untried
 2. **Edit** -- change files within the declared scope only
