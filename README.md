@@ -32,6 +32,8 @@
   <a href="#architecture">Architecture</a> ·
   <a href="#modes">Modes</a> ·
   <a href="#configuration">Configuration</a> ·
+  <a href="#cross-run-learning">Learning</a> ·
+  <a href="#parallel-experiments">Parallel</a> ·
   <a href="docs/GUIDE.md">Guide</a> ·
   <a href="docs/EXAMPLES.md">Recipes</a>
 </p>
@@ -100,47 +102,69 @@ Karpathy's autoresearch proved that a simple loop -- modify, verify, keep or dis
 ## Architecture
 
 ```
-                    +------------------+
-                    |   Read Context   |
-                    +--------+---------+
-                             |
-                    +--------v---------+
-                    | Establish Baseline|  <-- iteration #0
-                    +--------+---------+
-                             |
-              +--------------v--------------+
-              |                             |
-              |    +-------------------+    |
-              |    | Choose Hypothesis |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | Make ONE Change   |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | git commit        |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | Run Verify        |    |
-              |    +--------+----------+    |
-              |             |               |
-              |         improved?           |
-              |        /         \          |
-              |      yes          no        |
-              |      /              \        |
-              | +---v----+    +-----v----+  |
-              | |  KEEP  |    | REVERT   |  |
-              | +---+----+    +-----+----+  |
-              |      \            /          |
-              |    +--v----------v--+       |
-              |    |   Log Result   |       |
-              |    +-------+--------+       |
-              |            |                |
-              +------------+ (repeat)       |
-              |                             |
-              +-----------------------------+
+              +---------------------+
+              |  Environment Probe  |  <-- Phase 0: detect CPU/GPU/RAM/toolchains
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |  Session Resume?    |  <-- check for prior run artifacts
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |   Read Context      |  <-- read scope + lessons file
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              | Establish Baseline  |  <-- iteration #0
+              +---------+-----------+
+                        |
+         +--------------v--------------+
+         |                             |
+         |  +----------------------+   |
+         |  | Choose Hypothesis    |   |  <-- consult lessons + perspectives
+         |  | (or N for parallel)  |   |      filter by environment
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Make ONE Change      |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | git commit           |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Run Verify + Guard   |   |
+         |  +---------+------------+   |
+         |            |                |
+         |        improved?            |
+         |       /         \           |
+         |     yes          no         |
+         |     /              \        |
+         |  +-v------+   +----v-----+ |
+         |  |  KEEP  |   | REVERT   | |
+         |  |+lesson |   +----+-----+ |
+         |  +--+-----+        |       |
+         |      \            /         |
+         |   +--v----------v---+      |
+         |   |   Log Result    |      |
+         |   +--------+--------+      |
+         |            |               |
+         |   +--------v--------+      |
+         |   |  Health Check   |      |  <-- disk, git, verify health
+         |   +--------+--------+      |
+         |            |               |
+         |     3+ discards?           |
+         |    /             \         |
+         |  no              yes       |
+         |  |          +----v-----+   |
+         |  |          | REFINE / |   |  <-- pivot-protocol escalation
+         |  |          | PIVOT    |   |
+         |  |          +----+-----+   |
+         |  |               |         |
+         +--+------+--------+         |
+         |         (repeat)           |
+         +----------------------------+
 ```
 
 The loop runs until interrupted (unbounded) or for exactly N iterations (bounded via `Iterations: N`).
@@ -148,22 +172,28 @@ The loop runs until interrupted (unbounded) or for exactly N iterations (bounded
 **In pseudocode:**
 
 ```
+PHASE 0: Probe environment, check for session resume
+PHASE 1: Read context + lessons file
+
 LOOP (forever or N times):
-  1. Review current state + git history + results log
-  2. Pick ONE hypothesis (based on what worked, what failed, what's untried)
+  1. Review current state + git history + results log + lessons
+  2. Pick ONE hypothesis (apply perspectives, filter by environment)
+     -- or N hypotheses if parallel mode is active
   3. Make ONE atomic change
   4. git commit (before verification)
-  5. Run mechanical verification
-  6. Improved -> keep. Worse -> git reset. Crashed -> fix or skip.
+  5. Run mechanical verification + guard
+  6. Improved -> keep (extract lesson). Worse -> git reset. Crashed -> fix or skip.
   7. Log the result
-  8. Repeat. Never stop. Never ask.
+  8. Health check (disk, git, verify health)
+  9. If 3+ discards -> REFINE; 5+ -> PIVOT; 2 PIVOTs -> web search
+  10. Repeat. Never stop. Never ask.
 ```
 
 ---
 
 ## Modes
 
-Six modes, one invocation pattern: `$codex-autoresearch` followed by a sentence describing what you want. Codex auto-detects the mode and guides you through a short conversation to fill in the details.
+Seven modes, one invocation pattern: `$codex-autoresearch` followed by a sentence describing what you want. Codex auto-detects the mode and guides you through a short conversation to fill in the details.
 
 | Mode | When to use | Stops when |
 |------|-------------|------------|
@@ -173,6 +203,7 @@ Six modes, one invocation pattern: `$codex-autoresearch` followed by a sentence 
 | `fix` | Something is broken and needs repair | Error count reaches zero |
 | `security` | You need a structured vulnerability audit | All attack surfaces covered or N iterations |
 | `ship` | You need gated release verification | All checklist items pass |
+| `exec` | CI/CD pipeline, no human available | N iterations (always bounded), JSON output |
 
 **Mode selection shortcut:**
 
@@ -181,6 +212,7 @@ Six modes, one invocation pattern: `$codex-autoresearch` followed by a sentence 
 "Something is broken"           -->  fix   (or debug if cause is unknown)
 "Is this code secure?"          -->  security
 "Ship it"                       -->  ship
+codex exec --skill ...          -->  exec  (CI/CD, no wizard)
 ```
 
 ---
@@ -234,6 +266,7 @@ If verify passes but guard fails, the change is reworked (up to 2 attempts). Gua
 | Make failing tests/types/lint pass | `fix` | Target command |
 | Audit code for vulnerabilities | `security` | Scope + Focus |
 | Release with confidence | `ship` | Say "ship it" or "dry run first" |
+| Run in CI/CD without interaction | `exec` | All fields upfront + Iterations |
 
 ---
 
@@ -382,6 +415,83 @@ security + fix               # audit and remediate in one pass
 
 ---
 
+## Cross-Run Learning
+
+Every run extracts structured lessons -- what worked, what failed, and why. Lessons are persisted in `autoresearch-lessons.md` (uncommitted, like the results log) and consulted at the start of future runs to bias hypothesis generation toward proven strategies and away from known dead ends.
+
+- Positive lessons after every kept iteration
+- Strategic lessons after every PIVOT decision
+- Summary lessons at run completion
+- Capacity: 50 entries max, older entries summarized with time decay
+
+See `references/lessons-protocol.md` for details.
+
+---
+
+## Smart Stuck Recovery
+
+Instead of blindly retrying after failures, the loop uses a graduated escalation system:
+
+| Trigger | Action |
+|---------|--------|
+| 3 consecutive discards | **REFINE** -- adjust within current strategy |
+| 5 consecutive discards | **PIVOT** -- abandon strategy, try fundamentally different approach |
+| 2 PIVOTs without improvement | **Web search** -- look for external solutions |
+| 3 PIVOTs without improvement | **Soft blocker** -- warn and continue with bolder changes |
+
+A single successful keep resets all counters. See `references/pivot-protocol.md`.
+
+---
+
+## Parallel Experiments
+
+Test multiple hypotheses simultaneously using subagent workers in isolated git worktrees:
+
+```
+Orchestrator (main agent)
+  +-- Worker A (worktree-a) -> hypothesis 1
+  +-- Worker B (worktree-b) -> hypothesis 2
+  +-- Worker C (worktree-c) -> hypothesis 3
+```
+
+The orchestrator picks the best result, merges it, and discards the rest. Enable during the wizard by saying "yes" to parallel experiments. Falls back to serial if worktrees are unsupported.
+
+See `references/parallel-experiments-protocol.md`.
+
+---
+
+## Session Resume
+
+If Codex detects a prior interrupted run (results log, lessons file, experiment commits), it can resume from the last consistent state instead of starting over:
+
+- **Consistent state:** resume immediately, skip wizard
+- **Partially consistent:** mini-wizard (1 round) to re-confirm
+- **Inconsistent or different goal:** fresh start (old log renamed)
+
+See `references/session-resume-protocol.md`.
+
+---
+
+## CI/CD Mode (exec)
+
+Non-interactive mode for automation pipelines. All config is provided upfront -- no wizard, always bounded, JSON output.
+
+```yaml
+# GitHub Actions example
+- name: Autoresearch optimization
+  run: codex exec --skill codex-autoresearch
+         --goal "Reduce type errors" --scope "src/**/*.ts"
+         --metric "type error count" --direction lower
+         --verify "tsc --noEmit 2>&1 | grep -c error"
+         --iterations 20
+```
+
+Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker.
+
+See `references/exec-workflow.md`.
+
+---
+
 ## Results Log
 
 Every iteration is recorded in TSV format (`research-results.tsv`):
@@ -409,9 +519,11 @@ Progress summaries print every 5 iterations. Bounded runs print a final baseline
 | Runtime crash | Up to 3 fix attempts, then skip |
 | Resource exhaustion | Revert, try smaller variant |
 | Hanging process | Kill after timeout, revert |
-| Stuck (5+ discards) | Re-read all context, review patterns, try bolder changes |
+| Stuck (3+ discards) | REFINE strategy; 5+ discards -> PIVOT to new approach; escalate to web search if needed |
 | Ambiguity mid-loop | Apply best practices autonomously; never pause to ask the user |
 | External side effects | `ship` mode requires explicit confirmation during the pre-launch wizard |
+| Environment limits | Probed at startup; infeasible hypotheses filtered automatically |
+| Interrupted session | Resume from last consistent state on next invocation |
 
 ---
 
@@ -443,17 +555,26 @@ codex-autoresearch/
   scripts/
     validate_skill_structure.sh     # structure validator
   references/
-    autonomous-loop-protocol.md     # loop protocol specification
     core-principles.md              # universal principles
+    autonomous-loop-protocol.md     # loop protocol specification
     plan-workflow.md                # plan mode spec
     debug-workflow.md               # debug mode spec
     fix-workflow.md                 # fix mode spec
     security-workflow.md            # security mode spec
     ship-workflow.md                # ship mode spec
+    exec-workflow.md                # CI/CD non-interactive mode spec
     interaction-wizard.md           # interactive setup contract
     structured-output-spec.md       # output format spec
     modes.md                        # mode index
     results-logging.md              # TSV format spec
+    lessons-protocol.md             # cross-run learning
+    pivot-protocol.md               # smart stuck recovery (PIVOT/REFINE)
+    web-search-protocol.md          # web search when stuck
+    environment-awareness.md        # hardware/resource detection
+    parallel-experiments-protocol.md # subagent parallel testing
+    session-resume-protocol.md      # resume interrupted runs
+    health-check-protocol.md        # self-monitoring
+    hypothesis-perspectives.md      # multi-lens hypothesis reasoning
 ```
 
 ---
@@ -469,6 +590,16 @@ codex-autoresearch/
 **Does security mode touch my code?** No. Read-only analysis. Tell Codex to "also fix critical findings" during setup to opt into remediation.
 
 **How many iterations?** Depends on the task. 5 for targeted fixes, 10-20 for exploration, unlimited for overnight runs.
+
+**Does it learn across runs?** Yes. Lessons are extracted after each run and consulted at the start of the next one. The lessons file persists across sessions.
+
+**Can it resume after an interruption?** Yes. On the next invocation, it detects the prior run and resumes from the last consistent state.
+
+**Can it search the web?** Yes, when stuck after multiple strategy pivots. Web search results are treated as hypotheses and verified mechanically.
+
+**How do I use it in CI?** Use `Mode: exec` or `codex exec`. All config is provided upfront, output is JSON, and exit codes indicate success/failure.
+
+**Can it test multiple ideas at once?** Yes. Enable parallel experiments during setup. It uses git worktrees to test up to 3 hypotheses simultaneously.
 
 ---
 

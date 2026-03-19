@@ -11,10 +11,18 @@ SKILL.md  (always loaded -- entrypoint)
   |
   +-- references/core-principles.md         (always loaded)
   +-- references/structured-output-spec.md  (always loaded)
+  +-- references/session-resume-protocol.md (check for prior run)
+  +-- references/environment-awareness.md   (probe hardware/toolchains)
   +-- references/autonomous-loop-protocol.md (loaded for iterating modes)
   +-- references/interaction-wizard.md       (loaded when fields are missing)
   +-- references/{mode}-workflow.md          (loaded per mode)
   +-- references/results-logging.md          (loaded when logging is needed)
+  +-- references/lessons-protocol.md         (loaded for iterating modes)
+  +-- references/pivot-protocol.md           (loaded for iterating modes)
+  +-- references/health-check-protocol.md    (loaded for iterating modes)
+  +-- references/hypothesis-perspectives.md  (loaded when beneficial)
+  +-- references/parallel-experiments-protocol.md (loaded when parallel enabled)
+  +-- references/web-search-protocol.md      (loaded when web search enabled)
   +-- references/modes.md                    (mode index)
 ```
 
@@ -60,6 +68,14 @@ The project has two layers: the **skill layer** (what Codex reads) and the **doc
 | What output gets produced | `references/structured-output-spec.md` |
 | Universal design principles | `references/core-principles.md` |
 | TSV log format | `references/results-logging.md` |
+| Cross-run learning | `references/lessons-protocol.md` |
+| Stuck recovery escalation | `references/pivot-protocol.md` |
+| Web search behavior | `references/web-search-protocol.md` |
+| Environment detection | `references/environment-awareness.md` |
+| Parallel experiments | `references/parallel-experiments-protocol.md` |
+| Session resume | `references/session-resume-protocol.md` |
+| Health monitoring | `references/health-check-protocol.md` |
+| Hypothesis reasoning | `references/hypothesis-perspectives.md` |
 
 **Documentation layer -- what humans see:**
 
@@ -105,7 +121,7 @@ Keep PRs focused. One logical change per PR.
 
 - Recipes for domains not yet covered in docs/EXAMPLES.md
 - Improvements to the interaction wizard (better questions, better defaults)
-- Protocol refinements backed by real-world testing (e.g., "the stuck recovery at 5 discards should also count no-ops")
+- Protocol refinements backed by real-world testing (e.g., "the PIVOT threshold should account for near-miss iterations")
 - Translations of documentation to new languages
 - Bug reports with reproduction steps ("I said X, Codex did Y, expected Z")
 
@@ -137,6 +153,8 @@ Edge cases worth trying:
 - **The two-phase boundary** is a core design constraint. Everything before "go" can ask the user. Everything after "go" must be fully autonomous.
 - **Natural language is the primary interface.** Users should never need to know field names or write structured config. The wizard handles translation.
 - **`git reset --hard HEAD~1`** is the primary rollback mechanism. The results TSV is the audit trail.
+- **Lessons are additive.** Cross-run learning persists across sessions. Never delete lessons without user consent.
+- **PIVOT/REFINE replaces brute-force retrying.** Stuck recovery should always escalate through the defined ladder.
 
 ## License
 

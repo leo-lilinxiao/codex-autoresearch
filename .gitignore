@@ -1,6 +1,9 @@
 research-results.tsv
+research-results.prev.tsv
+research-results.corrupt.tsv
 results.tsv
 run.log
+autoresearch-lessons.md
 debug/
 fix/
 security/

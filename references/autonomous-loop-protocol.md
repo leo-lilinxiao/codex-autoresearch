@@ -30,6 +30,23 @@ If any required input is missing, use the wizard contract from `references/inter
 
 Fail fast if the loop would be unsafe. Clarify first if the intent is unclear.
 
+### Session Resume Check
+
+Before anything else, check for a prior interrupted run per `references/session-resume-protocol.md`:
+
+1. Look for `research-results.tsv`, `autoresearch-lessons.md`, and recent `experiment:` commits.
+2. If a consistent prior run is detected, resume from the next iteration (skip wizard).
+3. If a partially consistent prior run is detected, run a mini-wizard (1 round) to re-confirm.
+4. If no prior run is detected, proceed with fresh setup.
+
+### Environment Probe
+
+Run environment detection per `references/environment-awareness.md`:
+
+1. Detect CPU, RAM, disk, GPU/NPU, toolchains, container, and network availability.
+2. Store the environment profile for hypothesis filtering in Phase 3.
+3. Log the environment summary in the results log header.
+
 ### Ask-Before-Act
 
 Before starting any loop, ALWAYS:
@@ -56,10 +73,16 @@ Never silently infer all fields and start iterating. A 30-second confirmation is
 
 The loop may commit and revert repeatedly. That is only safe when the workspace is isolated.
 
-If `git status --porcelain` is non-empty:
+If `git status --porcelain` is non-empty **during Phase 0 (before launch)**:
 
-- continue only if the changes are clearly part of the current run and the user has approved continuing,
-- otherwise switch to `plan` mode or ask the user for a clean branch or worktree.
+- Ask the user during the wizard phase: "I see uncommitted changes. Are these part of the current experiment, or should I work on a clean branch?"
+- If the user confirms the changes are part of the experiment, continue.
+- If the user says no, suggest `plan` mode or a clean branch/worktree.
+
+If the worktree becomes dirty **after launch** (external modification mid-loop):
+
+- Log a hard blocker: "External changes detected in worktree. Stopping to prevent data loss."
+- Do not ask the user (two-phase boundary). Stop the loop and report.
 
 Never absorb unrelated user edits into experiment commits.
 
@@ -71,12 +94,14 @@ Before the first edit:
 2. Read configuration or build files that influence verification.
 3. Read the latest results log if one exists.
 4. Read recent git history relevant to the scoped files.
+5. Read `autoresearch-lessons.md` if it exists (see `references/lessons-protocol.md`).
 
 Before every later iteration:
 
 1. Re-read the changed files.
 2. Read the last 10-20 results rows.
 3. Read recent commits or diffs to avoid repeating bad ideas.
+4. Consult lessons for relevant insights on the current strategy direction.
 
 ## Phase 2: Baseline
 
@@ -93,7 +118,28 @@ If the baseline itself fails unpredictably, do not enter the optimization loop. 
 
 ## Phase 3: Ideate
 
-Choose one concrete hypothesis.
+Choose one concrete hypothesis. When parallel mode is active (see `references/parallel-experiments-protocol.md`), generate N hypotheses instead of one.
+
+### Hypothesis Filtering
+
+Before committing to a hypothesis, filter against environment constraints per `references/environment-awareness.md`. Do not attempt hypotheses that require resources the environment lacks (e.g., GPU optimization without GPU, package installation without network).
+
+### Multi-Perspective Reasoning
+
+Apply the four-lens framework from `references/hypothesis-perspectives.md` when appropriate:
+- **Optimist:** most impactful change?
+- **Skeptic:** why might this fail? (cross-check results log)
+- **Historian:** what do past results and lessons say?
+- **Minimalist:** simpler version possible?
+
+Skip perspectives for obvious, mechanical fixes.
+
+### Lessons Consultation
+
+Consult `autoresearch-lessons.md` (see `references/lessons-protocol.md`):
+- Prefer strategies that succeeded in similar contexts.
+- Avoid strategies that consistently failed.
+- Adapt successful strategies from related goals.
 
 Good hypotheses:
 
@@ -110,7 +156,7 @@ Priority order:
 
 1. stabilize flaky setup,
 2. exploit the last successful direction,
-3. try an untested idea,
+3. try an untested idea informed by lessons and perspectives,
 4. simplify while preserving the metric,
 5. attempt a larger directional change when small ideas stall.
 
@@ -161,6 +207,8 @@ Timeout rule:
 - if verification takes more than 2x the established baseline time without a good reason, treat it as a failed iteration.
 
 ## Phase 6.5: Guard
+
+Guard is a separate gate from Verify, not part of it. The execution sequence is strictly: Phase 6 (Verify) -> Phase 6.5 (Guard) -> Phase 7 (Decide).
 
 If `Guard` is defined, run it after a metric improvement.
 
@@ -247,16 +295,33 @@ For unbounded runs:
 - Continue iterating until explicitly interrupted or a hard blocker appears.
 - If you run out of obvious ideas, revisit the results log for patterns, try combinations, or attempt bolder changes. Pausing to ask is not an option.
 
-### Stuck Recovery
+### PIVOT / REFINE Stuck Recovery
 
-If 5 consecutive iterations are discarded:
+Replace the simple "5 discards -> re-read" with the graduated escalation system from `references/pivot-protocol.md`:
 
-1. Re-read all in-scope files from scratch.
-2. Re-read the original goal.
-3. Review the entire results log for patterns -- what worked, what failed, what correlates.
-4. Try combining elements from previously successful changes.
-5. Try the opposite of recently failed directions.
-6. Attempt a bolder, architecture-level change.
+- **3 consecutive discards -> REFINE:** Adjust within current strategy. Consult lessons, change parameters or target files, log as `refine`.
+- **5 consecutive discards -> PIVOT:** Abandon current strategy entirely. Re-read everything, choose a fundamentally different approach, log as `pivot`.
+- **2 PIVOTs without improvement -> Web Search:** Escalate to web search per `references/web-search-protocol.md` (if available and not disabled).
+- **3 PIVOTs without improvement -> Soft Blocker:** Print a warning, continue with increasingly bold changes.
+
+A single `keep` resets all escalation counters to zero.
+
+After every PIVOT, extract a lesson per `references/lessons-protocol.md`.
+
+### Lessons Extraction
+
+After every `keep` decision, extract a positive lesson. After every PIVOT, extract a strategic lesson. At run completion, extract a summary lesson. See `references/lessons-protocol.md` for structure and persistence.
+
+## Phase 8.5: Health Check
+
+Health Check runs strictly between Log (Phase 8) and Repeat (Phase 9). The execution sequence is: Phase 8 (Log) -> Phase 8.5 (Health Check) -> Phase 9 (Repeat).
+
+Run health checks per `references/health-check-protocol.md`:
+
+- **Every iteration:** disk space, git state, verify command existence, wall-clock tracking.
+- **Every 10 iterations:** scope integrity, environment drift, verify/guard consistency, log integrity deep check.
+- Log integrity (row count validation) runs every iteration as a lightweight check. The deeper consistency check (parsing, cross-referencing) runs every 10 iterations.
+- Auto-recover safe issues. Hard blocker on unrecoverable issues.
 
 ## Progress Reporting
 

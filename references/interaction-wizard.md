@@ -122,11 +122,18 @@ Categorized questions for common autoresearch scenarios. Pick 1-3 that are actua
 - "Should I focus on quick wins first, or go straight for the biggest impact?"
 - "If I get stuck after several attempts, should I try bolder architectural changes, or stop and report?"
 
+### Parallel & Search
+
+- "I can test multiple ideas at the same time using parallel experiments. Want me to try up to 3 hypotheses per round? (I detected {N} GPUs/NPUs -- each experiment would need how many?)"
+- "If I get stuck, can I search the web for solutions? (results are always verified mechanically before applying)"
+- "Should I remember lessons from this run for future sessions?"
+
 ### Debug-Specific
 
 - "Can you describe what happens? (A: error message, B: wrong output, C: intermittent failure, D: performance degradation)"
 - "When did this start? (A: after a specific change, B: always been there, C: not sure)"
 - "If I find the cause, should I also try to fix it, or just report?"
+- "Do you have a screenshot, flame graph, or error image I can look at? (paste or drag an image if so)"
 
 ### Fix-Specific
 
@@ -139,6 +146,7 @@ Categorized questions for common autoresearch scenarios. Pick 1-3 that are actua
 - "Should I audit the whole codebase, or just the API layer?"
 - "Focus on which threats? (A: injection/XSS, B: auth/access control, C: data exposure, D: all)"
 - "Report only, or should I also fix critical findings?"
+- "Do you have an architecture diagram or network topology image I can reference? (paste or drag an image if so)"
 
 ### Ship-Specific
 
@@ -159,6 +167,9 @@ The wizard internally maps the conversation to these fields (the user never sees
 - Verify -- Codex proposes a command based on repo tooling
 - Guard (optional) -- Codex suggests if there's a regression risk
 - Iterations (optional) -- asked only if user wants bounded run
+- Parallel (optional) -- ask if environment supports it (CPU >= 4, RAM >= 8GB)
+- Web search (optional) -- ask if user wants web search when stuck
+- Lessons (optional) -- enabled by default, ask only if user wants to disable
 
 ### plan
 
@@ -187,6 +198,10 @@ The wizard internally maps the conversation to these fields (the user never sees
 
 - Shipment type -- auto-detected or asked
 - Run mode -- ask: "Dry run first, or ship directly?"
+
+### exec
+
+Exec mode does NOT use the wizard. All fields must be provided at invocation time via flags or environment variables. If any required field is missing, exec mode fails immediately with exit code 2. See `references/exec-workflow.md`.
 
 ## Validation Rules
 

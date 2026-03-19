@@ -82,6 +82,18 @@ Recommended categories:
 - denial of service
 - elevation of privilege
 
+### Image Input
+
+Security mode accepts image input during the wizard phase:
+
+- **Architecture diagrams:** identify trust boundaries, data flows, and attack surfaces from visual representations.
+- **Network topology:** map external entry points and internal communication paths.
+
+When an image is provided:
+1. Analyze the image to extract architectural information.
+2. Use extracted information to inform trust boundary mapping (Step 3) and threat modeling (Step 4).
+3. Reference the image findings in the attack surface map.
+
 ### Step 5: Adversarial Lenses
 
 Exercise the audit from these lenses:

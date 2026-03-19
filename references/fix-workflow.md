@@ -107,6 +107,10 @@ fix/{YYMMDD}-{HHMM}-{slug}/
 
 `blocked.md` must list items that could not be fixed safely within the configured attempts.
 
+## Web Search for Unfamiliar Errors
+
+When an error during repair is caused by an unfamiliar framework behavior or external library issue that cannot be resolved from the codebase alone, web search may be triggered per `references/web-search-protocol.md`. Search results are treated as repair hypotheses and verified mechanically.
+
 ## Completion
 
 Stop when:

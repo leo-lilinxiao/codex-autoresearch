@@ -32,6 +32,8 @@
   <a href="#architecture">Architecture</a> ·
   <a href="#modes">Modes</a> ·
   <a href="#configuration">Configuration</a> ·
+  <a href="#apprentissage-inter-executions">Apprentissage</a> ·
+  <a href="#experiences-paralleles">Parallele</a> ·
   <a href="../GUIDE.md">Guide d'utilisation</a> ·
   <a href="../EXAMPLES.md">Recettes</a>
 </p>
@@ -100,47 +102,69 @@ L'autoresearch de Karpathy a prouve qu'une boucle simple -- modifier, verifier, 
 ## Architecture
 
 ```
-                    +------------------+
-                    |  Lire le contexte |
-                    +--------+---------+
-                             |
-                    +--------v---------+
-                    | Etablir la base   |  <-- iteration #0
-                    +--------+---------+
-                             |
-              +--------------v--------------+
-              |                             |
-              |    +-------------------+    |
-              |    | Choisir hypothese |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | Faire UN changement|   |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | git commit        |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | Lancer verification|   |
-              |    +--------+----------+    |
-              |             |               |
-              |         ameliore ?          |
-              |        /         \          |
-              |      oui         non        |
-              |      /              \        |
-              | +---v----+    +-----v----+  |
-              | |CONSERVER|    | ANNULER  |  |
-              | +---+----+    +-----+----+  |
-              |      \            /          |
-              |    +--v----------v--+       |
-              |    | Journaliser    |       |
-              |    +-------+--------+       |
-              |            |                |
-              +------------+ (repeter)      |
-              |                             |
-              +-----------------------------+
+              +---------------------+
+              |  Environment Probe  |  <-- Phase 0: detect CPU/GPU/RAM/toolchains
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |  Session Resume?    |  <-- check for prior run artifacts
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |   Read Context      |  <-- read scope + lessons file
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              | Establish Baseline  |  <-- iteration #0
+              +---------+-----------+
+                        |
+         +--------------v--------------+
+         |                             |
+         |  +----------------------+   |
+         |  | Choose Hypothesis    |   |  <-- consult lessons + perspectives
+         |  | (or N for parallel)  |   |      filter by environment
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Make ONE Change      |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | git commit           |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Run Verify + Guard   |   |
+         |  +---------+------------+   |
+         |            |                |
+         |        improved?            |
+         |       /         \           |
+         |     yes          no         |
+         |     /              \        |
+         |  +-v------+   +----v-----+ |
+         |  |  KEEP  |   | REVERT   | |
+         |  |+lesson |   +----+-----+ |
+         |  +--+-----+        |       |
+         |      \            /         |
+         |   +--v----------v---+      |
+         |   |   Log Result    |      |
+         |   +--------+--------+      |
+         |            |               |
+         |   +--------v--------+      |
+         |   |  Health Check   |      |  <-- disk, git, verify health
+         |   +--------+--------+      |
+         |            |               |
+         |     3+ discards?           |
+         |    /             \         |
+         |  no              yes       |
+         |  |          +----v-----+   |
+         |  |          | REFINE / |   |  <-- pivot-protocol escalation
+         |  |          | PIVOT    |   |
+         |  |          +----+-----+   |
+         |  |               |         |
+         +--+------+--------+         |
+         |         (repeat)           |
+         +----------------------------+
 ```
 
 La boucle tourne jusqu'a interruption (sans limite) ou exactement N iterations (limitee via `Iterations: N`).
@@ -148,22 +172,28 @@ La boucle tourne jusqu'a interruption (sans limite) ou exactement N iterations (
 **Pseudocode :**
 
 ```
-BOUCLE (infinie ou N fois) :
-  1. Examiner l'etat actuel + historique git + journal des resultats
-  2. Choisir UNE hypothese (basee sur ce qui a marche, echoue, ou reste a essayer)
+PHASE 0: Sonder l'environnement, verifier la reprise de session
+PHASE 1: Lire le contexte + le fichier de lecons
+
+LOOP (infini ou N fois) :
+  1. Examiner l'etat actuel + historique git + journal des resultats + lecons
+  2. Choisir UNE hypothese (appliquer les perspectives, filtrer par environnement)
+     -- ou N hypotheses si le mode parallele est actif
   3. Effectuer UN changement atomique
   4. git commit (avant verification)
-  5. Lancer la verification mecanique
-  6. Ameliore -> conserver. Degrade -> git reset. Crash -> reparer ou ignorer.
+  5. Lancer la verification mecanique + guard
+  6. Ameliore -> conserver (extraire une lecon). Degrade -> git reset. Crash -> reparer ou ignorer.
   7. Journaliser le resultat
-  8. Repeter. Ne jamais s'arreter. Ne jamais demander.
+  8. Controle de sante (disque, git, sante de la verification)
+  9. 3+ rejets consecutifs -> REFINE ; 5+ -> PIVOT ; 2 PIVOTs -> recherche web
+  10. Repeter. Ne jamais s'arreter. Ne jamais demander.
 ```
 
 ---
 
 ## Modes
 
-Six modes, un seul schema d'invocation : `$codex-autoresearch` suivi d'une phrase decrivant ce que vous voulez. Codex detecte automatiquement le mode et vous guide dans une courte conversation pour completer la configuration.
+Sept modes, un seul schema d'invocation : `$codex-autoresearch` suivi d'une phrase decrivant ce que vous voulez. Codex detecte automatiquement le mode et vous guide dans une courte conversation pour completer la configuration.
 
 | Mode | Cas d'utilisation | Condition d'arret |
 |------|-------------------|-------------------|
@@ -173,6 +203,7 @@ Six modes, un seul schema d'invocation : `$codex-autoresearch` suivi d'une phras
 | `fix` | Quelque chose est casse et doit etre repare | Le nombre d'erreurs atteint zero |
 | `security` | Vous avez besoin d'un audit de vulnerabilites structure | Toutes les surfaces d'attaque couvertes ou N iterations |
 | `ship` | Vous avez besoin d'une verification de mise en production | Tous les points de controle passes |
+| `exec` | Pipeline CI/CD, aucun humain disponible | N iterations (toujours borne), sortie JSON |
 
 **Selection rapide :**
 
@@ -181,6 +212,7 @@ Six modes, un seul schema d'invocation : `$codex-autoresearch` suivi d'une phras
 "Quelque chose est casse"       -->  fix   (ou debug si la cause est inconnue)
 "Ce code est-il securise ?"     -->  security
 "On met en production"          -->  ship
+codex exec --skill ...          -->  exec  (CI/CD, pas d'assistant)
 ```
 
 ---
@@ -234,6 +266,7 @@ Si verify passe mais guard echoue, le changement est retravaille (jusqu'a 2 tent
 | Faire passer les tests/types/lint en echec | `fix` | Commande Target |
 | Auditer le code pour les vulnerabilites | `security` | Scope + Focus |
 | Publier en toute confiance | `ship` | Dites "on publie" ou "simulation d'abord" |
+| Executer en CI/CD sans interaction | `exec` | Tous les champs en amont + Iterations |
 
 ---
 
@@ -382,6 +415,83 @@ security + fix               # auditer et corriger en une seule passe
 
 ---
 
+## Apprentissage inter-executions
+
+Chaque execution extrait des lecons structurees -- ce qui a fonctionne, ce qui a echoue, et pourquoi. Les lecons sont conservees dans `autoresearch-lessons.md` (non commite, comme le journal des resultats) et consultees au demarrage des executions futures pour orienter la generation d'hypotheses vers les strategies eprouvees et eviter les impasses connues.
+
+- Lecons positives apres chaque iteration conservee
+- Lecons strategiques apres chaque decision PIVOT
+- Lecons de synthese a la fin de l'execution
+- Capacite : 50 entrees maximum, les anciennes entrees sont resumees avec decroissance temporelle
+
+Voir `references/lessons-protocol.md` pour les details.
+
+---
+
+## Recuperation intelligente en cas de blocage
+
+Au lieu de reessayer aveuglement apres des echecs, la boucle utilise un systeme d'escalade graduee :
+
+| Declencheur | Action |
+|-------------|--------|
+| 3 rejets consecutifs | **REFINE** -- ajuster dans le cadre de la strategie actuelle |
+| 5 rejets consecutifs | **PIVOT** -- abandonner la strategie, essayer une approche fondamentalement differente |
+| 2 PIVOTs sans amelioration | **Recherche web** -- chercher des solutions externes |
+| 3 PIVOTs sans amelioration | **Bloqueur souple** -- avertir et continuer avec des changements plus audacieux |
+
+Un seul resultat conserve reinitialise tous les compteurs. Voir `references/pivot-protocol.md`.
+
+---
+
+## Experiences paralleles
+
+Testez plusieurs hypotheses simultanement en utilisant des agents secondaires dans des worktrees git isoles :
+
+```
+Orchestrateur (agent principal)
+  +-- Agent A (worktree-a) -> hypothese 1
+  +-- Agent B (worktree-b) -> hypothese 2
+  +-- Agent C (worktree-c) -> hypothese 3
+```
+
+L'orchestrateur choisit le meilleur resultat, le fusionne et ecarte le reste. Activez cette fonctionnalite pendant l'assistant en repondant "oui" aux experiences paralleles. Si les worktrees ne sont pas pris en charge, le systeme bascule en mode sequentiel.
+
+Voir `references/parallel-experiments-protocol.md`.
+
+---
+
+## Reprise de session
+
+Si Codex detecte une execution precedente interrompue (journal des resultats, fichier de lecons, commits d'experience), il peut reprendre a partir du dernier etat coherent au lieu de repartir de zero :
+
+- **Etat coherent :** reprise immediate, assistant ignore
+- **Partiellement coherent :** mini-assistant (1 echange) pour reconfirmer
+- **Incoherent ou objectif different :** nouveau depart (ancien journal renomme)
+
+Voir `references/session-resume-protocol.md`.
+
+---
+
+## Mode CI/CD (exec)
+
+Mode non interactif pour les pipelines d'automatisation. Toute la configuration est fournie en amont -- pas d'assistant, toujours borne, sortie JSON.
+
+```yaml
+# Exemple GitHub Actions
+- name: Autoresearch optimization
+  run: codex exec --skill codex-autoresearch
+         --goal "Reduce type errors" --scope "src/**/*.ts"
+         --metric "type error count" --direction lower
+         --verify "tsc --noEmit 2>&1 | grep -c error"
+         --iterations 20
+```
+
+Codes de sortie : 0 = ameliore, 1 = pas d'amelioration, 2 = bloqueur critique.
+
+Voir `references/exec-workflow.md`.
+
+---
+
 ## Journal des resultats
 
 Chaque iteration est enregistree au format TSV (`research-results.tsv`) :
@@ -409,9 +519,11 @@ Un resume de progression est affiche toutes les 5 iterations. Les executions lim
 | Crash a l'execution | Jusqu'a 3 tentatives de correction, puis passage au suivant |
 | Epuisement des ressources | Annulation, essai d'une variante plus petite |
 | Processus bloque | Arret apres timeout, annulation |
-| Bloque (5+ echecs consecutifs) | Relecture de tout le contexte, examen des tendances, essai de changements plus audacieux |
+| Blocage (3+ rejets consecutifs) | REFINE pour ajuster la strategie, 5+ rejets -> PIVOT vers nouvelle approche, escalade vers recherche web si necessaire |
 | Incertitude en cours de boucle | Application autonome des meilleures pratiques ; ne jamais interrompre pour demander a l'utilisateur |
 | Effets de bord externes | Le mode `ship` exige une confirmation explicite pendant l'assistant de pre-lancement |
+| Limites de l'environnement | Detection au demarrage ; les hypotheses irrealisables sont filtrees automatiquement |
+| Session interrompue | Reprise a partir du dernier etat coherent lors de la prochaine invocation |
 
 ---
 
@@ -443,17 +555,26 @@ codex-autoresearch/
   scripts/
     validate_skill_structure.sh     # script de validation de structure
   references/
-    autonomous-loop-protocol.md     # specification du protocole de boucle
     core-principles.md              # principes universels
+    autonomous-loop-protocol.md     # specification du protocole de boucle
     plan-workflow.md                # specification du mode plan
     debug-workflow.md               # specification du mode debug
     fix-workflow.md                 # specification du mode fix
     security-workflow.md            # specification du mode security
     ship-workflow.md                # specification du mode ship
+    exec-workflow.md                # specification du mode CI/CD non interactif
     interaction-wizard.md           # contrat de configuration interactive
     structured-output-spec.md       # specification du format de sortie
     modes.md                        # index des modes
     results-logging.md              # specification du format TSV
+    lessons-protocol.md             # apprentissage inter-executions
+    pivot-protocol.md               # recuperation intelligente (PIVOT/REFINE)
+    web-search-protocol.md          # recherche web en cas de blocage
+    environment-awareness.md        # detection materiel/ressources
+    parallel-experiments-protocol.md # tests paralleles par sous-agents
+    session-resume-protocol.md      # reprise des executions interrompues
+    health-check-protocol.md        # auto-surveillance
+    hypothesis-perspectives.md      # raisonnement multi-perspectives sur les hypotheses
 ```
 
 ---
@@ -469,6 +590,16 @@ codex-autoresearch/
 **Le mode security modifie-t-il mon code ?** Non. Analyse en lecture seule. Dites a Codex de "corriger aussi les problemes critiques" lors de la configuration pour activer la remediation.
 
 **Combien d'iterations ?** Cela depend de la tache. 5 pour les corrections ciblees, 10-20 pour l'exploration, illimite pour les executions de nuit.
+
+**Apprend-il d'une execution a l'autre ?** Oui. Les lecons sont extraites apres chaque execution et consultees au demarrage de la suivante. Le fichier de lecons persiste entre les sessions.
+
+**Peut-il reprendre apres une interruption ?** Oui. Lors de l'invocation suivante, il detecte l'execution precedente et reprend a partir du dernier etat coherent.
+
+**Peut-il effectuer des recherches web ?** Oui, lorsqu'il est bloque apres plusieurs pivots strategiques. Les resultats de recherche web sont traites comme des hypotheses et verifies mecaniquement.
+
+**Comment l'utiliser en CI ?** Utilisez `Mode: exec` ou `codex exec`. Toute la configuration est fournie en amont, la sortie est en JSON, et les codes de sortie indiquent le succes ou l'echec.
+
+**Peut-il tester plusieurs idees en meme temps ?** Oui. Activez les experiences paralleles lors de la configuration. Il utilise les worktrees git pour tester jusqu'a 3 hypotheses simultanement.
 
 ---
 

@@ -13,6 +13,8 @@ Working examples organized by what you want to accomplish. Each recipe shows wha
 - [Planning When You Are Unsure](#planning-when-you-are-unsure)
 - [Releasing with Confidence](#releasing-with-confidence)
 - [Chaining Modes](#chaining-modes)
+- [CI/CD Mode (exec)](#cicd-mode-exec)
+- [MCP Integration](#mcp-integration)
 - [Choosing Verify and Guard Commands](#choosing-verify-and-guard-commands)
 
 ---
@@ -502,6 +504,107 @@ You:   $codex-autoresearch
 You:   $codex-autoresearch
        Audit the auth system, then fix anything critical
        [security mode audits, switches to fix mode for Critical/High]
+```
+
+---
+
+## CI/CD Mode (exec)
+
+Non-interactive mode for automation pipelines. All config upfront, JSON output, exit codes.
+
+### Reduce type errors in GitHub Actions
+
+```yaml
+- name: Reduce type errors
+  run: |
+    codex exec --skill codex-autoresearch \
+      --goal "Reduce type errors" \
+      --scope "src/**/*.ts" \
+      --metric "type error count" \
+      --direction lower \
+      --verify "tsc --noEmit 2>&1 | grep -c error" \
+      --iterations 20
+  continue-on-error: true
+```
+
+Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker.
+
+### Raise coverage in GitLab CI
+
+```yaml
+optimize-coverage:
+  script:
+    - codex exec --skill codex-autoresearch
+        --goal "Raise test coverage"
+        --scope "src/"
+        --metric "coverage percentage"
+        --direction higher
+        --verify "pytest --cov=src --cov-report=term 2>&1 | grep TOTAL | awk '{print $NF}'"
+        --guard "ruff check ."
+        --iterations 15
+  allow_failure: true
+```
+
+### Nightly lint cleanup
+
+```yaml
+- name: Nightly lint cleanup
+  run: |
+    codex exec --skill codex-autoresearch \
+      --goal "Eliminate ESLint violations" \
+      --scope "src/" \
+      --metric "violation count" \
+      --direction lower \
+      --verify "npx eslint src/ --format compact 2>&1 | tail -1 | grep -oP '\\d+ problem'" \
+      --guard "npm run test:unit" \
+      --iterations 30
+  schedule:
+    - cron: '0 3 * * *'
+```
+
+---
+
+## MCP Integration
+
+MCP (Model Context Protocol) servers extend Codex's capabilities. These recipes show how to combine autoresearch with MCP tools.
+
+### Framework docs lookup during optimization
+
+If you have an MCP docs server configured (e.g., for React, Django, or Express):
+
+```
+You:   $codex-autoresearch
+       Optimize our React component rendering performance
+
+Codex: [during ideation, queries MCP docs server for React.memo,
+       useMemo, and useCallback best practices]
+       [uses documentation insights to generate better hypotheses]
+```
+
+The agent consults MCP docs automatically when it encounters framework-specific patterns it needs to understand better. No special configuration needed beyond having the MCP server available.
+
+### Database EXPLAIN queries during latency optimization
+
+If you have an MCP database server configured:
+
+```
+You:   $codex-autoresearch
+       Reduce /search endpoint p95 latency from 800ms to 200ms
+
+Codex: [runs EXPLAIN via MCP database server to identify slow queries]
+       [uses query plans to generate targeted index and query optimizations]
+```
+
+### API testing during security audits
+
+If you have an MCP API testing server configured:
+
+```
+You:   $codex-autoresearch Mode: security
+       Audit our REST API for injection vulnerabilities
+
+Codex: [uses MCP API server to send test payloads during audit]
+       [validates findings with actual API responses, not just code analysis]
 ```
 
 ---

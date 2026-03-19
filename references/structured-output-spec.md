@@ -2,6 +2,23 @@
 
 Every `codex-autoresearch` mode must produce predictable human-readable output and, where defined, predictable artifact files.
 
+## Status Values
+
+All modes share these status values (see `references/results-logging.md` for full schema):
+
+| Status | Meaning |
+|--------|---------|
+| `baseline` | Initial measurement before any changes |
+| `keep` | Change improved the metric and passed guard |
+| `discard` | Change did not improve or failed guard |
+| `crash` | Verification crashed or produced an error |
+| `no-op` | No actual diff was produced |
+| `blocked` | Hard blocker encountered, loop stopped |
+| `refine` | Strategy adjustment within current approach |
+| `pivot` | Strategy abandoned, fundamentally new approach |
+| `search` | Web search performed for external knowledge |
+| `drift` | Metric drifted from expected value during session resume |
+
 ## Common Response Sections
 
 Before work starts:
@@ -30,6 +47,21 @@ Use this shape during loops:
 [iteration N] hypothesis -> metric result -> keep/discard/crash
 ```
 
+Extended statuses for stuck recovery and search:
+
+```text
+[iteration N] [REFINE] adjusted strategy -> metric result -> refine
+[iteration N] [PIVOT] abandoned strategy X, trying Y -> metric result -> pivot
+[iteration N] [SEARCH] "query" -> found approach -> metric result -> search
+```
+
+Parallel batch notation:
+
+```text
+[iteration Na] [PARALLEL worker-a] hypothesis -> metric result -> keep (SELECTED)
+[iteration Nb] [PARALLEL worker-b] hypothesis -> metric result -> discard
+```
+
 ## Mode Output Templates
 
 ### loop
@@ -39,12 +71,15 @@ Required completion summary:
 - goal
 - baseline metric
 - best metric
-- keep/discard/crash counts
+- keep/discard/crash/refine/pivot counts
+- lessons extracted (count)
+- environment summary (one line)
 - artifact path
 
 Artifact:
 
 - `research-results.tsv`
+- `autoresearch-lessons.md` (if lessons were extracted)
 
 ### plan
 
@@ -126,9 +161,35 @@ ship/{YYMMDD}-{HHMM}-{slug}/
   summary.md
 ```
 
+### exec
+
+JSON output mode for CI/CD. No human-readable text.
+
+Per-iteration line (stdout):
+
+```json
+{"iteration": 1, "commit": "abc1234", "metric": 41, "delta": -6, "guard": "pass", "status": "keep", "description": "narrowed auth types"}
+```
+
+Completion summary (stdout, last line):
+
+```json
+{"status": "completed", "baseline": 47, "best": 38, "best_iteration": 5, "total_iterations": 10, "keeps": 4, "discards": 5, "crashes": 1, "improved": true, "exit_code": 0}
+```
+
+Error output (stderr):
+
+```json
+{"error": "missing required field: Verify", "exit_code": 2}
+```
+
+Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker.
+
 ## Logging Rules
 
 - TSV headers must be written exactly once.
 - Timestamps should use UTC.
 - File paths should be repo-relative inside artifacts.
 - Final summaries should reference every artifact created.
+- Health check warnings use `[HEALTH]` prefix in descriptions.
+- Parallel workers use `[PARALLEL worker-{id}]` prefix.

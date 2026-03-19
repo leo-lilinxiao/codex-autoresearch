@@ -79,6 +79,12 @@ Inspect:
 - benchmark scripts,
 - lint and typecheck commands.
 
+Run environment probes per `references/environment-awareness.md`:
+
+- Detect available compute resources (CPU, RAM, GPU/NPU, disk).
+- Detect installed toolchains and package managers.
+- Use environment data to filter infeasible verify/guard commands and suggest resource-appropriate configurations.
+
 ### Phase 3: Suggest Scope
 
 Produce 2-3 scope candidates when possible.

@@ -72,17 +72,22 @@ This boundary is absolute. Everything before "go" can ask. Everything after "go"
 Every iterating mode (loop, debug, fix, security) shares the same cycle:
 
 ```
-  Pick hypothesis  -->  Edit files  -->  git commit  -->  Run verify
-                                                             |
-                                                         improved?
-                                                        /         \
-                                                      yes          no
-                                                      /              \
-                                                   KEEP           REVERT
-                                                     \              /
-                                                      +-- Log -----+
-                                                           |
-                                                         repeat
+  Pick hypothesis  -->  Edit files  -->  git commit  -->  Run verify + guard
+  (consult lessons,                                            |
+   apply perspectives,                                     improved?
+   filter by environment)                                 /         \
+                                                        yes          no
+                                                        /              \
+                                                     KEEP           REVERT
+                                                  (+lesson)            |
+                                                      \              /
+                                                       +-- Log -----+
+                                                            |
+                                                      Health check
+                                                            |
+                                                    3+ discards? --yes--> REFINE/PIVOT
+                                                            |
+                                                          repeat
 ```
 
 1. **Hypothesis** -- one focused idea based on what worked, what failed, what is untried
@@ -175,7 +180,7 @@ Bounded runs print a final summary comparing baseline to best result.
 
 ## Modes
 
-Six modes, one invocation pattern: `$codex-autoresearch` followed by a sentence. Codex auto-detects which mode fits. You can also force a mode by saying it explicitly (e.g., "use debug mode").
+Seven modes, one invocation pattern: `$codex-autoresearch` followed by a sentence. Codex auto-detects which mode fits. You can also force a mode by saying it explicitly (e.g., "use debug mode").
 
 ### loop
 
@@ -423,12 +428,13 @@ If unrelated uncommitted changes exist:
 
 | Mode | What it produces |
 |------|------------------|
-| loop | `research-results.tsv` |
+| loop | `research-results.tsv`, `autoresearch-lessons.md` |
 | plan | Config block printed inline (ready to paste) |
 | debug | `debug/{YYMMDD}-{HHMM}-{slug}/` directory with findings |
 | fix | `fix/{YYMMDD}-{HHMM}-{slug}/` directory with fix log |
 | security | `security/{YYMMDD}-{HHMM}-{slug}/` directory with audit report |
 | ship | `ship/{YYMMDD}-{HHMM}-{slug}/` directory with checklist and verification |
+| exec | JSON lines to stdout, exit code |
 
 ---
 
@@ -443,9 +449,94 @@ If unrelated uncommitted changes exist:
 | Runtime crash | Up to 3 fix attempts, then skip |
 | Resource exhaustion | Revert, try smaller variant |
 | Hanging process | Kill after timeout, revert |
-| Stuck (5+ consecutive discards) | Re-read all context, review patterns, try bolder changes |
+| Stuck (3+ consecutive discards) | REFINE strategy; 5+ -> PIVOT; escalate to web search; then soft blocker |
 | Ambiguity mid-loop | Apply best practices autonomously; never pause to ask the user |
 | External side effects | Ship mode requires explicit confirmation during setup phase |
+| Environment limits | Probed at startup; infeasible hypotheses filtered |
+| Interrupted session | Resume from last consistent state |
+
+---
+
+## Cross-Run Learning
+
+Every run extracts structured lessons and persists them to `autoresearch-lessons.md` (alongside the results log, never committed). Future runs consult lessons to bias hypothesis generation.
+
+How it works:
+- After every kept iteration: positive lesson (what worked and why)
+- After every PIVOT: strategic lesson (what was abandoned and why)
+- At run completion: summary lesson (best strategy family for this goal type)
+- Cap: 50 entries. Older entries are summarized with time decay.
+
+Lessons carry across runs and across goals. A lesson from optimizing test coverage can inform a later run optimizing build warnings if the strategy families overlap.
+
+---
+
+## Smart Stuck Recovery (PIVOT / REFINE)
+
+The loop uses a graduated escalation system instead of blind retrying:
+
+1. **REFINE** (3 consecutive discards): Adjust within current strategy -- different file, different technique, different granularity. Consult lessons for similar past failures.
+
+2. **PIVOT** (5 consecutive discards): Abandon current strategy entirely. Re-read everything, choose a fundamentally different approach. Extract a strategic lesson.
+
+3. **Web Search** (2 PIVOTs without improvement): Search the web for solutions if available. Results are treated as hypotheses and verified mechanically.
+
+4. **Soft Blocker** (3 PIVOTs without improvement): Print a warning, continue with increasingly bold changes. The loop never stops unless a hard blocker appears.
+
+A single successful keep resets all escalation counters to zero.
+
+---
+
+## Parallel Experiments
+
+When enabled during the wizard, the loop can test multiple hypotheses per iteration using subagent workers in isolated git worktrees:
+
+- The orchestrator generates N hypotheses (max 3).
+- Each worker applies one hypothesis, runs verify, and reports results.
+- The orchestrator picks the best result, merges it, and discards the rest.
+- If no result improved, it counts as a single discard for PIVOT tracking.
+
+Parallel mode is suggested during the wizard when the environment has enough resources (CPU >= 4, RAM >= 8GB, sufficient disk). Falls back to serial if worktrees are unsupported.
+
+---
+
+## Session Resume
+
+If you interrupt a run and come back later, Codex can resume from where you left off:
+
+- It checks for `research-results.tsv`, `autoresearch-lessons.md`, and recent experiment commits.
+- If state is consistent: resumes immediately, no wizard needed.
+- If state is partially consistent: runs a mini-wizard (1 round) to re-confirm.
+- If state is inconsistent or the goal has changed: starts fresh, renames old logs.
+
+---
+
+## Environment Awareness
+
+At the start of every run, Codex probes the environment:
+
+- CPU cores, RAM, disk space
+- GPU/NPU detection (NVIDIA, Ascend, ROCm, Apple Silicon)
+- Installed toolchains (Python, Node.js, Go, Rust, Java)
+- Container detection (Docker, Kubernetes)
+- Network availability
+
+This data filters infeasible hypotheses (e.g., no GPU optimization without a GPU) and informs resource-appropriate suggestions during plan mode.
+
+---
+
+## CI/CD Mode (exec)
+
+Non-interactive mode for automation pipelines. Differences from interactive mode:
+
+- No wizard -- all config provided upfront via flags or environment variables
+- Always bounded (Iterations field is mandatory)
+- JSON output (one line per iteration, completion summary at end)
+- No web search, no parallel, no session resume
+- Reads lessons if available, but does not write them
+- Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker
+
+See `references/exec-workflow.md` for full details and CI integration examples.
 
 ---
 

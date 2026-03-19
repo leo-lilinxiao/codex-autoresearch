@@ -32,6 +32,8 @@
   <a href="#arquitetura">Arquitetura</a> ·
   <a href="#modos">Modos</a> ·
   <a href="#configuracao">Configuracao</a> ·
+  <a href="#aprendizado-entre-execucoes">Aprendizado</a> ·
+  <a href="#experimentos-paralelos">Paralelo</a> ·
   <a href="../GUIDE.md">Guia de operacao</a> ·
   <a href="../EXAMPLES.md">Receitas</a>
 </p>
@@ -100,48 +102,69 @@ O autoresearch do Karpathy provou que um loop simples -- modificar, verificar, m
 ## Arquitetura
 
 ```
-                    +------------------+
-                    |   Ler contexto   |
-                    +--------+---------+
-                             |
-                    +--------v---------+
-                    | Estabelecer linha|  <-- iteracao #0
-                    |      de base     |
-                    +--------+---------+
-                             |
-              +--------------v--------------+
-              |                             |
-              |    +-------------------+    |
-              |    | Escolher hipotese |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | Fazer UMA mudanca |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    |   git commit      |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | Executar verif.   |    |
-              |    +--------+----------+    |
-              |             |               |
-              |          Melhorou?          |
-              |        /         \          |
-              |      sim          nao       |
-              |      /              \        |
-              | +---v----+    +-----v----+  |
-              | | MANTER |    | REVERTER |  |
-              | +---+----+    +-----+----+  |
-              |      \            /          |
-              |    +--v----------v--+       |
-              |    | Registrar res. |       |
-              |    +-------+--------+       |
-              |            |                |
-              +------------+ (repetir)      |
-              |                             |
-              +-----------------------------+
+              +---------------------+
+              |  Environment Probe  |  <-- Phase 0: detect CPU/GPU/RAM/toolchains
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |  Session Resume?    |  <-- check for prior run artifacts
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |   Read Context      |  <-- read scope + lessons file
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              | Establish Baseline  |  <-- iteration #0
+              +---------+-----------+
+                        |
+         +--------------v--------------+
+         |                             |
+         |  +----------------------+   |
+         |  | Choose Hypothesis    |   |  <-- consult lessons + perspectives
+         |  | (or N for parallel)  |   |      filter by environment
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Make ONE Change      |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | git commit           |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Run Verify + Guard   |   |
+         |  +---------+------------+   |
+         |            |                |
+         |        improved?            |
+         |       /         \           |
+         |     yes          no         |
+         |     /              \        |
+         |  +-v------+   +----v-----+ |
+         |  |  KEEP  |   | REVERT   | |
+         |  |+lesson |   +----+-----+ |
+         |  +--+-----+        |       |
+         |      \            /         |
+         |   +--v----------v---+      |
+         |   |   Log Result    |      |
+         |   +--------+--------+      |
+         |            |               |
+         |   +--------v--------+      |
+         |   |  Health Check   |      |  <-- disk, git, verify health
+         |   +--------+--------+      |
+         |            |               |
+         |     3+ discards?           |
+         |    /             \         |
+         |  no              yes       |
+         |  |          +----v-----+   |
+         |  |          | REFINE / |   |  <-- pivot-protocol escalation
+         |  |          | PIVOT    |   |
+         |  |          +----+-----+   |
+         |  |               |         |
+         +--+------+--------+         |
+         |         (repeat)           |
+         +----------------------------+
 ```
 
 O loop executa ate ser interrompido (sem limite) ou exatamente N iteracoes (limitado via `Iterations: N`).
@@ -149,22 +172,28 @@ O loop executa ate ser interrompido (sem limite) ou exatamente N iteracoes (limi
 **Pseudocodigo:**
 
 ```
+PHASE 0: Sondar ambiente, verificar retomada de sessao
+PHASE 1: Ler contexto + arquivo de licoes
+
 LOOP (para sempre ou N vezes):
-  1. Revisar estado atual + historico git + registro de resultados
-  2. Escolher UMA hipotese (baseada no que funcionou, no que falhou, no que nao foi testado)
+  1. Revisar estado atual + historico git + registro de resultados + licoes
+  2. Escolher UMA hipotese (aplicar perspectivas, filtrar por ambiente)
+     -- ou N hipoteses se o modo paralelo estiver ativo
   3. Fazer UMA alteracao atomica
   4. git commit (antes da verificacao)
-  5. Executar verificacao mecanica
-  6. Melhorou -> manter. Piorou -> git reset. Quebrou -> corrigir ou pular.
+  5. Executar verificacao mecanica + guard
+  6. Melhorou -> manter (extrair licao). Piorou -> git reset. Quebrou -> corrigir ou pular.
   7. Registrar o resultado
-  8. Repetir. Nunca parar. Nunca perguntar.
+  8. Health check (disco, git, saude da verificacao)
+  9. Se 3+ descartes -> REFINE; 5+ -> PIVOT; 2 PIVOTs -> busca web
+  10. Repetir. Nunca parar. Nunca perguntar.
 ```
 
 ---
 
 ## Modos
 
-Seis modos, um unico padrao de invocacao: `$codex-autoresearch` seguido de uma frase descrevendo o que voce quer. O Codex detecta automaticamente o modo e guia voce atraves de uma breve conversa para completar a configuracao.
+Sete modos, um unico padrao de invocacao: `$codex-autoresearch` seguido de uma frase descrevendo o que voce quer. O Codex detecta automaticamente o modo e guia voce atraves de uma breve conversa para completar a configuracao.
 
 | Modo | Quando usar | Para quando |
 |------|-------------|-------------|
@@ -174,6 +203,7 @@ Seis modos, um unico padrao de invocacao: `$codex-autoresearch` seguido de uma f
 | `fix` | Algo esta quebrado e precisa de reparo | Contagem de erros chega a zero |
 | `security` | Voce precisa de uma auditoria estruturada de vulnerabilidades | Todas as superficies de ataque cobertas ou N iteracoes |
 | `ship` | Voce precisa de verificacao de lancamento com portoes | Todos os itens da lista aprovados |
+| `exec` | Pipeline CI/CD, sem humano disponivel | N iteracoes (sempre limitado), saida JSON |
 
 **Selecao rapida:**
 
@@ -182,6 +212,7 @@ Seis modos, um unico padrao de invocacao: `$codex-autoresearch` seguido de uma f
 "Algo esta quebrado"            -->  fix  (ou debug se a causa e desconhecida)
 "Esse codigo e seguro?"         -->  security
 "Pronto para lancar"            -->  ship
+codex exec --skill ...          -->  exec (CI/CD, sem assistente)
 ```
 
 ---
@@ -235,6 +266,7 @@ Se verify passa mas guard falha, a alteracao e reajustada (ate 2 tentativas) e d
 | Fazer tests/tipos/lint passarem | `fix` | Comando Target |
 | Auditar codigo em busca de vulnerabilidades | `security` | Scope + Focus |
 | Lancar com confianca | `ship` | Diga "lancar" ou "primeiro um ensaio" |
+| Executar em CI/CD sem interacao | `exec` | Todos os campos antecipados + Iterations |
 
 ---
 
@@ -383,6 +415,83 @@ security + fix               # auditar e remediar em um so passo
 
 ---
 
+## Aprendizado entre execucoes
+
+Cada execucao extrai licoes estruturadas -- o que funcionou, o que falhou e por que. As licoes sao armazenadas em `autoresearch-lessons.md` (sem commit, como o registro de resultados) e consultadas no inicio de execucoes futuras para direcionar a geracao de hipoteses para estrategias comprovadas e para longe de becos sem saida conhecidos.
+
+- Licoes positivas apos cada iteracao mantida
+- Licoes estrategicas apos cada decisao PIVOT
+- Licoes de resumo ao completar uma execucao
+- Capacidade: maximo 50 entradas, as mais antigas sao resumidas com decaimento temporal
+
+Consulte `references/lessons-protocol.md` para detalhes.
+
+---
+
+## Recuperacao inteligente de travamentos
+
+Em vez de tentar cegamente apos falhas, o loop usa um sistema de escalonamento graduado:
+
+| Gatilho | Acao |
+|---------|------|
+| 3 descartes consecutivos | **REFINE** -- ajustar dentro da estrategia atual |
+| 5 descartes consecutivos | **PIVOT** -- abandonar a estrategia, tentar uma abordagem fundamentalmente diferente |
+| 2 PIVOTs sem melhoria | **Busca web** -- procurar solucoes externas |
+| 3 PIVOTs sem melhoria | **Bloqueio suave** -- avisar e continuar com mudancas mais ousadas |
+
+Um unico manter bem-sucedido reinicia todos os contadores. Consulte `references/pivot-protocol.md`.
+
+---
+
+## Experimentos paralelos
+
+Teste multiplas hipoteses simultaneamente usando workers subagente em worktrees git isolados:
+
+```
+Orquestrador (agente principal)
+  +-- Worker A (worktree-a) -> hipotese 1
+  +-- Worker B (worktree-b) -> hipotese 2
+  +-- Worker C (worktree-c) -> hipotese 3
+```
+
+O orquestrador escolhe o melhor resultado, faz o merge e descarta o resto. Ative os experimentos paralelos durante o assistente dizendo "sim". Se os worktrees nao forem suportados, executa em serie.
+
+Consulte `references/parallel-experiments-protocol.md`.
+
+---
+
+## Retomada de sessao
+
+Se o Codex detecta uma execucao anterior interrompida (registro de resultados, arquivo de licoes, commits de experimentos), pode retomar do ultimo estado consistente em vez de comecar do zero:
+
+- **Estado consistente:** retomada imediata, assistente ignorado
+- **Parcialmente consistente:** mini-assistente (1 rodada) para reconfirmar
+- **Inconsistente ou objetivo diferente:** inicio limpo (o registro anterior e renomeado)
+
+Consulte `references/session-resume-protocol.md`.
+
+---
+
+## Modo CI/CD (exec)
+
+Modo nao interativo para pipelines de automacao. Toda a configuracao e fornecida antecipadamente -- sem assistente, sempre limitado, saida JSON.
+
+```yaml
+# Exemplo de GitHub Actions
+- name: Otimizacao com Autoresearch
+  run: codex exec --skill codex-autoresearch
+         --goal "Reduce type errors" --scope "src/**/*.ts"
+         --metric "type error count" --direction lower
+         --verify "tsc --noEmit 2>&1 | grep -c error"
+         --iterations 20
+```
+
+Codigos de saida: 0 = melhorou, 1 = sem melhoria, 2 = bloqueio duro.
+
+Consulte `references/exec-workflow.md`.
+
+---
+
 ## Registro de resultados
 
 Cada iteracao e registrada em formato TSV (`research-results.tsv`):
@@ -410,9 +519,11 @@ Um resumo de progresso e impresso a cada 5 iteracoes. Execucoes limitadas imprim
 | Crash em tempo de execucao | Ate 3 tentativas de correcao, depois pula |
 | Esgotamento de recursos | Reverte, tenta uma variante menor |
 | Processo travado | Encerra apos timeout, reverte |
-| Preso (5+ descartes consecutivos) | Rele todo o contexto, revisa padroes, tenta mudancas mais ousadas |
+| Preso (3+ descartes) | Estrategia REFINE; 5+ descartes -> PIVOT para nova abordagem; escalonamento para busca web se necessario |
 | Ambiguidade durante o loop | Aplica melhores praticas de forma autonoma; nunca para para perguntar ao usuario |
 | Efeitos colaterais externos | O modo `ship` requer confirmacao explicita durante o assistente de pre-lancamento |
+| Limites do ambiente | Detectados na inicializacao; hipoteses inviaveis sao filtradas automaticamente |
+| Sessao interrompida | Retomada do ultimo estado consistente na proxima invocacao |
 
 ---
 
@@ -444,17 +555,26 @@ codex-autoresearch/
   scripts/
     validate_skill_structure.sh     # script de validacao de estrutura
   references/
-    autonomous-loop-protocol.md     # especificacao do protocolo de loop
     core-principles.md              # principios universais
+    autonomous-loop-protocol.md     # especificacao do protocolo de loop
     plan-workflow.md                # especificacao do modo plan
     debug-workflow.md               # especificacao do modo debug
     fix-workflow.md                 # especificacao do modo fix
     security-workflow.md            # especificacao do modo security
     ship-workflow.md                # especificacao do modo ship
+    exec-workflow.md                # especificacao do modo CI/CD nao interativo
     interaction-wizard.md           # contrato de configuracao interativa
     structured-output-spec.md       # especificacao de formato de saida
     modes.md                        # indice de modos
     results-logging.md              # especificacao de formato TSV
+    lessons-protocol.md             # aprendizado entre execucoes
+    pivot-protocol.md               # recuperacao inteligente de travamentos (PIVOT/REFINE)
+    web-search-protocol.md          # busca web quando travado
+    environment-awareness.md        # deteccao de hardware/recursos
+    parallel-experiments-protocol.md # testes paralelos com subagentes
+    session-resume-protocol.md      # retomar execucoes interrompidas
+    health-check-protocol.md        # automonitoramento
+    hypothesis-perspectives.md      # raciocinio de hipoteses multi-perspectiva
 ```
 
 ---
@@ -470,6 +590,16 @@ codex-autoresearch/
 **O modo security modifica meu codigo?** Nao. Analise somente leitura. Diga ao Codex "tambem corrija os achados criticos" durante a configuracao para optar pela remediacao.
 
 **Quantas iteracoes?** Depende da tarefa. 5 para correcoes direcionadas, 10-20 para exploracao, ilimitadas para execucoes noturnas.
+
+**Ele aprende entre execucoes?** Sim. As licoes sao extraidas apos cada execucao e consultadas no inicio da proxima. O arquivo de licoes persiste entre sessoes.
+
+**Pode retomar apos uma interrupcao?** Sim. Na proxima invocacao, detecta a execucao anterior e retoma do ultimo estado consistente.
+
+**Pode pesquisar na web?** Sim, quando travado apos multiplas mudancas de estrategia. Os resultados da busca web sao tratados como hipoteses e verificados mecanicamente.
+
+**Como uso no CI?** Use `Mode: exec` ou `codex exec`. Toda a configuracao e fornecida antecipadamente, a saida e JSON e os codigos de saida indicam sucesso/falha.
+
+**Pode testar multiplas ideias ao mesmo tempo?** Sim. Ative os experimentos paralelos durante a configuracao. Usa worktrees do git para testar ate 3 hipoteses simultaneamente.
 
 ---
 

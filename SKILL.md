@@ -1,6 +1,6 @@
 ---
 name: codex-autoresearch
-description: "Autonomous goal-directed iteration. Loops autonomously -- modify, verify, keep/discard, repeat -- toward any measurable or verifiable outcome. Use when: (1) iteratively improving code with a measurable target (tests, coverage, bundle size, latency), (2) planning a loop config from a vague goal, (3) hunting bugs with evidence and hypotheses, (4) fixing errors (tests, types, lint, build) to zero, (5) running a structured security audit, or (6) gating and executing a ship workflow. Do not use for one-shot questions, subjective writing, or pure conversation without an actionable goal."
+description: "Autonomous goal-directed iteration. Loops autonomously -- modify, verify, keep/discard, repeat -- toward any measurable or verifiable outcome. Use when: (1) iteratively improving code with a measurable target (tests, coverage, bundle size, latency), (2) planning a loop config from a vague goal, (3) hunting bugs with evidence and hypotheses, (4) fixing errors (tests, types, lint, build) to zero, (5) running a structured security audit, (6) gating and executing a ship workflow, or (7) running non-interactive CI/CD optimization with JSON output. Do not use for one-shot questions, subjective writing, or pure conversation without an actionable goal."
 ---
 
 # codex-autoresearch
@@ -9,14 +9,18 @@ Autonomous goal-directed iteration. Modify -> Verify -> Keep/Discard -> Repeat.
 
 ## When Activated
 
-1. Classify the request as `loop`, `plan`, `debug`, `fix`, `security`, or `ship`.
+1. Classify the request as `loop`, `plan`, `debug`, `fix`, `security`, `ship`, or `exec`.
 2. Load `references/core-principles.md` and `references/structured-output-spec.md`.
 3. Load `references/results-logging.md` when a results log is needed.
-4. Load `references/interaction-wizard.md` only if required fields are missing.
-5. Load the mode-specific workflow reference.
-6. Parse inline config from the user prompt or skill mention.
-7. Execute the selected workflow exactly as written.
-8. Produce the required structured output and artifacts.
+4. Check for prior run and load `references/session-resume-protocol.md` if resuming.
+5. Load `references/environment-awareness.md` to probe hardware and toolchains.
+6. Load `references/interaction-wizard.md` only if required fields are missing (not for `exec` mode).
+7. Load the mode-specific workflow reference.
+8. Load cross-cutting protocols for iterating modes: `references/lessons-protocol.md`, `references/pivot-protocol.md`, `references/health-check-protocol.md`.
+9. Optionally load `references/hypothesis-perspectives.md`, `references/parallel-experiments-protocol.md`, `references/web-search-protocol.md` based on configuration.
+10. Parse inline config from the user prompt or skill mention.
+11. Execute the selected workflow exactly as written.
+12. Produce the required structured output and artifacts.
 
 ## Core Loop
 
@@ -39,17 +43,26 @@ Autonomous goal-directed iteration. Modify -> Verify -> Keep/Discard -> Repeat.
 | `fix` | Iteratively reduce errors to zero | `references/fix-workflow.md` |
 | `security` | Run a structured security audit | `references/security-workflow.md` |
 | `ship` | Gate and execute a ship workflow | `references/ship-workflow.md` |
+| `exec` | Non-interactive CI/CD mode with JSON output | `references/exec-workflow.md` |
 
 Use `Mode: <name>` in the prompt to force a specific subworkflow.
 
 ## Load Order
 
-1. `references/core-principles.md`
-2. `references/structured-output-spec.md`
-3. `references/results-logging.md` when a results log is needed
-4. `references/interaction-wizard.md` when required fields are missing
-5. `references/autonomous-loop-protocol.md` (always -- shared loop mechanics for all iterating modes)
-6. the mode-specific workflow (if different from the loop protocol)
+1. `references/core-principles.md` (always)
+2. `references/structured-output-spec.md` (always)
+3. `references/session-resume-protocol.md` (check for prior run)
+4. `references/environment-awareness.md` (probe hardware and toolchains)
+5. `references/results-logging.md` (when a results log is needed)
+6. `references/interaction-wizard.md` (when required fields are missing, not for exec mode)
+7. `references/autonomous-loop-protocol.md` (shared loop mechanics for all iterating modes)
+8. `references/{mode}-workflow.md` (mode-specific -- loop mode uses autonomous-loop-protocol directly)
+9. `references/lessons-protocol.md` (iterating modes -- cross-run learning)
+10. `references/pivot-protocol.md` (iterating modes -- smart stuck recovery)
+11. `references/health-check-protocol.md` (iterating modes -- self-monitoring)
+12. `references/hypothesis-perspectives.md` (when multi-lens reasoning is beneficial)
+13. `references/parallel-experiments-protocol.md` (when parallel mode is enabled)
+14. `references/web-search-protocol.md` (when web search is available and enabled)
 
 ## Required Config
 
@@ -85,6 +98,8 @@ If required fields are missing, use the wizard contract in `references/interacti
 11. Unlimited runs by default unless the user explicitly asks for `Iterations: N`.
 12. External ship actions (deploy, publish, release) must be confirmed during the pre-launch wizard phase. If not confirmed before launch, skip them and log as blocker.
 13. NEVER STOP. NEVER ASK "should I continue?". Keep iterating until interrupted or a hard blocker appears (see `references/autonomous-loop-protocol.md` Stop Conditions for the full definition). Examples: verify command no longer runnable, scope files deleted externally, git repo corrupted, disk full, or the same crash 5+ times in a row.
+14. When stuck (3+ consecutive discards), use the PIVOT/REFINE escalation ladder from `references/pivot-protocol.md` instead of brute-force retrying.
+15. Extract lessons after every kept iteration and every pivot (see `references/lessons-protocol.md`).
 
 ## Structured Output
 
@@ -128,4 +143,13 @@ Codex scans the repo, asks targeted questions to clarify your intent, then start
 - `references/fix-workflow.md`
 - `references/security-workflow.md`
 - `references/ship-workflow.md`
+- `references/exec-workflow.md`
 - `references/results-logging.md`
+- `references/lessons-protocol.md`
+- `references/pivot-protocol.md`
+- `references/web-search-protocol.md`
+- `references/environment-awareness.md`
+- `references/parallel-experiments-protocol.md`
+- `references/session-resume-protocol.md`
+- `references/health-check-protocol.md`
+- `references/hypothesis-perspectives.md`

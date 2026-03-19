@@ -32,6 +32,8 @@
   <a href="#architektur">Architektur</a> ·
   <a href="#modi">Modi</a> ·
   <a href="#konfiguration">Konfiguration</a> ·
+  <a href="#laufuebergreifendes-lernen">Lernen</a> ·
+  <a href="#parallele-experimente">Parallel</a> ·
   <a href="../GUIDE.md">Bedienungsanleitung</a> ·
   <a href="../EXAMPLES.md">Rezepte</a>
 </p>
@@ -100,52 +102,69 @@ Karpathys autoresearch hat bewiesen, dass eine einfache Schleife -- aendern, ver
 ## Architektur
 
 ```
-                    +------------------+
-                    | Kontext einlesen  |
-                    +--------+---------+
-                             |
-                    +--------v---------+
-                    | Ausgangswert      |  <-- Iteration #0
-                    | festlegen         |
-                    +--------+---------+
-                             |
-              +--------------v--------------+
-              |                             |
-              |    +-------------------+    |
-              |    | Hypothese waehlen |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | EINE Aenderung    |    |
-              |    | durchfuehren      |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | git commit        |    |
-              |    +--------+----------+    |
-              |             |               |
-              |    +--------v----------+    |
-              |    | Verifikation      |    |
-              |    | ausfuehren        |    |
-              |    +--------+----------+    |
-              |             |               |
-              |        verbessert?          |
-              |        /         \          |
-              |      ja          nein       |
-              |      /              \        |
-              | +---v----+    +-----v----+  |
-              | |BEHALTEN |    |ZURUECK-  |  |
-              | |         |    |SETZEN    |  |
-              | +---+----+    +-----+----+  |
-              |      \            /          |
-              |    +--v----------v--+       |
-              |    | Ergebnis       |       |
-              |    | protokollieren |       |
-              |    +-------+--------+       |
-              |            |                |
-              +------------+ (wiederholen)  |
-              |                             |
-              +-----------------------------+
+              +---------------------+
+              |  Environment Probe  |  <-- Phase 0: detect CPU/GPU/RAM/toolchains
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |  Session Resume?    |  <-- check for prior run artifacts
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              |   Read Context      |  <-- read scope + lessons file
+              +---------+-----------+
+                        |
+              +---------v-----------+
+              | Establish Baseline  |  <-- iteration #0
+              +---------+-----------+
+                        |
+         +--------------v--------------+
+         |                             |
+         |  +----------------------+   |
+         |  | Choose Hypothesis    |   |  <-- consult lessons + perspectives
+         |  | (or N for parallel)  |   |      filter by environment
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Make ONE Change      |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | git commit           |   |
+         |  +---------+------------+   |
+         |            |                |
+         |  +---------v------------+   |
+         |  | Run Verify + Guard   |   |
+         |  +---------+------------+   |
+         |            |                |
+         |        improved?            |
+         |       /         \           |
+         |     yes          no         |
+         |     /              \        |
+         |  +-v------+   +----v-----+ |
+         |  |  KEEP  |   | REVERT   | |
+         |  |+lesson |   +----+-----+ |
+         |  +--+-----+        |       |
+         |      \            /         |
+         |   +--v----------v---+      |
+         |   |   Log Result    |      |
+         |   +--------+--------+      |
+         |            |               |
+         |   +--------v--------+      |
+         |   |  Health Check   |      |  <-- disk, git, verify health
+         |   +--------+--------+      |
+         |            |               |
+         |     3+ discards?           |
+         |    /             \         |
+         |  no              yes       |
+         |  |          +----v-----+   |
+         |  |          | REFINE / |   |  <-- pivot-protocol escalation
+         |  |          | PIVOT    |   |
+         |  |          +----+-----+   |
+         |  |               |         |
+         +--+------+--------+         |
+         |         (repeat)           |
+         +----------------------------+
 ```
 
 Die Schleife laeuft bis zur Unterbrechung (unbegrenzt) oder fuer genau N Iterationen (begrenzt durch `Iterations: N`).
@@ -153,22 +172,28 @@ Die Schleife laeuft bis zur Unterbrechung (unbegrenzt) oder fuer genau N Iterati
 **Pseudocode:**
 
 ```
-SCHLEIFE (endlos oder N-mal):
-  1. Aktuellen Zustand + git-Historie + Ergebnisprotokoll ueberpruefen
-  2. EINE Hypothese waehlen (basierend auf Erfolgen, Fehlschlaegen, Unversuchtem)
+PHASE 0: Umgebung pruefen, auf Sitzungswiederaufnahme pruefen
+PHASE 1: Kontext + Erkenntnisdatei einlesen
+
+LOOP (endlos oder N-mal):
+  1. Aktuellen Zustand + git-Historie + Ergebnisprotokoll + Erkenntnisse ueberpruefen
+  2. EINE Hypothese waehlen (Perspektiven anwenden, nach Umgebung filtern)
+     -- oder N Hypothesen im parallelen Modus
   3. EINE atomare Aenderung durchfuehren
   4. git commit (vor der Verifikation)
-  5. Mechanische Verifikation ausfuehren
-  6. Verbessert -> behalten. Verschlechtert -> git reset. Abgestuerzt -> reparieren oder ueberspringen.
+  5. Mechanische Verifikation + Guard ausfuehren
+  6. Verbessert -> behalten (Erkenntnis extrahieren). Verschlechtert -> git reset. Abgestuerzt -> reparieren oder ueberspringen.
   7. Ergebnis protokollieren
-  8. Wiederholen. Nie anhalten. Nie fragen.
+  8. Health Check (Speicherplatz, git, Verifikationsgesundheit)
+  9. Bei 3+ Verwerfungen -> REFINE; 5+ -> PIVOT; 2 PIVOTs -> Websuche
+  10. Wiederholen. Nie anhalten. Nie fragen.
 ```
 
 ---
 
 ## Modi
 
-Sechs Modi, ein einheitliches Aufrufmuster: `$codex-autoresearch` gefolgt von einem Satz, der beschreibt, was Sie wollen. Codex erkennt den Modus automatisch und fuehrt Sie durch ein kurzes Gespraech zur Vervollstaendigung der Konfiguration.
+Sieben Modi, ein einheitliches Aufrufmuster: `$codex-autoresearch` gefolgt von einem Satz, der beschreibt, was Sie wollen. Codex erkennt den Modus automatisch und fuehrt Sie durch ein kurzes Gespraech zur Vervollstaendigung der Konfiguration.
 
 | Modus | Einsatzzweck | Stoppt wenn |
 |-------|--------------|-------------|
@@ -178,6 +203,7 @@ Sechs Modi, ein einheitliches Aufrufmuster: `$codex-autoresearch` gefolgt von ei
 | `fix` | Etwas ist kaputt und muss repariert werden | Fehlerzahl erreicht null |
 | `security` | Sie brauchen ein strukturiertes Schwachstellen-Audit | Alle Angriffsflaechen abgedeckt oder N Iterationen |
 | `ship` | Sie brauchen eine kontrollierte Release-Verifikation | Alle Pruefpunkte bestanden |
+| `exec` | CI/CD-Pipeline, kein Mensch verfuegbar | N Iterationen (immer begrenzt), JSON-Ausgabe |
 
 **Schnellauswahl:**
 
@@ -186,6 +212,7 @@ Sechs Modi, ein einheitliches Aufrufmuster: `$codex-autoresearch` gefolgt von ei
 "Etwas ist kaputt"                  -->  fix   (oder debug, wenn die Ursache unbekannt ist)
 "Ist dieser Code sicher?"           -->  security
 "Ab in die Produktion"              -->  ship
+codex exec --skill ...              -->  exec  (CI/CD, kein Assistent)
 ```
 
 ---
@@ -239,6 +266,7 @@ Wenn Verify besteht, aber Guard fehlschlaegt, wird die Aenderung ueberarbeitet (
 | Fehlgeschlagene Tests/Typen/Lint bestehen lassen | `fix` | Target-Befehl |
 | Code auf Schwachstellen pruefen | `security` | Scope + Focus |
 | Mit Zuversicht veroeffentlichen | `ship` | Sagen Sie "ab in die Produktion" oder "erst Probelauf" |
+| In CI/CD ohne Interaktion ausfuehren | `exec` | Alle Felder im Voraus + Iterations |
 
 ---
 
@@ -387,6 +415,83 @@ security + fix               # Audit und Behebung in einem Durchgang
 
 ---
 
+## Laufuebergreifendes Lernen
+
+Jeder Lauf extrahiert strukturierte Erkenntnisse -- was funktioniert hat, was fehlgeschlagen ist und warum. Erkenntnisse werden in `autoresearch-lessons.md` gespeichert (nicht committet, wie das Ergebnisprotokoll) und zu Beginn zukuenftiger Laeufe herangezogen, um die Hypothesengenerierung in Richtung bewaehrter Strategien und weg von bekannten Sackgassen zu lenken.
+
+- Positive Erkenntnisse nach jeder beibehaltenen Iteration
+- Strategische Erkenntnisse nach jeder PIVOT-Entscheidung
+- Zusammenfassende Erkenntnisse beim Abschluss eines Laufs
+- Kapazitaet: maximal 50 Eintraege, aeltere Eintraege werden mit zeitlichem Verfall zusammengefasst
+
+Siehe `references/lessons-protocol.md` fuer Details.
+
+---
+
+## Intelligente Feststeck-Erholung
+
+Anstatt nach Fehlschlaegen blind erneut zu versuchen, verwendet die Schleife ein abgestuftes Eskalationssystem:
+
+| Ausloeser | Aktion |
+|-----------|--------|
+| 3 aufeinanderfolgende Verwerfungen | **REFINE** -- Anpassung innerhalb der aktuellen Strategie |
+| 5 aufeinanderfolgende Verwerfungen | **PIVOT** -- Strategie aufgeben, grundlegend anderen Ansatz versuchen |
+| 2 PIVOTs ohne Verbesserung | **Websuche** -- nach externen Loesungen suchen |
+| 3 PIVOTs ohne Verbesserung | **Weiche Blockade** -- warnen und mit mutigeren Aenderungen fortfahren |
+
+Ein einzelnes erfolgreiches Behalten setzt alle Zaehler zurueck. Siehe `references/pivot-protocol.md`.
+
+---
+
+## Parallele Experimente
+
+Testen Sie mehrere Hypothesen gleichzeitig mit Subagent-Workern in isolierten git-Worktrees:
+
+```
+Orchestrator (Haupt-Agent)
+  +-- Worker A (worktree-a) -> Hypothese 1
+  +-- Worker B (worktree-b) -> Hypothese 2
+  +-- Worker C (worktree-c) -> Hypothese 3
+```
+
+Der Orchestrator waehlt das beste Ergebnis aus, fuehrt es zusammen und verwirft den Rest. Aktivieren Sie parallele Experimente waehrend des Assistenten, indem Sie "ja" sagen. Faellt auf seriell zurueck, wenn Worktrees nicht unterstuetzt werden.
+
+Siehe `references/parallel-experiments-protocol.md`.
+
+---
+
+## Sitzungswiederaufnahme
+
+Wenn Codex einen zuvor unterbrochenen Lauf erkennt (Ergebnisprotokoll, Erkenntnisdatei, Experiment-Commits), kann er vom letzten konsistenten Zustand fortfahren, anstatt von vorne zu beginnen:
+
+- **Konsistenter Zustand:** sofortige Wiederaufnahme, Assistent wird uebersprungen
+- **Teilweise konsistent:** Mini-Assistent (1 Runde) zur erneuten Bestaetigung
+- **Inkonsistent oder anderes Ziel:** Neustart (altes Protokoll wird umbenannt)
+
+Siehe `references/session-resume-protocol.md`.
+
+---
+
+## CI/CD-Modus (exec)
+
+Nicht-interaktiver Modus fuer Automatisierungspipelines. Die gesamte Konfiguration wird im Voraus bereitgestellt -- kein Assistent, immer begrenzt, JSON-Ausgabe.
+
+```yaml
+# GitHub Actions Beispiel
+- name: Autoresearch-Optimierung
+  run: codex exec --skill codex-autoresearch
+         --goal "Reduce type errors" --scope "src/**/*.ts"
+         --metric "type error count" --direction lower
+         --verify "tsc --noEmit 2>&1 | grep -c error"
+         --iterations 20
+```
+
+Exit-Codes: 0 = verbessert, 1 = keine Verbesserung, 2 = harte Blockade.
+
+Siehe `references/exec-workflow.md`.
+
+---
+
 ## Ergebnisprotokoll
 
 Jede Iteration wird im TSV-Format aufgezeichnet (`research-results.tsv`):
@@ -414,9 +519,11 @@ Alle 5 Iterationen wird eine Fortschrittszusammenfassung ausgegeben. Begrenzte L
 | Laufzeit-Absturz | Bis zu 3 Reparaturversuche, dann ueberspringen |
 | Ressourcenerschoepfung | Zuruecksetzen, kleinere Variante versuchen |
 | Haengender Prozess | Nach Timeout beenden, zuruecksetzen |
-| Festgefahren (5+ Verwerfungen) | Gesamten Kontext neu lesen, Muster ueberpruefen, mutigere Aenderungen versuchen |
+| Festgefahren (3+ Verwerfungen) | REFINE-Strategie; 5+ Verwerfungen -> PIVOT zu neuem Ansatz; bei Bedarf Eskalation zur Websuche |
 | Unsicherheit waehrend der Schleife | Best Practices autonom anwenden; niemals unterbrechen, um den Benutzer zu fragen |
 | Externe Seiteneffekte | Der Modus `ship` erfordert explizite Bestaetigung waehrend des Pre-Launch-Assistenten |
+| Umgebungslimits | Werden beim Start ermittelt; undurchfuehrbare Hypothesen werden automatisch gefiltert |
+| Unterbrochene Sitzung | Wiederaufnahme vom letzten konsistenten Zustand bei naechstem Aufruf |
 
 ---
 
@@ -448,17 +555,26 @@ codex-autoresearch/
   scripts/
     validate_skill_structure.sh     # Strukturvalidierungsskript
   references/
-    autonomous-loop-protocol.md     # Schleifen-Protokollspezifikation
     core-principles.md              # universelle Prinzipien
+    autonomous-loop-protocol.md     # Schleifen-Protokollspezifikation
     plan-workflow.md                # Spezifikation Modus plan
     debug-workflow.md               # Spezifikation Modus debug
     fix-workflow.md                 # Spezifikation Modus fix
     security-workflow.md            # Spezifikation Modus security
     ship-workflow.md                # Spezifikation Modus ship
+    exec-workflow.md                # Spezifikation CI/CD nicht-interaktiver Modus
     interaction-wizard.md           # Vertrag fuer interaktive Einrichtung
     structured-output-spec.md       # Ausgabeformatspezifikation
     modes.md                        # Modus-Index
     results-logging.md              # TSV-Formatspezifikation
+    lessons-protocol.md             # laufuebergreifendes Lernen
+    pivot-protocol.md               # intelligente Feststeck-Erholung (PIVOT/REFINE)
+    web-search-protocol.md          # Websuche bei Blockade
+    environment-awareness.md        # Hardware-/Ressourcenerkennung
+    parallel-experiments-protocol.md # Subagent-Paralleltests
+    session-resume-protocol.md      # unterbrochene Laeufe fortsetzen
+    health-check-protocol.md        # Selbstueberwachung
+    hypothesis-perspectives.md      # Hypothesenbetrachtung aus mehreren Perspektiven
 ```
 
 ---
@@ -474,6 +590,16 @@ codex-autoresearch/
 **Aendert der security-Modus meinen Code?** Nein. Reine Leseanalyse. Sagen Sie Codex waehrend der Einrichtung "auch kritische Befunde beheben", um die Behebung zu aktivieren.
 
 **Wie viele Iterationen?** Haengt von der Aufgabe ab. 5 fuer gezielte Korrekturen, 10-20 fuer Exploration, unbegrenzt fuer Nachtlaeufe.
+
+**Lernt es ueber Laeufe hinweg?** Ja. Nach jedem Lauf werden Erkenntnisse extrahiert und zu Beginn des naechsten Laufs herangezogen. Die Erkenntnisdatei bleibt ueber Sitzungen hinweg erhalten.
+
+**Kann es nach einer Unterbrechung fortfahren?** Ja. Beim naechsten Aufruf erkennt es den vorherigen Lauf und setzt vom letzten konsistenten Zustand fort.
+
+**Kann es im Web suchen?** Ja, wenn es nach mehreren Strategiewechseln feststeckt. Websuche-Ergebnisse werden als Hypothesen behandelt und mechanisch verifiziert.
+
+**Wie verwende ich es in CI?** Verwenden Sie `Mode: exec` oder `codex exec`. Die gesamte Konfiguration wird im Voraus bereitgestellt, die Ausgabe ist JSON und Exit-Codes zeigen Erfolg/Misserfolg an.
+
+**Kann es mehrere Ideen gleichzeitig testen?** Ja. Aktivieren Sie parallele Experimente waehrend der Einrichtung. Es verwendet git-Worktrees, um bis zu 3 Hypothesen gleichzeitig zu testen.
 
 ---
 

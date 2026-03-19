@@ -45,6 +45,24 @@ If `Scope` or `Symptom` is missing, collect:
 - differential debugging
 - pattern search
 - working backwards
+- image analysis (screenshots, flame graphs, UI captures -- see Image Input below)
+
+## Image Input
+
+Debug mode accepts image input during the wizard phase:
+
+- **Error screenshots:** extract error messages, stack traces, and UI state from images.
+- **Flame graphs:** identify hot paths and performance bottlenecks visually.
+- **UI bugs:** compare expected vs actual rendering from screenshot evidence.
+
+When an image is provided:
+1. Analyze the image to extract relevant diagnostic information.
+2. Use extracted information to inform hypotheses during Phase 3.
+3. Reference the image findings in the `evidence` field of confirmed findings.
+
+## Web Search for Unfamiliar Errors
+
+When an error message is not found anywhere in the codebase and the agent cannot form a hypothesis from code context alone, web search may be triggered per `references/web-search-protocol.md`. Search results are treated as hypotheses and verified mechanically.
 
 ## Phases
 
