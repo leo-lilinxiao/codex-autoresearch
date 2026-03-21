@@ -9,10 +9,9 @@ from typing import Any
 
 from autoresearch_helpers import (
     AutoresearchError,
-    default_launch_manifest_path,
-    default_runtime_state_path,
     read_launch_manifest,
     read_runtime_payload,
+    resolve_repo_managed_path,
 )
 from autoresearch_resume_check import evaluate_resume_state
 
@@ -258,19 +257,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--results-path", default="research-results.tsv")
     parser.add_argument("--state-path")
-    parser.add_argument("--launch-path", default=str(default_launch_manifest_path()))
-    parser.add_argument("--runtime-path", default=str(default_runtime_state_path()))
+    parser.add_argument("--launch-path")
+    parser.add_argument("--runtime-path")
     return parser
 
 
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    results_path = Path(args.results_path)
     decision = evaluate_launch_context(
-        results_path=Path(args.results_path),
+        results_path=results_path,
         state_path_arg=args.state_path,
-        launch_path=Path(args.launch_path),
-        runtime_path=Path(args.runtime_path),
+        launch_path=resolve_repo_managed_path(
+            args.launch_path,
+            results_path=results_path,
+            default_name="autoresearch-launch.json",
+        ),
+        runtime_path=resolve_repo_managed_path(
+            args.runtime_path,
+            results_path=results_path,
+            default_name="autoresearch-runtime.json",
+        ),
         ignore_running_runtime=False,
     )
     print(json.dumps(decision, indent=2, sort_keys=True))

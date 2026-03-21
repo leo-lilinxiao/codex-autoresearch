@@ -195,6 +195,27 @@ def default_state_path(cwd: Path | None = None) -> Path:
     return find_repo_root(cwd) / "autoresearch-state.json"
 
 
+def results_repo_root(results_path: Path) -> Path:
+    context = results_path.parent if results_path.is_absolute() else lexical_abspath(results_path.parent)
+    return find_repo_root(context)
+
+
+def resolve_repo_managed_path(
+    requested_path: str | None,
+    *,
+    results_path: Path,
+    default_name: str,
+) -> Path:
+    repo = results_repo_root(results_path)
+    if requested_path is None:
+        return repo / default_name
+
+    candidate = Path(requested_path)
+    if not candidate.is_absolute():
+        candidate = repo / candidate
+    return lexical_abspath(candidate)
+
+
 def is_autoresearch_owned_artifact(path: str | Path) -> bool:
     candidate = Path(path)
     names = [candidate.name]

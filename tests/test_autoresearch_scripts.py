@@ -2513,6 +2513,119 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertEqual(status["status"], "idle")
             self.assertEqual(status["reason"], "confirmed_launch_without_artifacts")
 
+    def test_launch_gate_uses_repo_relative_manifest_defaults_from_results_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            repo = tmpdir / "repo"
+            outside = tmpdir / "outside"
+            repo.mkdir()
+            outside.mkdir()
+
+            results_path = repo / "research-results.tsv"
+            state_path = repo / "autoresearch-state.json"
+            launch = self.create_launch_manifest(repo)
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+            )
+
+            gate = self.run_script(
+                "autoresearch_launch_gate.py",
+                "--results-path",
+                str(results_path),
+                cwd=outside,
+            )
+            self.assertEqual(gate["decision"], "resumable")
+            self.assertEqual(Path(gate["launch_path"]).resolve(), Path(launch["launch_path"]).resolve())
+            self.assertEqual(
+                Path(gate["runtime_path"]).resolve(),
+                (repo / "autoresearch-runtime.json").resolve(),
+            )
+
+    def test_resume_prompt_uses_repo_relative_manifest_defaults_from_results_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            repo = tmpdir / "repo"
+            outside = tmpdir / "outside"
+            repo.mkdir()
+            outside.mkdir()
+
+            results_path = repo / "research-results.tsv"
+            state_path = repo / "autoresearch-state.json"
+            launch = self.create_launch_manifest(
+                repo,
+                original_goal="Make the test suite healthier overnight",
+                guard="python -m py_compile src",
+                stop_condition="stop when metric reaches 0",
+            )
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+            )
+
+            prompt = self.run_script_text(
+                "autoresearch_resume_prompt.py",
+                "--results-path",
+                str(results_path),
+                cwd=outside,
+            )
+            self.assertIn(
+                f"Use {Path(launch['launch_path']).resolve()} as the authoritative launch manifest.",
+                prompt.replace("/var/", "/private/var/"),
+            )
+            self.assertIn(
+                f"Results path: {results_path.resolve()}",
+                prompt.replace("/var/", "/private/var/"),
+            )
+            self.assertIn(
+                f"State path: {state_path.resolve()}",
+                prompt.replace("/var/", "/private/var/"),
+            )
+
     def test_resume_prompt_requires_confirmed_launch_manifest_for_legacy_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
