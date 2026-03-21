@@ -121,7 +121,7 @@ When the helper reports `full_resume`:
 4. Read the lessons file if present.
 5. Let the runtime preflight confirm that the configured verify command still resolves before continuing.
 6. If the current metric drifted, log a `drift` row and continue from the recalibrated state.
-7. If this is a legacy run that predates `autoresearch-launch.json`, both `autoresearch_runtime_ctl.py` and `autoresearch_resume_prompt.py` may synthesize the launch manifest from the validated JSON config before continuing.
+7. Managed-runtime resume requires an existing `autoresearch-launch.json`. Runs that predate that manifest are no longer resumable under the detached runtime; start fresh through the single-entry launch flow instead of synthesizing compatibility artifacts.
 
 ### Priority 2: Mini-Wizard
 

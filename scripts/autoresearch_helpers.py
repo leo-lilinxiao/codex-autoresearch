@@ -727,31 +727,6 @@ def build_launch_manifest(
     }
 
 
-def synthesize_launch_manifest_from_state(
-    *,
-    launch_path: Path,
-    state_path: Path,
-    note: str = "Synthesized from validated legacy autoresearch state.",
-) -> dict[str, Any]:
-    state_payload = read_state_payload(state_path)
-    config = dict(state_payload.get("config", {}))
-    goal = str(config.get("goal", "")).strip()
-    if not goal:
-        raise AutoresearchError(
-            f"Cannot synthesize a launch manifest from {state_path}: config.goal is missing."
-        )
-    manifest = build_launch_manifest(
-        original_goal=goal,
-        prompt_text=goal,
-        mode=str(state_payload.get("mode", "loop") or "loop"),
-        config=config,
-        resume_seed={"source": "legacy_state"},
-        notes=[note],
-    )
-    write_json_atomic(launch_path, manifest)
-    return manifest
-
-
 def build_runtime_payload(
     *,
     repo: Path,

@@ -24,7 +24,6 @@ from autoresearch_helpers import (
     read_runtime_payload,
     resolve_state_path,
     resolve_state_path_for_log,
-    synthesize_launch_manifest_from_state,
     utc_now,
     write_json_atomic,
 )
@@ -314,16 +313,10 @@ def start_runtime(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     if not launch_path.exists():
-        if launch_context["reason"] != "legacy_resume":
-            raise AutoresearchError(f"Missing JSON file: {launch_path}")
-        synthesize_launch_manifest_from_state(
-            launch_path=launch_path,
-            state_path=Path(launch_context["state_path"]),
-        )
+        raise AutoresearchError(f"Missing JSON file: {launch_path}")
 
-    # The detached runtime is only valid after the interactive "go" boundary has
-    # produced a confirmed launch manifest or the controller has synthesized one
-    # from a validated legacy full-resume state.
+    # The detached runtime is only valid after the interactive "go" boundary
+    # has produced a confirmed launch manifest.
     launch_manifest = read_launch_manifest(launch_path)
     preflight = evaluate_runtime_preflight(
         repo=repo,

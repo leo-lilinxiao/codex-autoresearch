@@ -2470,7 +2470,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertEqual(status["status"], "idle")
             self.assertEqual(status["reason"], "confirmed_launch_without_artifacts")
 
-    def test_legacy_resume_prompt_synthesizes_launch_manifest(self) -> None:
+    def test_resume_prompt_requires_confirmed_launch_manifest_for_legacy_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             results_path = tmpdir / "research-results.tsv"
@@ -2503,7 +2503,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "baseline failures",
             )
 
-            prompt = self.run_script_text(
+            completed = self.run_script_completed(
                 "autoresearch_resume_prompt.py",
                 "--results-path",
                 str(results_path),
@@ -2514,12 +2514,9 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--runtime-path",
                 str(tmpdir / "autoresearch-runtime.json"),
             )
-            self.assertTrue(launch_path.exists())
-            manifest = json.loads(launch_path.read_text(encoding="utf-8"))
-            self.assertEqual(manifest["resume_seed"]["source"], "legacy_state")
-            self.assertIn("Use", prompt)
-            self.assertIn(str(launch_path), prompt)
-            self.assertIn("Do not run the interactive wizard again.", prompt)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("fresh_start_required", completed.stderr)
+            self.assertFalse(launch_path.exists())
 
     def test_launch_gate_requires_human_when_state_and_tsv_diverge(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2665,7 +2662,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertIn("Missing JSON file", completed.stderr)
             self.assertFalse((tmpdir / "autoresearch-runtime.json").exists())
 
-    def test_runtime_start_synthesizes_manifest_for_legacy_full_resume(self) -> None:
+    def test_runtime_start_rejects_legacy_full_resume_without_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             results_path = tmpdir / "research-results.tsv"
@@ -2710,10 +2707,10 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--runtime-path",
                 str(tmpdir / "autoresearch-runtime.json"),
             )
-            self.assertEqual(gate["decision"], "resumable")
-            self.assertEqual(gate["reason"], "legacy_resume")
+            self.assertEqual(gate["decision"], "needs_human")
+            self.assertEqual(gate["reason"], "fresh_start_required")
 
-            started = self.run_script(
+            completed = self.run_script_completed(
                 "autoresearch_runtime_ctl.py",
                 "start",
                 "--repo",
@@ -2721,17 +2718,9 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--codex-bin",
                 str(fake_codex_path),
             )
-            self.assertEqual(started["status"], "running")
-            launch_manifest = json.loads((tmpdir / "autoresearch-launch.json").read_text(encoding="utf-8"))
-            self.assertEqual(launch_manifest["original_goal"], "Reduce failures")
-            self.assertEqual(launch_manifest["resume_seed"]["source"], "legacy_state")
-
-            self.run_script(
-                "autoresearch_runtime_ctl.py",
-                "stop",
-                "--repo",
-                str(tmpdir),
-            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("fresh_start_required", completed.stderr)
+            self.assertFalse((tmpdir / "autoresearch-launch.json").exists())
 
     def test_runtime_start_blocks_on_unexpected_out_of_scope_worktree_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -144,20 +144,35 @@ def evaluate_launch_context(
 
     if resume["decision"] == "full_resume":
         reasons.extend(str(reason) for reason in resume["reasons"])
+        if launch_manifest is None:
+            reasons.append(
+                "Runs that predate autoresearch-launch.json are not resumable under the managed runtime. Start fresh through the interactive launch flow."
+            )
+            return {
+                "decision": "needs_human",
+                "reason": "fresh_start_required",
+                "resume_strategy": "fresh_start",
+                "results_path": str(results_path),
+                "state_path": str(state_path),
+                "launch_path": str(launch_path),
+                "runtime_path": str(runtime_path),
+                "launch_manifest_present": False,
+                "runtime_present": runtime_payload is not None or runtime_error is not None,
+                "runtime_running": False,
+                "reasons": reasons,
+            }
         reasons.append(
             "Results log and state are available; the runtime can continue from the saved config."
-            if launch_manifest is not None
-            else "Legacy results/state are resumable even without a launch manifest."
         )
         return {
             "decision": "resumable",
-            "reason": "full_resume" if launch_manifest is not None else "legacy_resume",
-            "resume_strategy": "full_resume" if launch_manifest is not None else "legacy_resume",
+            "reason": "full_resume",
+            "resume_strategy": "full_resume",
             "results_path": str(results_path),
             "state_path": str(state_path),
             "launch_path": str(launch_path),
             "runtime_path": str(runtime_path),
-            "launch_manifest_present": launch_manifest is not None,
+            "launch_manifest_present": True,
             "runtime_present": runtime_payload is not None or runtime_error is not None,
             "runtime_running": False,
             "reasons": reasons,
