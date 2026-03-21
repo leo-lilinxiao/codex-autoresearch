@@ -62,6 +62,7 @@ def main() -> int:
     args = parser.parse_args()
 
     results_path = Path(args.results_path)
+    repo_hint = results_path.parent if results_path.is_absolute() else None
 
     results_exists = results_path.exists()
     parsed = None
@@ -78,7 +79,7 @@ def main() -> int:
         except AutoresearchError as exc:
             tsv_error = str(exc)
 
-    state_path = resolve_state_path_for_log(args.state_path, parsed)
+    state_path = resolve_state_path_for_log(args.state_path, parsed, cwd=repo_hint)
     state_exists = state_path.exists()
 
     state_payload = None

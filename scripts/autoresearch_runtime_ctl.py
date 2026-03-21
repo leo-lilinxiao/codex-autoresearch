@@ -143,17 +143,6 @@ def runtime_summary(
     except AutoresearchError:
         supervisor = None
 
-    if runtime is not None and runtime.get("status") == "stopped":
-        return {
-            "status": "stopped",
-            "pid": runtime.get("pid"),
-            "pgid": runtime.get("pgid"),
-            "runtime_path": str(runtime_path),
-            "log_path": runtime.get("log_path", ""),
-            "reason": runtime.get("terminal_reason", "user_stopped"),
-            "launch_context": launch_context,
-        }
-
     if supervisor is not None:
         if supervisor["decision"] == "stop":
             return {
@@ -427,12 +416,18 @@ def stop_runtime(args: argparse.Namespace) -> dict[str, Any]:
     persist_runtime(runtime_path, runtime)
 
     if pid_is_alive(pid):
-        os.killpg(int(pgid), signal.SIGTERM)
+        try:
+            os.killpg(int(pgid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
         deadline = time.time() + args.grace_seconds
         while time.time() < deadline and pid_is_alive(pid):
             time.sleep(0.1)
         if pid_is_alive(pid):
-            os.killpg(int(pgid), signal.SIGKILL)
+            try:
+                os.killpg(int(pgid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
     runtime["status"] = "stopped"
     runtime["terminal_reason"] = "user_stopped"

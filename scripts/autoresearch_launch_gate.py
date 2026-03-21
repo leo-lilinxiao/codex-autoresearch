@@ -9,8 +9,10 @@ from typing import Any
 
 from autoresearch_helpers import (
     AutoresearchError,
+    compare_summary_to_state,
     default_launch_manifest_path,
     default_runtime_state_path,
+    log_summary,
     parse_results_log,
     read_launch_manifest,
     read_runtime_payload,
@@ -25,7 +27,9 @@ def pid_is_alive(pid: int | None) -> bool:
         return False
     try:
         os.kill(pid, 0)
-    except OSError:
+    except PermissionError:
+        return True
+    except ProcessLookupError:
         return False
     return True
 
@@ -178,6 +182,28 @@ def evaluate_launch_context(
             "runtime_running": False,
             "reasons": reasons,
         }
+
+    direction = payload.get("config", {}).get("direction")
+    if direction in {"lower", "higher"}:
+        reconstructed = log_summary(parsed, direction)
+        mismatches = compare_summary_to_state(reconstructed, payload)
+        if mismatches:
+            reasons.append(
+                "JSON state and TSV results log are inconsistent: " + "; ".join(mismatches)
+            )
+            return {
+                "decision": "needs_human",
+                "reason": "state_tsv_diverged",
+                "resume_strategy": "none",
+                "results_path": str(results_path),
+                "state_path": str(state_path),
+                "launch_path": str(launch_path),
+                "runtime_path": str(runtime_path),
+                "launch_manifest_present": launch_manifest is not None,
+                "runtime_present": runtime_payload is not None or runtime_error is not None,
+                "runtime_running": False,
+                "reasons": reasons,
+            }
 
     reasons.append(
         "Results log and state are available; the runtime can continue from the saved config."

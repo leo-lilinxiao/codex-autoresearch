@@ -45,8 +45,9 @@ def main() -> int:
     args = parser.parse_args()
 
     results_path = Path(args.results_path)
+    repo_hint = results_path.parent if results_path.is_absolute() else None
     parsed = parse_results_log(results_path)
-    state_path = resolve_state_path_for_log(args.state_path, parsed)
+    state_path = resolve_state_path_for_log(args.state_path, parsed, cwd=repo_hint)
     parsed, payload, reconstructed, direction = require_consistent_state(
         results_path,
         state_path,

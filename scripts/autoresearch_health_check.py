@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -11,9 +12,10 @@ from typing import Any
 from autoresearch_helpers import (
     AutoresearchError,
     is_autoresearch_owned_artifact,
+    parse_log_metadata,
     parse_results_log,
     read_state_payload,
-    resolve_state_path_for_log,
+    resolve_state_path,
 )
 
 
@@ -32,7 +34,13 @@ def git_status(repo: Path) -> list[str]:
 def verify_command_exists(command: str) -> bool:
     if not command.strip():
         return False
-    executable = command.strip().split()[0]
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    executable = parts[0]
     if executable in {"bash", "sh", "python", "python3"}:
         return True
     return shutil.which(executable) is not None
@@ -56,14 +64,33 @@ def run_health_check(
         warnings.append(f"disk free space is getting low: {free_mb}MB")
 
     if results_path.exists():
-        parsed = parse_results_log(results_path)
-        state_path = resolve_state_path_for_log(state_path_arg, parsed)
+        try:
+            parsed = parse_results_log(results_path)
+            metadata = parsed.metadata
+        except AutoresearchError as exc:
+            parsed = None
+            metadata = parse_log_metadata(results_path)
+            blockers.append(f"results log is corrupt: {exc}")
     else:
         parsed = None
-        state_path = resolve_state_path_for_log(state_path_arg, None)
+        metadata = {}
 
-    if state_path.exists():
-        read_state_payload(state_path)
+    log_mode = metadata.get("mode")
+    exec_mode = log_mode == "exec"
+    state_path = resolve_state_path(
+        state_path_arg,
+        mode="exec" if exec_mode else None,
+        cwd=repo,
+        allow_exec_scratch_fallback=exec_mode,
+    )
+
+    if not results_path.exists() and state_path.exists():
+        blockers.append("results log missing while state JSON exists; cannot track progress")
+    elif state_path.exists():
+        try:
+            read_state_payload(state_path)
+        except AutoresearchError as exc:
+            blockers.append(f"state JSON is corrupt: {exc}")
     elif results_path.exists():
         warnings.append("results log exists without state JSON; resume would need TSV fallback")
 
@@ -71,6 +98,8 @@ def run_health_check(
     unexpected = []
     for line in dirty_lines:
         path = line[3:] if len(line) > 3 else line
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
         if not is_autoresearch_owned_artifact(path):
             unexpected.append(path)
     if unexpected:

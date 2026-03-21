@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -168,6 +169,12 @@ def default_runtime_log_path(cwd: Path | None = None) -> Path:
     return find_repo_root(cwd) / RUNTIME_LOG_NAME
 
 
+def default_state_path(cwd: Path | None = None) -> Path:
+    if cwd is None:
+        return Path("autoresearch-state.json")
+    return find_repo_root(cwd) / "autoresearch-state.json"
+
+
 def is_autoresearch_owned_artifact(path: str | Path) -> bool:
     candidate = Path(path)
     names = [candidate.name]
@@ -198,9 +205,12 @@ def resolve_state_path(
     allow_exec_scratch_fallback: bool = False,
 ) -> Path:
     if requested_path:
-        return Path(requested_path)
+        candidate = Path(requested_path)
+        if candidate.is_absolute() or cwd is None:
+            return candidate
+        return (find_repo_root(cwd) / candidate).resolve()
 
-    repo_state_path = Path("autoresearch-state.json")
+    repo_state_path = default_state_path(cwd)
     if mode == "exec":
         return default_exec_state_path(cwd)
     if repo_state_path.exists():
@@ -314,9 +324,17 @@ def read_runtime_payload(path: Path) -> dict[str, Any]:
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
-    tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp_path, path)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, sort_keys=True)
+            f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, str(path))
+    except BaseException:
+        os.unlink(tmp_name)
+        raise
 
 
 def parse_metadata_comment(line: str) -> tuple[str, str] | None:
@@ -330,6 +348,26 @@ def parse_metadata_comment(line: str) -> tuple[str, str] | None:
     if not key:
         return None
     return key, value.strip()
+
+
+def parse_log_metadata(path: Path) -> dict[str, str]:
+    """Read only the comment-line metadata from a results log.
+
+    Unlike parse_results_log this never raises on corrupt data rows --
+    it is safe to call when full parsing has already failed.
+    """
+    metadata: dict[str, str] = {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return metadata
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            continue
+        parsed = parse_metadata_comment(line)
+        if parsed is not None:
+            metadata[parsed[0]] = parsed[1]
+    return metadata
 
 
 def parse_results_log(path: Path) -> ParsedLog:
@@ -391,7 +429,6 @@ def parse_results_log(path: Path) -> ParsedLog:
 
 def write_results_log(path: Path, comments: list[str], rows: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(f"{path.name}.tmp")
     parts: list[str] = []
     parts.extend(comment.rstrip("\n") for comment in comments)
     parts.append("\t".join(HEADER))
@@ -409,8 +446,17 @@ def write_results_log(path: Path, comments: list[str], rows: list[dict[str, str]
                 ]
             )
         )
-    tmp_path.write_text("\n".join(parts) + "\n", encoding="utf-8")
-    os.replace(tmp_path, path)
+    content = "\n".join(parts) + "\n"
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_name, str(path))
+    except BaseException:
+        os.unlink(tmp_name)
+        raise
 
 
 def append_rows(path: Path, new_rows: list[dict[str, str]]) -> ParsedLog:

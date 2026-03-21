@@ -90,7 +90,6 @@ def progress_signature(payload: dict[str, Any]) -> str:
         "last_status": state.get("last_status"),
         "last_trial_commit": state.get("last_trial_commit"),
         "last_trial_metric": state.get("last_trial_metric"),
-        "updated_at": payload.get("updated_at"),
     }
     return json.dumps(signature, sort_keys=True, separators=(",", ":"))
 
@@ -164,7 +163,7 @@ def parse_stop_condition_rule(
             "current metric == {target}",
         ),
         (
-            rf"(?:reaches?|hits?|gets?\s+to|down to|up to)\s*({NUMBER_PATTERN})",
+            rf"(?:reaches?|hits?|gets?\s+to|down to)\s*({NUMBER_PATTERN})",
             threshold_operator,
             threshold_description,
         ),
@@ -182,8 +181,11 @@ def parse_stop_condition_rule(
 def goal_reached_reason(payload: dict[str, Any], current_metric: Decimal) -> str | None:
     config = payload.get("config", {})
     direction = config.get("direction")
-    if payload.get("mode") == "fix" and direction == "lower" and current_metric == 0:
-        return "Fix mode reached zero remaining errors."
+    if payload.get("mode") == "fix":
+        if direction == "lower" and current_metric == 0:
+            return "Fix mode reached zero remaining errors."
+        if direction == "higher" and current_metric >= 100:
+            return "Fix mode reached 100% success."
 
     stop_condition = config.get("stop_condition")
     if not stop_condition:
@@ -247,10 +249,11 @@ def evaluate_supervisor_status(
     after_run: bool,
     write_state: bool,
 ) -> dict[str, Any]:
-    fallback_state_path = Path(state_path_arg) if state_path_arg else Path("autoresearch-state.json")
+    repo_hint = results_path.parent if results_path.is_absolute() else None
+    fallback_state_path = resolve_state_path_for_log(state_path_arg, None, cwd=repo_hint)
     try:
         parsed = parse_results_log(results_path)
-        state_path = resolve_state_path_for_log(state_path_arg, parsed)
+        state_path = resolve_state_path_for_log(state_path_arg, parsed, cwd=repo_hint)
         payload = read_state_payload(state_path)
     except AutoresearchError as exc:
         message = str(exc)

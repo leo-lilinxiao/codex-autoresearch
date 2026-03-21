@@ -54,7 +54,8 @@ def main() -> int:
     args = parser.parse_args()
 
     results_path = Path(args.results_path)
-    state_path = resolve_state_path(args.state_path, mode=args.mode)
+    repo_hint = results_path.parent if results_path.is_absolute() else None
+    state_path = resolve_state_path(args.state_path, mode=args.mode, cwd=repo_hint)
 
     # Exec mode is documented to start fresh. If the default scratch state was
     # left behind by a previous crashed run, clear it before checking for

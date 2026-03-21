@@ -35,9 +35,11 @@ def evaluate_commit_gate(
     staged_artifacts = []
 
     for line in status_lines:
-        path = line[3:] if len(line) > 3 else line
-        if not is_autoresearch_owned_artifact(path):
-            unexpected_worktree.append(path)
+        raw_path = line[3:] if len(line) > 3 else line
+        if " -> " in raw_path:
+            raw_path = raw_path.split(" -> ", 1)[1]
+        if not is_autoresearch_owned_artifact(raw_path):
+            unexpected_worktree.append(raw_path)
 
     for path in staged_files:
         if is_autoresearch_owned_artifact(path):

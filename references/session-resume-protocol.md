@@ -51,7 +51,7 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
 }
 ```
 
-Write protocol: write to `autoresearch-state.json.tmp`, then rename to `autoresearch-state.json` (atomic). Never commit this file to git.
+Write protocol: write to a uniquely named temporary file in the same directory, fsync, then rename to `autoresearch-state.json` (atomic). Never commit this file to git.
 
 The `supervisor` object is optional. It is written by the runtime control plane (`autoresearch_runtime_ctl.py` and `autoresearch_supervisor_status.py`), is not required for normal session resume, and should be preserved if present.
 
