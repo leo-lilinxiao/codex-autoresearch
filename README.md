@@ -603,7 +603,9 @@ codex-autoresearch/
     check_skill_invariants.py       # validate real skill-run artifacts
     run_skill_e2e.sh                # disposable Codex CLI smoke harness
   tests/
-    test_autoresearch_scripts.py    # stdlib smoke tests for helper scripts
+    autoresearch/                   # stdlib smoke tests for helper scripts
+      base.py                       # shared script/runtime test helpers
+      results/                      # results/state/exec/parallel coverage
   references/
     core-principles.md              # universal principles
     autonomous-loop-protocol.md     # loop protocol specification

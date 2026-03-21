@@ -135,7 +135,7 @@ Keep PRs focused. One logical change per PR.
 
 The automated tests are real and useful, but they do **not** all validate the same layer:
 
-- `tests/test_autoresearch_scripts.py` executes the helper scripts directly and checks TSV/JSON semantics.
+- `tests/autoresearch/` executes the helper scripts directly and checks TSV/JSON semantics.
 - `tests/test_check_skill_invariants.py` validates the invariant checker itself.
 - `bash scripts/run_skill_e2e.sh exec-smoke --clean` runs the real skill through `codex exec` in a disposable fixture repo.
 - `bash scripts/run_skill_e2e.sh runtime-smoke --clean` automatically exercises the detached runtime launch/status/stop handoff with an installed skill copy and a fake Codex binary.

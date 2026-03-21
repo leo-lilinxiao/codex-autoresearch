@@ -77,10 +77,8 @@ copy_skill() {
   local dest_skill_root="$1"
   mkdir -p "$(dirname "$dest_skill_root")"
   cp -R "$ROOT" "$dest_skill_root"
-  rm -rf \
-    "$dest_skill_root/.git" \
-    "$dest_skill_root/scripts/__pycache__" \
-    "$dest_skill_root/tests/__pycache__"
+  rm -rf "$dest_skill_root/.git"
+  find "$dest_skill_root" -type d -name '__pycache__' -prune -exec rm -rf {} +
 }
 
 init_git_repo() {
