@@ -525,7 +525,7 @@ If you interrupt a run and come back later, Codex can resume from where you left
 - Direct detached-runtime resume requires an existing `autoresearch-launch.json`.
 - If state is consistent and the launch manifest is present: resumes immediately, no wizard needed.
 - If state is partially consistent: runs a mini-wizard (1 round) to re-confirm.
-- If state is inconsistent, the launch manifest is missing, or the goal has changed: starts fresh, renames old logs.
+- If state is inconsistent, the launch manifest is missing, or the goal has changed: starts fresh and archives the prior persistent run-control artifacts.
 
 ---
 

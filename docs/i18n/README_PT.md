@@ -443,7 +443,7 @@ Prioridade de recuperacao para modos interativos:
 
 1. **JSON + TSV consistentes, com manifesto de lancamento presente:** retomada imediata, assistente ignorado
 2. **JSON valido, TSV inconsistente:** mini-assistente (1 rodada de confirmacao)
-3. **JSON ausente ou corrompido, TSV presente:** o helper reconstrui o estado retido para confirmacao e depois continua com um novo launch manifest
+3. **JSON ausente ou corrompido, TSV presente:** o utilitario reconstrui o estado retido para confirmacao e depois continua com um novo manifesto de lancamento
 4. **Nenhum presente:** inicio limpo (logs antigos renomeados)
 
 Veja `references/session-resume-protocol.md`.

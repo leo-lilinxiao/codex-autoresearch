@@ -444,7 +444,7 @@ Priorite de recuperation en mode interactif :
 
 1. **JSON + TSV coherents, manifeste de lancement present :** reprise immediate, assistant saute
 2. **JSON valide, TSV incoherent :** mini-assistant (1 tour de confirmation)
-3. **JSON absent ou corrompu, TSV present :** le helper reconstruit l'etat retenu pour confirmation puis continue avec un nouveau launch manifest
+3. **JSON absent ou corrompu, TSV present :** l'utilitaire reconstruit l'etat retenu pour confirmation puis continue avec un nouveau manifeste de lancement
 4. **Aucun des deux :** nouveau depart (anciens journaux renommes)
 
 Voir `references/session-resume-protocol.md`.

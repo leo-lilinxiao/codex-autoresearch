@@ -443,7 +443,7 @@ security + fix               # 审计并修复一步到位
 
 1. **JSON + TSV 一致，且启动清单存在：** 立即恢复，跳过向导
 2. **JSON 有效，TSV 不一致：** 迷你向导（1 轮确认）
-3. **JSON 缺失或损坏，TSV 存在：** helper 先重建保留状态供确认，然后用新的 launch manifest 继续
+3. **JSON 缺失或损坏，TSV 存在：** 辅助脚本先重建保留状态供确认，然后用新的启动清单继续
 4. **都不存在：** 全新开始（旧日志重命名）
 
 参见 `references/session-resume-protocol.md`。
