@@ -150,7 +150,7 @@ Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the co
 - No web search: CI environments should not make unexpected network calls.
 - No parallel: CI resource limits are unpredictable; use serial mode only.
 - No session resume: every CI run starts fresh. Rename old results log to `.prev` if one exists.
-- Dirty worktree: if `git status --porcelain` shows anything beyond autoresearch-owned artifacts before launch, emit a blocker and exit with code 2 instead of asking.
+- Dirty worktree: `autoresearch_init_run.py` runs the prelaunch commit gate in exec mode. If `git status --porcelain` shows anything beyond autoresearch-owned artifacts before launch, it emits a blocker and exits with code 2 instead of asking.
 - Lessons: read `autoresearch-lessons.md` if it exists in the repo (useful for persistent learning across CI runs), but **never create or modify it** during exec mode -- not even after keep or pivot decisions. Exec mode is read-only for lessons.
 
 ## Integration Points

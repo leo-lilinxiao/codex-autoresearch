@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from autoresearch_helpers import (
@@ -19,6 +20,11 @@ from autoresearch_helpers import (
     write_json_atomic,
     write_results_log,
 )
+from autoresearch_preflight import evaluate_repo_preflight
+
+
+class HardBlockerError(AutoresearchError):
+    pass
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,7 +63,25 @@ def main() -> int:
 
     results_path = Path(args.results_path)
     repo_hint = results_path.parent if results_path.is_absolute() else None
+    repo = Path(repo_hint or Path.cwd()).resolve()
     state_path = resolve_state_path(args.state_path, mode=args.mode, cwd=repo_hint)
+
+    if args.mode == "exec":
+        preflight = evaluate_repo_preflight(
+            repo=repo,
+            results_path=results_path,
+            state_path_arg=args.state_path,
+            verify_command=args.verify,
+            scope_text=args.scope,
+            commit_phase="prelaunch",
+            include_health=False,
+            rollback_policy=None,
+            destructive_approved=False,
+        )
+        if preflight["decision"] == "block":
+            raise HardBlockerError(
+                "Exec prelaunch failed: " + "; ".join(preflight["blockers"])
+            )
 
     # Exec mode is documented to start fresh. If the default scratch state was
     # left behind by a previous crashed run, clear it before checking for
@@ -154,5 +178,8 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
+    except HardBlockerError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2)
     except AutoresearchError as exc:
         raise SystemExit(f"error: {exc}")

@@ -366,6 +366,7 @@ These helpers keep two key semantics consistent:
 
 1. `state.current_metric` is the retained metric after the keep/discard decision.
 2. `state.last_trial_metric` is the metric from the latest attempted main iteration.
+3. Parallel batch merges reuse the same lightweight health/worktree preflight before updating the authoritative run state.
 
 In exec mode, this JSON state is scratch-only. It must not remain in the repo after completion.
 

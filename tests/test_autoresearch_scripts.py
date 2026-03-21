@@ -366,7 +366,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -429,7 +429,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -513,7 +513,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -591,7 +591,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -780,7 +780,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -822,7 +822,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -855,7 +855,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -902,7 +902,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -974,7 +974,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -1012,7 +1012,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
     def test_exec_init_run_clears_stale_default_scratch_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            (repo / ".git").mkdir()
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
             scratch_state_path = Path(
                 self.run_script_text(
                     "autoresearch_exec_state.py",
@@ -1036,7 +1036,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -1055,7 +1055,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
     def test_exec_init_run_archives_prior_results_and_repo_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            (repo / ".git").mkdir()
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
             results_path = repo / "research-results.tsv"
             repo_state_path = repo / "autoresearch-state.json"
             prev_results_path = repo / "research-results.prev.tsv"
@@ -1077,7 +1077,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--iterations",
                 "5",
                 "--baseline-metric",
@@ -1097,6 +1097,41 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertEqual(prev_state_path.read_text(encoding="utf-8"), '{"legacy": true}\n')
             self.assertNotEqual(Path(result["state_path"]), repo_state_path)
             self.assertTrue(Path(result["state_path"]).exists())
+
+    def test_exec_init_run_blocks_dirty_worktree_before_launch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+            (repo / "notes.txt").write_text("user drift\n", encoding="utf-8")
+
+            completed = self.run_script_completed(
+                "autoresearch_init_run.py",
+                "--mode",
+                "exec",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--iterations",
+                "5",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+                cwd=repo,
+            )
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn("Exec prelaunch failed", completed.stderr)
+            self.assertIn("unexpected worktree changes before launch", completed.stderr)
+            self.assertFalse((repo / "research-results.tsv").exists())
 
     def test_record_iteration_does_not_use_exec_scratch_for_loop_log(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1199,7 +1234,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -1254,7 +1289,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -1330,7 +1365,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -1391,7 +1426,7 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 "--direction",
                 "lower",
                 "--verify",
-                "pytest -q",
+                "python3 -c pass",
                 "--baseline-metric",
                 "10",
                 "--baseline-commit",
@@ -1448,6 +1483,74 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertEqual(len(lessons), 1)
             self.assertEqual(lessons[0]["outcome"], "keep")
             self.assertEqual(lessons[0]["iteration"], "1")
+
+    def test_parallel_batch_blocks_on_unexpected_worktree_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            repo = tmpdir / "repo"
+            repo.mkdir()
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+            results_path = repo / "research-results.tsv"
+            state_path = repo / "autoresearch-state.json"
+            batch_path = tmpdir / "batch.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+                "--parallel-mode",
+                "parallel",
+            )
+            (repo / "notes.txt").write_text("user drift\n", encoding="utf-8")
+            batch_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "worker_id": "a",
+                            "commit": "c3d4e5f",
+                            "metric": 7,
+                            "guard": "pass",
+                            "description": "narrowed hot path",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            completed = self.run_script_completed(
+                "autoresearch_select_parallel_batch.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--batch-file",
+                str(batch_path),
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Parallel batch preflight failed", completed.stderr)
+            self.assertIn("unexpected worktree changes before parallel batch", completed.stderr)
+            log_text = results_path.read_text(encoding="utf-8")
+            self.assertNotIn("[PARALLEL batch]", log_text)
 
     def test_drift_and_later_keep_preserve_historical_best_metric(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

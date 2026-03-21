@@ -64,6 +64,11 @@ def evaluate_commit_gate(
     unexpected_worktree = []
     staged_artifacts = []
     scope_patterns = parse_scope_patterns(scope_text)
+    phase_labels = {
+        "prelaunch": "before launch",
+        "precommit": "before commit",
+        "prebatch": "before parallel batch",
+    }
 
     for line in status_lines:
         raw_path = line[3:] if len(line) > 3 else line
@@ -78,8 +83,8 @@ def evaluate_commit_gate(
 
     blockers: list[str] = []
     warnings: list[str] = []
-    if phase in {"prelaunch", "precommit"} and unexpected_worktree:
-        label = "before launch" if phase == "prelaunch" else "before commit"
+    if phase in phase_labels and unexpected_worktree:
+        label = phase_labels[phase]
         blockers.append(
             f"unexpected worktree changes {label}: " + ", ".join(sorted(unexpected_worktree))
         )
@@ -115,7 +120,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Validate git cleanliness and artifact staging rules for autoresearch."
     )
     parser.add_argument("--repo", default=".")
-    parser.add_argument("--phase", choices=["prelaunch", "precommit", "rollback"], default="precommit")
+    parser.add_argument(
+        "--phase",
+        choices=["prelaunch", "precommit", "prebatch", "rollback"],
+        default="precommit",
+    )
     parser.add_argument("--rollback-policy")
     parser.add_argument("--destructive-approved", action="store_true")
     parser.add_argument("--scope")

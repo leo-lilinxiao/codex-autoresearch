@@ -218,7 +218,7 @@ iteration	commit	metric	delta	guard	status	description
 
 - Worker rows (`5a`, `5b`, `5c`) are audit detail.
 - The integer main row (`5`) is the authoritative retained-state update for the whole batch.
-- Prefer `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py --batch-file ...` so worker rows, the authoritative main row, JSON state, and any resulting keep lesson stay aligned. Here `<skill-root>` is the directory containing the loaded `SKILL.md`.
+- Prefer `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py --batch-file ...` so worker rows, the authoritative main row, batch-boundary preflight checks, JSON state, and any resulting keep lesson stay aligned. Here `<skill-root>` is the directory containing the loaded `SKILL.md`.
 
 ### JSON State Update for Parallel Batches
 
@@ -254,4 +254,4 @@ When falling back:
 - **environment-awareness.md:** Resource probes inform parallelism limits and GPU/NPU detection disables parallel mode.
 - **pivot-protocol.md:** A parallel batch with zero keeps counts as one discard toward pivot thresholds.
 - **lessons-protocol.md:** Keep worker rows as audit detail and append the resulting interactive keep lesson only for the authoritative selected main row.
-- **health-check-protocol.md:** Check worktree health before each batch.
+- **health-check-protocol.md:** `autoresearch_select_parallel_batch.py` runs the lightweight health + worktree preflight before it merges a completed batch into the authoritative TSV/JSON state.

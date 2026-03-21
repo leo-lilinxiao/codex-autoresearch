@@ -50,6 +50,7 @@ required_scripts=(
   "$ROOT/scripts/autoresearch_launch_gate.py"
   "$ROOT/scripts/autoresearch_resume_prompt.py"
   "$ROOT/scripts/autoresearch_runtime_ctl.py"
+  "$ROOT/scripts/autoresearch_preflight.py"
   "$ROOT/scripts/autoresearch_commit_gate.py"
   "$ROOT/scripts/autoresearch_decision.py"
   "$ROOT/scripts/autoresearch_health_check.py"

@@ -19,7 +19,6 @@ from autoresearch_helpers import (
     default_launch_manifest_path,
     default_runtime_log_path,
     default_runtime_state_path,
-    has_git_repo,
     read_state_payload,
     read_launch_manifest,
     read_runtime_payload,
@@ -29,10 +28,9 @@ from autoresearch_helpers import (
     utc_now,
     write_json_atomic,
 )
-from autoresearch_commit_gate import evaluate_commit_gate
-from autoresearch_health_check import run_health_check
 from autoresearch_lessons import append_summary_lesson_if_needed, lessons_path_from_results
 from autoresearch_launch_gate import evaluate_launch_context, pid_is_alive
+from autoresearch_preflight import evaluate_repo_preflight
 from autoresearch_resume_prompt import build_runtime_prompt
 from autoresearch_supervisor_status import evaluate_supervisor_status
 
@@ -278,51 +276,18 @@ def evaluate_runtime_preflight(
     min_free_mb: int,
 ) -> dict[str, Any]:
     config = dict(launch_manifest.get("config", {}))
-    health = run_health_check(
+    return evaluate_repo_preflight(
         repo=repo,
         results_path=results_path,
         state_path_arg=state_path_arg,
         verify_command=str(config.get("verify", "")),
+        scope_text=str(config.get("scope") or ""),
+        commit_phase="precommit",
         min_free_mb=min_free_mb,
+        include_health=True,
+        rollback_policy=str(config.get("rollback_policy") or ""),
+        destructive_approved=destructive_rollback_approved(launch_manifest),
     )
-    commit_gate: dict[str, Any] = {
-        "decision": "skipped",
-        "phase": "precommit",
-        "rollback_policy": str(config.get("rollback_policy") or ""),
-        "destructive_approved": False,
-        "scope_patterns": [],
-        "unexpected_worktree": [],
-        "staged_artifacts": [],
-        "warnings": [],
-        "blockers": [],
-    }
-    if has_git_repo(repo):
-        commit_gate = evaluate_commit_gate(
-            repo=repo,
-            phase="precommit",
-            rollback_policy=str(config.get("rollback_policy") or ""),
-            destructive_approved=destructive_rollback_approved(launch_manifest),
-            scope_text=str(config.get("scope") or ""),
-        )
-
-    blockers = list(commit_gate.get("blockers", [])) + list(health.get("blockers", []))
-    warnings = list(commit_gate.get("warnings", [])) + list(health.get("warnings", []))
-    decision = "allow"
-    reason = "runtime_preflight_ok"
-    if blockers:
-        decision = "block"
-        reason = "runtime_preflight_blocked"
-    elif warnings:
-        decision = "warn"
-        reason = "runtime_preflight_warn"
-    return {
-        "decision": decision,
-        "reason": reason,
-        "warnings": warnings,
-        "blockers": blockers,
-        "health_check": health,
-        "commit_gate": commit_gate,
-    }
 
 
 def start_runtime(args: argparse.Namespace) -> dict[str, Any]:

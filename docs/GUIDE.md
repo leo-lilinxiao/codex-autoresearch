@@ -621,7 +621,7 @@ Use the same `$codex-autoresearch` entry and ask for status or stop. For backend
 
 ### The verify command fails on the first run
 
-Codex will attempt to fix it. If plan mode generated the config, it dry-runs the verify command before outputting the block. If you wrote the verify command yourself, test it manually first.
+Codex will attempt to fix it. If plan mode generated the config, it may dry-run the verify command when practical before outputting the block. If you wrote the verify command yourself, test it manually first.
 
 ### The loop refuses to commit
 

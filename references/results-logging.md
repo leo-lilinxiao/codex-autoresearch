@@ -103,13 +103,13 @@ These helper scripts live in the skill bundle. Do not confuse them with the targ
 Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`, so the exact command becomes `python3 .agents/skills/codex-autoresearch/scripts/...`.
 
 - `python3 <skill-root>/scripts/autoresearch_init_run.py ...`
-  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement.
+  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement. In exec mode it also archives prior repo-root artifacts to `.prev`, clears stale default scratch state, and enforces the prelaunch commit gate.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...`
   Appends one authoritative main iteration row and updates JSON state atomically.
 - `python3 <skill-root>/scripts/autoresearch_resume_check.py ...`
   Reconstructs retained state from the TSV and decides `full_resume`, `mini_wizard`, `tsv_fallback`, or `fresh_start`.
 - `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py --batch-file ...`
-  Logs worker rows, appends the main batch row, and updates JSON state once per batch.
+  Logs worker rows, runs the batch-boundary health/worktree preflight, appends the main batch row, and updates JSON state once per batch.
 - `python3 <skill-root>/scripts/autoresearch_exec_state.py`
   Prints the deterministic exec scratch-state path under `/tmp` and cleans it up on `--cleanup`.
 - `python3 <skill-root>/scripts/autoresearch_supervisor_status.py`

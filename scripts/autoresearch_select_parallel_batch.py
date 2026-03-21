@@ -18,6 +18,7 @@ from autoresearch_helpers import (
     write_json_atomic,
 )
 from autoresearch_lessons import append_iteration_lesson, lessons_path_from_results
+from autoresearch_preflight import evaluate_repo_preflight
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,6 +73,23 @@ def main() -> int:
         state_path,
         parsed=parsed,
     )
+    config = dict(payload.get("config", {}))
+    repo = repo_hint or Path.cwd().resolve()
+    preflight = evaluate_repo_preflight(
+        repo=repo,
+        results_path=results_path,
+        state_path_arg=args.state_path,
+        verify_command=str(config.get("verify", "")),
+        scope_text=str(config.get("scope") or ""),
+        commit_phase="prebatch",
+        include_health=True,
+        rollback_policy=None,
+        destructive_approved=False,
+    )
+    if preflight["decision"] == "block":
+        raise AutoresearchError(
+            "Parallel batch preflight failed: " + "; ".join(preflight["blockers"])
+        )
     batch = load_batch(Path(args.batch_file))
 
     next_iteration = reconstructed["iteration"] + 1
