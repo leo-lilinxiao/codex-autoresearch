@@ -9,7 +9,11 @@ from pathlib import Path
 from pathlib import PurePosixPath
 from typing import Any
 
-from autoresearch_helpers import AutoresearchError, is_autoresearch_owned_artifact
+from autoresearch_helpers import (
+    AutoresearchError,
+    git_status_paths,
+    is_autoresearch_owned_artifact,
+)
 
 
 def git_lines(repo: Path, *args: str) -> list[str]:
@@ -59,7 +63,7 @@ def evaluate_commit_gate(
     destructive_approved: bool,
     scope_text: str | None = None,
 ) -> dict[str, Any]:
-    status_lines = git_lines(repo, "status", "--porcelain")
+    status_lines = git_status_paths(repo)
     staged_files = git_lines(repo, "diff", "--cached", "--name-only")
     unexpected_worktree = []
     staged_artifacts = []
@@ -70,10 +74,7 @@ def evaluate_commit_gate(
         "prebatch": "before parallel batch",
     }
 
-    for line in status_lines:
-        raw_path = line[3:] if len(line) > 3 else line
-        if " -> " in raw_path:
-            raw_path = raw_path.split(" -> ", 1)[1]
+    for raw_path in status_lines:
         if not is_autoresearch_owned_artifact(raw_path) and not path_is_in_scope(raw_path, scope_patterns):
             unexpected_worktree.append(raw_path)
 

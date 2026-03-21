@@ -3505,6 +3505,26 @@ class AutoresearchScriptsTest(unittest.TestCase):
                 any("unexpected worktree changes before commit" in blocker for blocker in result["blockers"])
             )
 
+    def test_commit_gate_ignores_nested_autoresearch_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+            nested = repo / "sub"
+            nested.mkdir()
+            (nested / "research-results.tsv").write_text("artifact\n", encoding="utf-8")
+
+            result = self.run_script(
+                "autoresearch_commit_gate.py",
+                "--repo",
+                str(repo),
+                "--phase",
+                "prelaunch",
+                "--scope",
+                "src/**/*.py",
+            )
+            self.assertEqual(result["decision"], "allow")
+            self.assertEqual(result["unexpected_worktree"], [])
+
     def test_health_check_reports_warning_for_unexpected_worktree_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -3550,6 +3570,40 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertEqual(result["decision"], "warn")
             self.assertTrue(any("unexpected worktree changes" in warning for warning in result["warnings"]))
             self.assertEqual(result["main_rows"], 1)
+
+    def test_health_check_ignores_nested_autoresearch_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+            nested = repo / "sub"
+            nested.mkdir()
+            results_path = nested / "research-results.tsv"
+            results_path.write_text(
+                "\n".join(
+                    [
+                        "# metric_direction: lower",
+                        "iteration\tcommit\tmetric\tdelta\tguard\tstatus\tdescription",
+                        "0\tbase123\t10\t0\t-\tbaseline\tbaseline score",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = self.run_script(
+                "autoresearch_health_check.py",
+                "--repo",
+                str(repo),
+                "--results-path",
+                str(results_path),
+                "--verify-cmd",
+                "python3 -c pass",
+                "--min-free-mb",
+                "1",
+            )
+            self.assertEqual(result["decision"], "warn")
+            self.assertFalse(any("unexpected worktree changes" in warning for warning in result["warnings"]))
+            self.assertTrue(any("TSV fallback" in warning for warning in result["warnings"]))
 
     def test_health_check_finds_repo_state_without_explicit_state_path_outside_repo_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

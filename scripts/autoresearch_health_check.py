@@ -5,29 +5,17 @@ import argparse
 import json
 import shlex
 import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
 from autoresearch_helpers import (
     AutoresearchError,
+    git_status_paths,
     has_git_repo,
     is_autoresearch_owned_artifact,
     lexical_abspath,
 )
 from autoresearch_resume_check import evaluate_resume_state
-
-
-def git_status(repo: Path) -> list[str]:
-    completed = subprocess.run(
-        ["git", "-C", str(repo), "status", "--porcelain"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise AutoresearchError(completed.stderr.strip() or "git status failed")
-    return [line.rstrip() for line in completed.stdout.splitlines() if line.strip()]
 
 
 def verify_command_exists(command: str) -> bool:
@@ -83,12 +71,9 @@ def run_health_check(
         warnings.append("results log exists without a trustworthy JSON state; resume would use TSV fallback")
 
     if has_git_repo(repo):
-        dirty_lines = git_status(repo)
+        dirty_lines = git_status_paths(repo)
         unexpected = []
-        for line in dirty_lines:
-            path = line[3:] if len(line) > 3 else line
-            if " -> " in path:
-                path = path.split(" -> ", 1)[1]
+        for path in dirty_lines:
             if not is_autoresearch_owned_artifact(path):
                 unexpected.append(path)
         if unexpected:

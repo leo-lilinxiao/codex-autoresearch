@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import tempfile
 from copy import deepcopy
 from dataclasses import dataclass
@@ -316,6 +317,38 @@ def cleanup_exec_state(cwd: Path | None = None) -> tuple[Path, bool]:
         parent = parent.parent
 
     return state_path, removed
+
+
+def git_status_paths(repo: Path) -> list[str]:
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+            "-z",
+        ],
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        stderr = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise AutoresearchError(stderr or "git status failed")
+
+    entries = [entry for entry in completed.stdout.decode("utf-8", errors="replace").split("\0") if entry]
+    paths: list[str] = []
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        path = entry[3:] if len(entry) > 3 else entry
+        status = entry[:2]
+        paths.append(path)
+        if "R" in status or "C" in status:
+            index += 1
+        index += 1
+    return paths
 
 
 def improvement(metric: Decimal, reference: Decimal, direction: str) -> bool:
