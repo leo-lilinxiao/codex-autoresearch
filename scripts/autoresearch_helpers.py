@@ -346,6 +346,8 @@ def git_status_paths(repo: Path) -> list[str]:
         status = entry[:2]
         paths.append(path)
         if "R" in status or "C" in status:
+            if index + 1 < len(entries):
+                paths.append(entries[index + 1])
             index += 1
         index += 1
     return paths

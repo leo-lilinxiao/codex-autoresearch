@@ -3525,6 +3525,47 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertEqual(result["decision"], "allow")
             self.assertEqual(result["unexpected_worktree"], [])
 
+    def test_commit_gate_blocks_rename_from_out_of_scope_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+            docs = repo / "docs"
+            src = repo / "src"
+            docs.mkdir()
+            src.mkdir()
+            (docs / "old.txt").write_text("tracked\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(repo), "add", "docs/old.txt"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "init"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (docs / "old.txt").rename(src / "new.py")
+            subprocess.run(
+                ["git", "-C", str(repo), "add", "-A"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            result = self.run_script(
+                "autoresearch_commit_gate.py",
+                "--repo",
+                str(repo),
+                "--phase",
+                "precommit",
+                "--scope",
+                "src/**/*.py",
+            )
+            self.assertEqual(result["decision"], "block")
+            self.assertIn("docs/old.txt", result["unexpected_worktree"])
+
     def test_health_check_reports_warning_for_unexpected_worktree_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
@@ -3604,6 +3645,74 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertEqual(result["decision"], "warn")
             self.assertFalse(any("unexpected worktree changes" in warning for warning in result["warnings"]))
             self.assertTrue(any("TSV fallback" in warning for warning in result["warnings"]))
+
+    def test_health_check_reports_rename_from_out_of_scope_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+            results_path = repo / "research-results.tsv"
+            state_path = repo / "autoresearch-state.json"
+            docs = repo / "docs"
+            src = repo / "src"
+            docs.mkdir()
+            src.mkdir()
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+            )
+            (docs / "old.txt").write_text("tracked\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(repo), "add", "docs/old.txt"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "tracked docs"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (docs / "old.txt").rename(src / "new.py")
+            subprocess.run(
+                ["git", "-C", str(repo), "add", "-A"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            result = self.run_script(
+                "autoresearch_health_check.py",
+                "--repo",
+                str(repo),
+                "--verify-cmd",
+                "python3 -c pass",
+                "--min-free-mb",
+                "1",
+            )
+            self.assertEqual(result["decision"], "warn")
+            self.assertTrue(any("docs/old.txt" in warning for warning in result["warnings"]))
 
     def test_health_check_finds_repo_state_without_explicit_state_path_outside_repo_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
