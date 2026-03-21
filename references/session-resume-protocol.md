@@ -216,4 +216,4 @@ python3 <skill-root>/scripts/autoresearch_runtime_ctl.py stop --repo /path/to/re
 - **results-logging.md:** Main integer rows define retained state; worker rows are audit detail only.
 - **interaction-wizard.md:** Mini-wizard uses helper mismatch reasons instead of raw row counts.
 - **health-check-protocol.md:** Deep integrity checks use the resume helper, not row-count heuristics.
-- **exec-workflow.md:** Exec mode skips session resume, archives prior persistent artifacts, and cleans up its scratch JSON state before exit.
+- **exec-workflow.md:** Exec mode skips session resume, archives the configured results log plus repo-root state artifacts, and requires the workflow to clean up its scratch JSON state before exit.

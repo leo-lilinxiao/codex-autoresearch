@@ -26,5 +26,5 @@ All specialized modes must:
 6. load `pivot-protocol.md` for stuck recovery (iterating modes, including ship prepare loops),
 7. load `health-check-protocol.md` for self-monitoring (iterating modes),
 8. keep all decisions mechanical where possible,
-9. write their documented logs and output files (for iterating modes this includes `research-results.tsv`, `autoresearch-lessons.md`, and `autoresearch-state.json` -- none committed to git; exec mode persists only the TSV and cleans up any scratch JSON state before exit),
+9. write their documented logs and output files (for iterating modes this includes `research-results.tsv`, `autoresearch-lessons.md`, and `autoresearch-state.json` -- none committed to git; exec mode persists only the TSV and the exec workflow cleans up any scratch JSON state before exit),
 10. preserve the official skill entrypoint in `SKILL.md`.

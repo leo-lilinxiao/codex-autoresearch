@@ -1098,6 +1098,49 @@ class AutoresearchScriptsTest(unittest.TestCase):
             self.assertNotEqual(Path(result["state_path"]), repo_state_path)
             self.assertTrue(Path(result["state_path"]).exists())
 
+    def test_exec_init_run_from_subdir_archives_repo_root_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
+            subdir = repo / "sub"
+            subdir.mkdir()
+            repo_state_path = repo / "autoresearch-state.json"
+            prev_state_path = repo / "autoresearch-state.prev.json"
+            sub_results_path = subdir / "research-results.tsv"
+
+            repo_state_path.write_text('{"legacy": true}\n', encoding="utf-8")
+
+            result = self.run_script(
+                "autoresearch_init_run.py",
+                "--mode",
+                "exec",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--iterations",
+                "5",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+                cwd=subdir,
+            )
+
+            self.assertTrue(sub_results_path.exists())
+            self.assertFalse(repo_state_path.exists())
+            self.assertTrue(prev_state_path.exists())
+            self.assertEqual(prev_state_path.read_text(encoding="utf-8"), '{"legacy": true}\n')
+            self.assertTrue(Path(result["state_path"]).exists())
+
     def test_exec_init_run_blocks_dirty_worktree_before_launch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)

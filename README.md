@@ -493,7 +493,7 @@ Every iteration is recorded in complementary artifacts:
 - **`autoresearch-runtime.json`** -- runtime control state (PID, status, last decision)
 - **`autoresearch-runtime.log`** -- detached runtime log for long runs
 
-In `exec` mode, the state snapshot is scratch-only under `/tmp/codex-autoresearch-exec/...` and is cleaned up before exit.
+In `exec` mode, the state snapshot is scratch-only under `/tmp/codex-autoresearch-exec/...`. The exec workflow is responsible for removing that scratch JSON before exit, typically via `autoresearch_exec_state.py --cleanup`.
 
 ```
 iteration  commit   metric  delta   status    description

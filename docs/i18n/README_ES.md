@@ -437,14 +437,14 @@ Consulta `references/parallel-experiments-protocol.md`.
 
 ## Reanudacion de sesion
 
-Si Codex detecta una ejecucion gestionada anteriormente interrumpida en modo interactivo, puede reanudar desde el ultimo estado consistente en lugar de empezar de cero. La fuente de recuperacion principal es `autoresearch-state.json`, una instantanea de estado compacta actualizada atomicamente en cada iteracion. En modo `exec`, el estado solo existe en un archivo temporal bajo `/tmp/codex-autoresearch-exec/...` y se limpia antes de salir. La reanudacion directa mediante el controlador de ejecucion desacoplado requiere un `autoresearch-launch.json` existente; si falta ese estado de lanzamiento confirmado, usa el flujo normal de inicio.
+Si Codex detecta una ejecucion gestionada anteriormente interrumpida en modo interactivo, puede reanudar desde el ultimo estado consistente en lugar de empezar de cero. La fuente de recuperacion principal es `autoresearch-state.json`, una instantanea de estado compacta actualizada atomicamente en cada iteracion. En modo `exec`, el estado solo existe en un archivo temporal bajo `/tmp/codex-autoresearch-exec/...` y el flujo `exec` debe limpiarlo explicitamente antes de salir. La reanudacion directa mediante el controlador de ejecucion desacoplado requiere un `autoresearch-launch.json` existente; si falta ese estado de lanzamiento confirmado, usa el flujo normal de inicio.
 
 Prioridad de recuperacion para modos interactivos:
 
 1. **JSON + TSV consistentes y manifiesto de lanzamiento presente:** reanudacion inmediata, asistente omitido
 2. **JSON valido, TSV inconsistente:** mini-asistente (1 ronda de confirmacion)
 3. **JSON ausente o corrupto, TSV presente:** la utilidad reconstruye el estado retenido para confirmarlo y luego continua con un nuevo manifiesto de lanzamiento
-4. **Ninguno presente:** inicio limpio (registros antiguos renombrados)
+4. **Ninguno presente:** inicio limpio (se archivan los artefactos persistentes del control de ejecucion anterior)
 
 Ver `references/session-resume-protocol.md`.
 
@@ -493,7 +493,7 @@ iteration  commit   metric  delta   status    description
 3          c3d4e5f  38      -3      keep      type-narrow API response handlers
 ```
 
-En modo `exec`, la instantanea de estado solo vive bajo `/tmp/codex-autoresearch-exec/...` y se elimina antes de salir. Actualiza estos artefactos mediante los helper scripts incluidos en `<skill-root>/scripts/...`, no desde el directorio `scripts/` del repo objetivo.
+En modo `exec`, la instantanea de estado solo vive bajo `/tmp/codex-autoresearch-exec/...` y el flujo `exec` debe eliminarla explicitamente antes de salir. Actualiza estos artefactos mediante los helper scripts incluidos en `<skill-root>/scripts/...`, no desde el directorio `scripts/` del repo objetivo.
 
 Ambos archivos no se commitean en git. Durante la reanudacion de sesion, el estado JSON se valida cruzadamente con un resumen reconstruido de las iteraciones principales TSV, no con el simple conteo de filas. Los resumenes de progreso se imprimen cada 5 iteraciones. Las ejecuciones acotadas imprimen un resumen final de linea base a mejor resultado.
 

@@ -437,14 +437,14 @@ Siehe `references/parallel-experiments-protocol.md`.
 
 ## Sitzungswiederaufnahme
 
-Wenn Codex in einem interaktiven Modus einen zuvor unterbrochenen verwalteten Lauf erkennt, kann es vom letzten konsistenten Zustand fortfahren, anstatt von vorne zu beginnen. Die primaere Wiederherstellungsquelle ist `autoresearch-state.json`, ein kompakter Zustandssnapshot, der bei jeder Iteration atomar aktualisiert wird. Im Modus `exec` liegt der Zustand nur in einer temporaeren Datei unter `/tmp/codex-autoresearch-exec/...` und wird vor dem Beenden entfernt. Eine direkte Wiederaufnahme ueber den entkoppelten Laufzeit-Controller setzt ein vorhandenes `autoresearch-launch.json` voraus; ohne dieses bestaetigte Start-Manifest folgt der Lauf dem normalen Startfluss.
+Wenn Codex in einem interaktiven Modus einen zuvor unterbrochenen verwalteten Lauf erkennt, kann es vom letzten konsistenten Zustand fortfahren, anstatt von vorne zu beginnen. Die primaere Wiederherstellungsquelle ist `autoresearch-state.json`, ein kompakter Zustandssnapshot, der bei jeder Iteration atomar aktualisiert wird. Im Modus `exec` liegt der Zustand nur in einer temporaeren Datei unter `/tmp/codex-autoresearch-exec/...` und muss vom `exec`-Workflow vor dem Beenden explizit entfernt werden. Eine direkte Wiederaufnahme ueber den entkoppelten Laufzeit-Controller setzt ein vorhandenes `autoresearch-launch.json` voraus; ohne dieses bestaetigte Start-Manifest folgt der Lauf dem normalen Startfluss.
 
 Wiederherstellungsprioritaet fuer interaktive Modi:
 
 1. **JSON + TSV konsistent, Launch-Manifest vorhanden:** sofortige Wiederaufnahme, Assistent uebersprungen
 2. **JSON gueltig, TSV inkonsistent:** Mini-Assistent (1 Runde Bestaetigung)
 3. **JSON fehlt oder ist beschaedigt, TSV vorhanden:** Der Helper rekonstruiert den beibehaltenen Zustand zur Bestaetigung und faehrt dann mit einem neuen Launch-Manifest fort
-4. **Keines vorhanden:** Neustart (alte Protokolle umbenannt)
+4. **Keines vorhanden:** Neustart (vorherige persistente Run-Control-Artefakte werden archiviert)
 
 Siehe `references/session-resume-protocol.md`.
 
@@ -493,7 +493,7 @@ iteration  commit   metric  delta   status    description
 3          c3d4e5f  38      -3      keep      type-narrow API response handlers
 ```
 
-Im Modus `exec` existiert der Zustandssnapshot nur unter `/tmp/codex-autoresearch-exec/...` und wird vor dem Beenden bereinigt. Aktualisieren Sie diese Artefakte ueber die gebuendelten Helper-Skripte unter `<skill-root>/scripts/...`, nicht ueber das `scripts/`-Verzeichnis des Ziel-Repos.
+Im Modus `exec` existiert der Zustandssnapshot nur unter `/tmp/codex-autoresearch-exec/...` und muss vom `exec`-Workflow vor dem Beenden explizit bereinigt werden. Aktualisieren Sie diese Artefakte ueber die gebuendelten Helper-Skripte unter `<skill-root>/scripts/...`, nicht ueber das `scripts/`-Verzeichnis des Ziel-Repos.
 
 Beide Dateien werden nicht in git committed. Bei der Sitzungswiederaufnahme wird der JSON-Zustand gegen eine rekonstruierte TSV-Hauptiterationszusammenfassung kreuzvalidiert und nicht gegen die rohe Zeilenanzahl. Fortschrittsberichte werden alle 5 Iterationen ausgegeben. Begrenzte Laeufe geben am Ende eine Zusammenfassung von Baseline bis Bestwert aus.
 

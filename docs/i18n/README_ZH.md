@@ -437,14 +437,14 @@ security + fix               # 审计并修复一步到位
 
 ## 会话恢复
 
-如果 Codex 在交互模式下检测到之前被中断的受管运行，它可以从最后一致的状态恢复，而不是从头开始。主要恢复来源是 `autoresearch-state.json`，一个每次迭代原子更新的紧凑状态快照。`exec` 模式下，状态只会写入 `/tmp/codex-autoresearch-exec/...` 下的临时文件，并会在退出前清理。要让分离的运行控制器直接恢复，必须已经存在 `autoresearch-launch.json`；如果缺少这个已确认的启动清单，就应按正常启动流程重新开始。
+如果 Codex 在交互模式下检测到之前被中断的受管运行，它可以从最后一致的状态恢复，而不是从头开始。主要恢复来源是 `autoresearch-state.json`，一个每次迭代原子更新的紧凑状态快照。`exec` 模式下，状态只会写入 `/tmp/codex-autoresearch-exec/...` 下的临时文件，并需要由 `exec` 工作流在退出前显式清理。要让分离的运行控制器直接恢复，必须已经存在 `autoresearch-launch.json`；如果缺少这个已确认的启动清单，就应按正常启动流程重新开始。
 
 恢复优先级（交互模式）：
 
 1. **JSON + TSV 一致，且启动清单存在：** 立即恢复，跳过向导
 2. **JSON 有效，TSV 不一致：** 迷你向导（1 轮确认）
 3. **JSON 缺失或损坏，TSV 存在：** 辅助脚本先重建保留状态供确认，然后用新的启动清单继续
-4. **都不存在：** 全新开始（旧日志重命名）
+4. **都不存在：** 全新开始（归档之前的持久 run-control 工件）
 
 参见 `references/session-resume-protocol.md`。
 
@@ -493,7 +493,7 @@ iteration  commit   metric  delta   status    description
 3          c3d4e5f  38      -3      keep      type-narrow API response handlers
 ```
 
-`exec` 模式下，状态快照仅保存在 `/tmp/codex-autoresearch-exec/...` 的临时位置，并会在退出前清理。请通过 `<skill-root>/scripts/...` 下随 skill 打包的 helper scripts 更新这些工件，而不是调用目标仓库自己的 `scripts/` 目录。
+`exec` 模式下，状态快照仅保存在 `/tmp/codex-autoresearch-exec/...` 的临时位置，并需要由 `exec` 工作流在退出前显式清理。请通过 `<skill-root>/scripts/...` 下随 skill 打包的 helper scripts 更新这些工件，而不是调用目标仓库自己的 `scripts/` 目录。
 
 两个文件都不提交到 git。会话恢复时，JSON 状态会与重建出的 TSV 主迭代摘要交叉验证，而不是直接对比行数。进度摘要每 5 次迭代打印一次。有界运行在最后打印基线到最优的总结。
 

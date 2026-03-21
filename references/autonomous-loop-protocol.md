@@ -57,7 +57,7 @@ Launch-gate interpretation:
 Exec-mode exception:
 - Do not resume a prior run.
 - Rename prior persistent run-control artifacts to `.prev` and start fresh.
-- Ignore any old exec scratch state except for cleanup.
+- Ignore any old exec scratch state except for cleanup at fresh start, and let the exec workflow remove the new scratch state before exit.
 
 ### Run Artifact Initialization
 

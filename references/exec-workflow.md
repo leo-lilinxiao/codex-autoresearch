@@ -43,7 +43,7 @@ Before using `codex exec` in CI, configure Codex CLI authentication outside the 
 | Web search | available | disabled by default |
 | Parallel | user opt-in | disabled by default |
 | Lessons | read + write | read only (do not write in CI) |
-| JSON state | repo-root `autoresearch-state.json` | scratch-only under `/tmp`, removed before exit |
+| JSON state | repo-root `autoresearch-state.json` | scratch-only under `/tmp`, removed by the exec workflow before exit |
 | Session resume | full | disabled (fresh start; prior JSON/TSV renamed to `.prev`) |
 
 ## JSON Output Format
@@ -128,8 +128,8 @@ optimize:
 ## Artifact Handling
 
 Exec mode always starts fresh:
-- If `research-results.tsv` exists from a prior run, rename it to `research-results.prev.tsv`.
-- If `autoresearch-state.json` exists from a prior run, rename it to `autoresearch-state.prev.json`. Exec mode does not write or update this file (session resume is disabled).
+- If the configured `results_path` already exists from a prior run, rename it to a `.prev` variant before writing the new log.
+- If repo-root `autoresearch-state.json` exists from a prior run, rename it to `autoresearch-state.prev.json`. Exec mode does not write or update this file (session resume is disabled).
 - If `autoresearch-lessons.md` exists, read it for hypothesis filtering but never modify it.
 - Do not revert prior experiment commits (assume external cleanup between CI runs).
 
@@ -149,7 +149,7 @@ Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the co
 - No launch question: do not ask for "go" or any extra confirmation; the prompt/env config is the approval.
 - No web search: CI environments should not make unexpected network calls.
 - No parallel: CI resource limits are unpredictable; use serial mode only.
-- No session resume: every CI run starts fresh. Rename old results log to `.prev` if one exists.
+- No session resume: every CI run starts fresh. Rename the configured prior results log to `.prev` if it exists, and archive any repo-root `autoresearch-state.json`.
 - Dirty worktree: `autoresearch_init_run.py` runs the prelaunch commit gate in exec mode. If `git status --porcelain` shows anything beyond autoresearch-owned artifacts before launch, it emits a blocker and exits with code 2 instead of asking.
 - Lessons: read `autoresearch-lessons.md` if it exists in the repo (useful for persistent learning across CI runs), but **never create or modify it** during exec mode -- not even after keep or pivot decisions. Exec mode is read-only for lessons.
 

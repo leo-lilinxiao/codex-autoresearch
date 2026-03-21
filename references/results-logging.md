@@ -103,7 +103,7 @@ These helper scripts live in the skill bundle. Do not confuse them with the targ
 Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`, so the exact command becomes `python3 .agents/skills/codex-autoresearch/scripts/...`.
 
 - `python3 <skill-root>/scripts/autoresearch_init_run.py ...`
-  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement. In exec mode it also archives prior repo-root artifacts to `.prev`, clears stale default scratch state, and enforces the prelaunch commit gate.
+  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement. In exec mode it also archives the configured results log plus any repo-root `autoresearch-state.json` to `.prev`, clears stale default scratch state, and enforces the prelaunch commit gate.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...`
   Appends one authoritative main iteration row and updates JSON state atomically.
 - `python3 <skill-root>/scripts/autoresearch_resume_check.py ...`
@@ -115,7 +115,7 @@ Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In t
 - `python3 <skill-root>/scripts/autoresearch_supervisor_status.py`
   Computes whether the runtime control plane should relaunch, stop, or ask for human help after a finished turn.
 
-In exec mode, the helper scripts keep JSON state in scratch storage by default instead of repo-root `autoresearch-state.json`. Clean that scratch state before exiting so exec persists only `research-results.tsv`.
+In exec mode, the helper scripts keep JSON state in scratch storage by default instead of repo-root `autoresearch-state.json`. The exec workflow must clean that scratch state before exiting so exec persists only `research-results.tsv`.
 
 ## Rules
 

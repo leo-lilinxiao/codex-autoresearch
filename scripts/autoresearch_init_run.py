@@ -13,6 +13,7 @@ from autoresearch_helpers import (
     cleanup_exec_state,
     default_state_path,
     decimal_to_json_number,
+    find_repo_root,
     format_decimal,
     make_row,
     parse_decimal,
@@ -63,8 +64,9 @@ def main() -> int:
 
     results_path = Path(args.results_path)
     repo_hint = results_path.parent if results_path.is_absolute() else None
-    repo = Path(repo_hint or Path.cwd()).resolve()
-    state_path = resolve_state_path(args.state_path, mode=args.mode, cwd=repo_hint)
+    repo_context = repo_hint or Path.cwd()
+    repo = find_repo_root(repo_context)
+    state_path = resolve_state_path(args.state_path, mode=args.mode, cwd=repo_context)
 
     if args.mode == "exec":
         preflight = evaluate_repo_preflight(
@@ -88,9 +90,9 @@ def main() -> int:
     # existing artifacts so the next unattended run can start cleanly.
     if args.mode == "exec" and args.state_path is None and not args.force:
         if state_path.exists():
-            cleanup_exec_state()
+            cleanup_exec_state(repo)
         archive_path_to_prev(results_path)
-        archive_path_to_prev(default_state_path(repo_hint))
+        archive_path_to_prev(default_state_path(repo))
 
     if not args.force:
         for path in (results_path, state_path):

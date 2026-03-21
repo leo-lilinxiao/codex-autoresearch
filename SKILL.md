@@ -112,7 +112,7 @@ If required fields are missing, use the wizard contract in `references/interacti
 15. When stuck (3+ consecutive discards), use the PIVOT/REFINE escalation ladder from `references/pivot-protocol.md` instead of brute-force retrying.
 16. Extract lessons after every kept iteration and every pivot (see `references/lessons-protocol.md`).
 17. Prefer the bundled helper scripts over hand-editing `research-results.tsv`, `autoresearch-state.json`, or runtime-control files. Always call them via the skill-bundle path (`<skill-root>/scripts/...`); never call bare `scripts/autoresearch_*.py` from the target repo root unless the skill bundle itself is actually installed there.
-18. In `exec` mode, never leave repo-root `autoresearch-state.json` behind. If helper scripts need state, use the exec scratch path and clean it up before exit.
+18. In `exec` mode, never leave repo-root `autoresearch-state.json` behind. If helper scripts need state, use the exec scratch path and explicitly clean it up before exit.
 19. After any context compaction event (the CLI warns about thread length and compaction), re-read `references/autonomous-loop-protocol.md` and `references/core-principles.md` from disk before the next iteration. Do not rely on memory of these documents after compaction.
 20. Every 10 iterations, perform the Protocol Fingerprint Check defined in Phase 8.7 of `references/autonomous-loop-protocol.md`. If any item fails, re-read all loaded protocol files from disk before continuing.
 

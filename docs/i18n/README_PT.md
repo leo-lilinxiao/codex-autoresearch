@@ -437,14 +437,14 @@ Consulte `references/parallel-experiments-protocol.md`.
 
 ## Retomada de sessao
 
-Se o Codex detectar uma execucao gerenciada anteriormente interrompida em modo interativo, ele pode retomar do ultimo estado consistente em vez de comecar do zero. A fonte de recuperacao principal e `autoresearch-state.json`, um snapshot de estado compacto atualizado atomicamente a cada iteracao. No modo `exec`, o estado existe apenas em um arquivo temporario sob `/tmp/codex-autoresearch-exec/...` e e removido antes de sair. A retomada direta pelo controlador de execucao desacoplado exige um `autoresearch-launch.json` ja existente; se esse estado de lancamento confirmado estiver ausente, use o fluxo normal de lancamento para iniciar um novo run.
+Se o Codex detectar uma execucao gerenciada anteriormente interrompida em modo interativo, ele pode retomar do ultimo estado consistente em vez de comecar do zero. A fonte de recuperacao principal e `autoresearch-state.json`, um snapshot de estado compacto atualizado atomicamente a cada iteracao. No modo `exec`, o estado existe apenas em um arquivo temporario sob `/tmp/codex-autoresearch-exec/...` e o fluxo `exec` deve remove-lo explicitamente antes de sair. A retomada direta pelo controlador de execucao desacoplado exige um `autoresearch-launch.json` ja existente; se esse estado de lancamento confirmado estiver ausente, use o fluxo normal de lancamento para iniciar um novo run.
 
 Prioridade de recuperacao para modos interativos:
 
 1. **JSON + TSV consistentes, com manifesto de lancamento presente:** retomada imediata, assistente ignorado
 2. **JSON valido, TSV inconsistente:** mini-assistente (1 rodada de confirmacao)
 3. **JSON ausente ou corrompido, TSV presente:** o utilitario reconstrui o estado retido para confirmacao e depois continua com um novo manifesto de lancamento
-4. **Nenhum presente:** inicio limpo (logs antigos renomeados)
+4. **Nenhum presente:** inicio limpo (os artefatos persistentes anteriores de controle do run sao arquivados)
 
 Veja `references/session-resume-protocol.md`.
 
@@ -493,7 +493,7 @@ iteration  commit   metric  delta   status    description
 3          c3d4e5f  38      -3      keep      type-narrow API response handlers
 ```
 
-No modo `exec`, o snapshot de estado existe apenas em `/tmp/codex-autoresearch-exec/...` e e removido antes da saida. Atualize esses artefatos pelos helper scripts empacotados em `<skill-root>/scripts/...`, e nao pelo diretorio `scripts/` do repo alvo.
+No modo `exec`, o snapshot de estado existe apenas em `/tmp/codex-autoresearch-exec/...` e o fluxo `exec` deve remove-lo explicitamente antes da saida. Atualize esses artefatos pelos helper scripts empacotados em `<skill-root>/scripts/...`, e nao pelo diretorio `scripts/` do repo alvo.
 
 Ambos os arquivos nao sao commitados no git. Durante a retomada de sessao, o estado JSON e validado cruzadamente com um resumo reconstruido das iteracoes principais do TSV, e nao com a simples contagem de linhas. Resumos de progresso sao impressos a cada 5 iteracoes. Execucoes limitadas imprimem um resumo final da linha de base ao melhor resultado.
 
