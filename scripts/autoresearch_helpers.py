@@ -19,6 +19,8 @@ from autoresearch_artifacts import (
     read_state_payload,
     require_consistent_state,
     row_to_dict,
+    sync_state_payload_session_mode,
+    sync_state_session_mode,
     write_json_atomic,
     write_results_log,
 )
@@ -160,6 +162,8 @@ __all__ = [
     "resolve_state_path_for_log",
     "results_repo_root",
     "row_to_dict",
+    "sync_state_payload_session_mode",
+    "sync_state_session_mode",
     "utc_now",
     "write_json_atomic",
     "write_results_log",

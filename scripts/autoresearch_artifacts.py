@@ -535,3 +535,40 @@ def make_row(
 
 def clone_state_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return deepcopy(payload)
+
+
+def sync_state_payload_session_mode(
+    payload: dict[str, Any],
+    *,
+    session_mode: str,
+    execution_policy: str | None = None,
+) -> dict[str, Any]:
+    cloned = clone_state_payload(payload)
+    config = cloned.get("config")
+    if not isinstance(config, dict):
+        raise AutoresearchError("State config must be an object.")
+
+    config["session_mode"] = session_mode
+    cloned["session_mode"] = session_mode
+    if session_mode == "foreground":
+        config.pop("execution_policy", None)
+    elif execution_policy is not None:
+        config["execution_policy"] = execution_policy
+    cloned["updated_at"] = utc_now()
+    return cloned
+
+
+def sync_state_session_mode(
+    path: Path,
+    *,
+    session_mode: str,
+    execution_policy: str | None = None,
+) -> dict[str, Any]:
+    payload = read_state_payload(path)
+    updated = sync_state_payload_session_mode(
+        payload,
+        session_mode=session_mode,
+        execution_policy=execution_policy,
+    )
+    write_json_atomic(path, updated)
+    return updated

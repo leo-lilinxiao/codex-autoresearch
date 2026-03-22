@@ -23,6 +23,7 @@ from autoresearch_helpers import (
     read_launch_manifest,
     resolve_state_path,
     resolve_state_path_for_log,
+    sync_state_session_mode,
     utc_now,
     write_json_atomic,
 )
@@ -362,8 +363,11 @@ def start_runtime(args: argparse.Namespace, *, runner_path: Path) -> dict[str, A
         raise AutoresearchError(f"Missing JSON file: {launch_path}")
 
     launch_manifest = read_launch_manifest(launch_path)
+    execution_policy = str(
+        launch_manifest.get("config", {}).get("execution_policy") or DEFAULT_EXECUTION_POLICY
+    )
     codex_args_for_execution_policy(
-        str(launch_manifest.get("config", {}).get("execution_policy") or DEFAULT_EXECUTION_POLICY),
+        execution_policy,
         extra_args=args.codex_arg,
     )
     preflight = evaluate_runtime_preflight(
@@ -375,6 +379,14 @@ def start_runtime(args: argparse.Namespace, *, runner_path: Path) -> dict[str, A
     )
     if preflight["decision"] == "block":
         raise AutoresearchError("Runtime preflight failed: " + "; ".join(preflight["blockers"]))
+
+    state_path = Path(launch_context["state_path"])
+    if state_path.exists():
+        sync_state_session_mode(
+            state_path,
+            session_mode="background",
+            execution_policy=execution_policy,
+        )
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_handle = log_path.open("a", encoding="utf-8")
@@ -540,6 +552,14 @@ def run_runtime(args: argparse.Namespace) -> int:
                 runtime_path=runtime_path,
                 launch_context=launch_context,
                 reason=preflight["reason"],
+            )
+
+        state_path = Path(launch_context["state_path"])
+        if state_path.exists():
+            sync_state_session_mode(
+                state_path,
+                session_mode="background",
+                execution_policy=execution_policy,
             )
 
         prompt_text = build_runtime_prompt(
