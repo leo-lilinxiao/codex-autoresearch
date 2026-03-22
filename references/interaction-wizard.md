@@ -20,7 +20,7 @@ When this file mentions `<skill-root>`, it means the directory containing the lo
 6. Up to 5 clarification rounds are allowed before launching. But never zero rounds.
 7. Present a structured confirmation summary before launching (see Confirmation Format below).
 8. The user should never see raw field names (Goal, Scope, Metric, Direction, Verify, Guard). Translate everything into natural conversation.
-9. After the user approves the summary, persist the confirmed launch manifest and start the runtime controller. Do not tell the user to switch to a different wrapper command.
+9. After the user approves the summary, follow the chosen run mode directly from the same skill entrypoint. Foreground stays in the current session; background persists the confirmed launch manifest and starts the runtime controller. Do not tell the user to switch to a different wrapper command.
 
 ## Clarification Protocol
 
@@ -66,7 +66,7 @@ Before launching, present a structured confirmation summary. The user should be 
 - Any other safety checks beyond tsc?
 
 **Next step**
-- Reply "go" to start the managed run, or tell me what to change.
+- Choose foreground or background, then reply "go" to start, or tell me what to change.
 ```
 
 #### Chinese Format
@@ -83,7 +83,7 @@ Before launching, present a structured confirmation summary. The user should be 
 - 除了 tsc 还有其他安全检查吗？
 
 **下一步**
-- 回复 "go" 启动托管运行，或告诉我要改什么。
+- 先选择 foreground 或 background，再回复 "go" 启动，或告诉我要改什么。
 ```
 
 #### Format Rules
@@ -100,9 +100,12 @@ The user replies "go", "start", "launch", or corrects something. No field names,
 
 When the user replies with launch approval (`go`, `start`, `launch`, or an equivalent clear confirmation):
 
-1. Persist the confirmed config to `autoresearch-launch.json`.
-2. Start the detached runtime controller.
-3. Report that the managed run has started and where the runtime/log artifacts live.
+1. Require an explicit run-mode choice: **foreground** or **background**.
+2. If the user chose **foreground**, keep the loop in the current Codex session:
+   - initialize `research-results.tsv` and `autoresearch-state.json`
+   - do not create `autoresearch-launch.json`, `autoresearch-runtime.json`, or `autoresearch-runtime.log`
+   - report that the foreground run has started in the current session
+3. If the user chose **background**, persist the confirmed config to `autoresearch-launch.json`, start the detached runtime controller, and report where the runtime/log artifacts live.
 4. Do not ask the user to rerun a shell wrapper command just to continue overnight.
 
 If the chosen path is **Fresh start** after recovery analysis, the handoff should be:
@@ -111,7 +114,7 @@ If the chosen path is **Fresh start** after recovery analysis, the handoff shoul
 python3 <skill-root>/scripts/autoresearch_runtime_ctl.py launch --fresh-start ...
 ```
 
-This archives prior persistent run-control artifacts to `.prev` before the new managed run begins, including `research-results.tsv`, `autoresearch-state.json`, `autoresearch-launch.json`, `autoresearch-runtime.json`, and `autoresearch-runtime.log`.
+This archives prior persistent run-control artifacts to `.prev` before the new background run begins, including `research-results.tsv`, `autoresearch-state.json`, `autoresearch-launch.json`, `autoresearch-runtime.json`, and `autoresearch-runtime.log`.
 
 ## Question Reference
 
@@ -139,6 +142,7 @@ Categorized questions for common autoresearch scenarios. Pick 1-3 that are actua
 
 ### Duration & Strategy
 
+- "Should this run stay in the current foreground session, or hand off to the background runtime after `go`?"
 - "Want me to run 10 iterations as a test, or let it go overnight?"
 - "Should this be an unattended run that keeps going until you interrupt it, or a bounded trial run?"
 - "Should I focus on quick wins first, or go straight for the biggest impact?"
@@ -235,7 +239,7 @@ Exec mode does NOT use the wizard. All fields must be provided at invocation tim
 
 ### Execution Policy
 
-- The launch manifest records an `execution_policy`.
+- Background launch manifests record an `execution_policy`.
 - This skill defaults that policy to `danger_full_access` so detached runtime sessions and controlled automation runs inherit full access by default.
 - Only switch to `workspace_write` when the user explicitly asks for a sandboxed run or when you intentionally want to reproduce sandbox-related blockers.
 

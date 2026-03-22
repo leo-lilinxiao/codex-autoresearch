@@ -72,16 +72,17 @@ Codex: I found 47 `any` occurrences across src/**/*.ts.
        - Verify: grep + tsc --noEmit as guard
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Run until all gone, or cap at N iterations?
 
-       Reply "go" to start, or tell me what to change.
+       Choose a run mode, then reply "go" to start, or tell me what to change.
 
        For truly unattended runs, launch Codex with approvals / sandbox settings
        that will not interrupt git commit or revert commands.
 
-You:   Go, run overnight.
+You:   Background, go. Run overnight.
 
-Codex: Starting -- baseline: 47. Iterating until interrupted.
+Codex: Starting background run -- baseline: 47. Detached runtime is now iterating.
 ```
 
 Each improvement stacks. Each failure reverts. Everything is logged.
@@ -105,80 +106,60 @@ Karpathy's autoresearch proved that a simple loop -- modify, verify, keep or dis
 ## Architecture
 
 ```
-              +---------------------+
-              |  Environment Probe  |  <-- Phase 0: detect CPU/GPU/RAM/toolchains
-              +---------+-----------+
-                        |
-              +---------v-----------+
-              |  Session Resume?    |  <-- check for prior run artifacts
-              +---------+-----------+
-                        |
-              +---------v-----------+
-              |   Read Context      |  <-- read scope + lessons file
-              +---------+-----------+
-                        |
-              +---------v-----------+
-              | Establish Baseline  |  <-- iteration #0
-              +---------+-----------+
-                        |
-         +--------------v--------------+
-         |                             |
-         |  +----------------------+   |
-         |  | Choose Hypothesis    |   |  <-- consult lessons + perspectives
-         |  | (or N for parallel)  |   |      filter by environment
-         |  +---------+------------+   |
-         |            |                |
-         |  +---------v------------+   |
-         |  | Make ONE Change      |   |
-         |  +---------+------------+   |
-         |            |                |
-         |  +---------v------------+   |
-         |  | git commit           |   |
-         |  +---------+------------+   |
-         |            |                |
-         |  +---------v------------+   |
-         |  | Run Verify + Guard   |   |
-         |  +---------+------------+   |
-         |            |                |
-         |        improved?            |
-         |       /         \           |
-         |     yes          no         |
-         |     /              \        |
-         |  +-v------+   +----v-----+ |
-         |  |  KEEP  |   | REVERT   | |
-         |  |+lesson |   +----+-----+ |
-         |  +--+-----+        |       |
-         |      \            /         |
-         |   +--v----------v---+      |
-         |   |   Log Result    |      |
-         |   +--------+--------+      |
-         |            |               |
-         |   +--------v--------+      |
-         |   |  Health Check   |      |  <-- disk, git, verify health
-         |   +--------+--------+      |
-         |            |               |
-         |     3+ discards?           |
-         |    /             \         |
-         |  no              yes       |
-         |  |          +----v-----+   |
-         |  |          | REFINE / |   |  <-- pivot-protocol escalation
-         |  |          | PIVOT    |   |
-         |  |          +----+-----+   |
-         |  |               |         |
-         +--+------+--------+         |
-         |         (repeat)           |
-         +----------------------------+
+              +----------------------+
+              |  Environment Probe   |  <-- detect CPU/GPU/RAM/toolchains
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              |   Session Resume?    |  <-- inspect prior results/state
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              |   Read Context       |  <-- scope + lessons + repo state
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              |   Wizard Confirm     |  <-- goal/metric/verify/guard
+              | + choose run mode    |      + foreground or background
+              +----------+-----------+
+                         |
+               +---------+---------+
+               |                   |
+     +---------v--------+  +-------v---------+
+     | Foreground run   |  | Background run  |
+     | current session  |  | launch manifest |
+     | no runtime files |  | + detached ctl  |
+     +---------+--------+  +-------+---------+
+               |                   |
+               +---------+---------+
+                         |
+              +----------v-----------+
+              |   Shared Loop Core   |
+              |  baseline -> change  |
+              |  -> verify/guard ->  |
+              |  keep/discard/log    |
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              |  Supervisor Outcome  |  <-- continue / stop / needs_human
+              +----------------------+
 ```
 
-The loop runs until interrupted (unbounded) or for exactly N iterations (bounded via `Iterations: N`).
+Foreground and background share the same experiment protocol. The difference is only where the loop executes: the current Codex session for foreground, or the detached runtime controller for background. Both run until interrupted (unbounded) or for exactly N iterations (bounded via `Iterations: N`).
 
 **In pseudocode:**
 
 ```
 PHASE 0: Probe environment, check for session resume
 PHASE 1: Read context + lessons file
+PHASE 2: Confirm config + choose foreground or background
 
-LOOP (forever or N times):
+IF foreground:
+  run the loop in the current Codex session
+ELSE background:
+  write autoresearch-launch.json and start the detached runtime
+
+SHARED LOOP (forever or N times):
   1. Review current state + git history + results log + lessons
   2. Pick ONE hypothesis (apply perspectives, filter by environment)
      -- or N hypotheses if parallel mode is active
@@ -229,7 +210,7 @@ Codex infers everything from your sentence and your repo. You never write config
 | Guard (optional) | Suggests if regression risk exists | npm test |
 
 Before starting, Codex always shows you what it found and asks you to confirm.
-One round of confirmation minimum, up to five if needed. Then you say "go" and walk away.
+One round of confirmation minimum, up to five if needed. Then you choose foreground or background and say "go". Foreground keeps iterating in the current session; background hands off to detached runtime so you can walk away.
 For truly unattended runs, start Codex CLI with approvals / sandbox settings that will not interrupt git commit or revert commands. In a disposable or otherwise trusted repo, giving Codex fuller permissions is the simplest option.
 
 ### Dual-gate verification
@@ -265,11 +246,14 @@ Codex: Found 47 `any` in src/**/*.ts.
        - Verify: grep count, Guard: tsc --noEmit
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Run until zero, or cap at N iterations?
 
-       Reply "go" to start.
+       Choose a run mode, then reply "go" to start.
 
-You:   Go, overnight.
+You:   Background, go. Overnight.
+
+Codex: Starting background run. Baseline first, then detached iterations.
 ```
 
 ### plan
@@ -327,12 +311,13 @@ Codex: I see 12 failures across tests/.
        - Current: 12 failures
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Should I also guard with ruff to avoid introducing lint issues?
        - Fix all 12, or focus on a specific module first?
 
-       Reply "go" to start.
+       Choose a run mode, then reply "go" to start.
 
-You:   Fix all, yes guard with ruff. Go.
+You:   Foreground. Fix all, yes guard with ruff. Go.
 ```
 
 ### security
@@ -359,7 +344,7 @@ You:   Report first, and yes cover auth too.
 
 Gated release verification. Auto-detects what you are shipping (PR, deployment, release).
 
-Internally, ship mode still derives a shipment scope, a readiness metric, and a mechanical verify command from the checklist before launch.
+Internally, ship mode still derives a shipment scope, a readiness metric, and a mechanical verify command from the checklist before the chosen run mode begins.
 
 ```
 You:   Ship it
@@ -371,12 +356,13 @@ Codex: Detected: PR to main with 3 commits.
        - Target: main branch
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Dry run first, or go live?
        - Post-ship monitoring? (5 min / 15 min / skip)
 
-       Reply with preference.
+       Choose a run mode and shipping preference.
 
-You:   Dry run first.
+You:   Foreground, dry run first.
 ```
 
 See [GUIDE.md](docs/GUIDE.md) for detailed usage and advanced options for each mode.
@@ -442,13 +428,13 @@ See `references/parallel-experiments-protocol.md`.
 
 ## Session Resume
 
-If Codex detects a prior interrupted managed run, it can resume from the last consistent state instead of starting over. The primary recovery source is `autoresearch-state.json`, a compact state snapshot atomically updated each iteration. The TSV results log serves as a cross-validation fallback. Direct detached-runtime resume requires an existing `autoresearch-launch.json`; if that confirmed launch state is missing, start a new run through the normal launch flow instead.
+If Codex detects a prior interrupted run, it can resume from the last consistent state instead of starting over. The primary recovery source is `autoresearch-state.json`, a compact state snapshot atomically updated each iteration. The TSV results log serves as a cross-validation fallback. Foreground resume uses `research-results.tsv` plus `autoresearch-state.json`. Background resume still requires an existing `autoresearch-launch.json`; if that confirmed launch state is missing, switch back to a fresh interactive launch flow.
 
 Recovery priority:
 
-1. **JSON + TSV summary consistent, launch manifest present:** resume immediately, skip wizard
+1. **JSON + TSV summary consistent:** resume immediately; background runs additionally require a confirmed launch manifest
 2. **JSON valid, helper reports mismatch:** mini-wizard (1 round) to re-confirm
-3. **JSON missing or corrupt, TSV exists:** helper reconstructs retained state for confirmation, then continue with a fresh launch manifest
+3. **JSON missing or corrupt, TSV exists:** helper reconstructs retained state for confirmation, then continue in the chosen mode
 4. **Neither exists:** fresh start (prior persistent run-control artifacts archived)
 
 See `references/session-resume-protocol.md`.
@@ -488,10 +474,10 @@ See `references/exec-workflow.md`.
 Every iteration is recorded in complementary artifacts:
 
 - **`research-results.tsv`** -- full audit trail, with one main row per iteration plus optional parallel worker rows
-- **`autoresearch-state.json`** -- compact state snapshot for fast session resume in interactive modes
-- **`autoresearch-launch.json`** -- confirmed launch manifest written after the user says `go`
-- **`autoresearch-runtime.json`** -- runtime control state (PID, status, last decision)
-- **`autoresearch-runtime.log`** -- detached runtime log for long runs
+- **`autoresearch-state.json`** -- compact state snapshot for fast foreground resume and shared retained-state recovery
+- **`autoresearch-launch.json`** -- confirmed launch manifest for background runs only
+- **`autoresearch-runtime.json`** -- background runtime control state (PID, status, last decision)
+- **`autoresearch-runtime.log`** -- background runtime log for long runs
 
 In `exec` mode, the state snapshot is scratch-only under `/tmp/codex-autoresearch-exec/...`. The exec workflow is responsible for removing that scratch JSON before exit, typically via `autoresearch_exec_state.py --cleanup`.
 
@@ -523,18 +509,20 @@ Stateful artifact updates are backed by bundled helper scripts. Call them via th
 
 Human-facing usage now has a single entrypoint: **`$codex-autoresearch`**.
 
-- First interactive run: describe the goal naturally, answer the confirmation questions, then reply `go`.
-- After `go`, Codex calls `autoresearch_runtime_ctl.py launch`, which atomically writes `autoresearch-launch.json` and starts the detached runtime controller.
+- First interactive run: describe the goal naturally, answer the confirmation questions, choose **foreground** or **background**, then reply `go`.
+- **Foreground** keeps the loop in the current Codex session. It writes `research-results.tsv`, `autoresearch-state.json`, and lessons, but does not create launch/runtime control files.
+- **Background** calls `autoresearch_runtime_ctl.py launch`, atomically writes `autoresearch-launch.json`, and starts the detached runtime controller.
+- Foreground and background share the same loop protocol, metric semantics, and repo/scope rules, but they are mutually exclusive for a given repo/run. Do not run both modes at the same time against the same primary repo artifacts.
 - Single-repo runs remain the default: the declared scope applies to the primary repo that owns the run-control artifacts.
-- For cross-repo experiments, the confirmed launch manifest can also declare companion repos, each with its own scope. Runtime preflight then checks git/worktree safety across all managed repos, while `research-results.tsv`, `autoresearch-state.json`, and runtime-control files remain anchored in the primary repo.
+- For cross-repo experiments, both modes can declare companion repos with their own scopes. `research-results.tsv` and `autoresearch-state.json` remain anchored in the primary repo, and background mode also keeps launch/runtime control files there.
 - In that model, the TSV `commit` column still tracks the primary repo commit, while `autoresearch-state.json` can carry per-repo commit provenance for companion repos.
 - Script-level entrypoints accept repeated `--companion-repo-scope PATH=SCOPE` flags when you need to seed that structure directly.
-- Each detached runtime cycle launches a non-interactive `codex exec` session with the runtime prompt fed on stdin, so it does not depend on the interactive TUI.
-- The managed runtime now records an explicit `execution_policy`. In this skill the default is `danger_full_access`, which means detached Codex sessions run with `--dangerously-bypass-approvals-and-sandbox` unless a caller explicitly opts into the sandboxed `workspace_write` path.
-- If the runtime cannot launch that `codex exec` session at all, it transitions to `needs_human` instead of silently falling back to an idle state.
-- If an explicit stop request cannot actually terminate the detached runner, the runtime also transitions to `needs_human` instead of pretending the run is fully stopped.
-- Before the detached runtime starts a session or relaunches one, it runs a script-level preflight: `autoresearch_health_check.py` for integrity checks and `autoresearch_commit_gate.py` for scope-aware git safety.
-- Later `status`, `stop`, or `resume` requests should still go through `$codex-autoresearch`; the skill uses `autoresearch_runtime_ctl.py` internally.
+- Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt fed on stdin, so it does not depend on the interactive TUI.
+- `execution_policy` applies only to paths that spawn nested Codex sessions: background managed runs and `exec`. In this skill the default is `danger_full_access`, which means detached Codex sessions run with `--dangerously-bypass-approvals-and-sandbox` unless a caller explicitly opts into the sandboxed `workspace_write` path.
+- If the background runtime cannot launch that `codex exec` session at all, it transitions to `needs_human` instead of silently falling back to an idle state.
+- If an explicit stop request cannot actually terminate the detached runner, the background runtime also transitions to `needs_human` instead of pretending the run is fully stopped.
+- Before the background runtime starts a session or relaunches one, it runs a script-level preflight: `autoresearch_health_check.py` for integrity checks and `autoresearch_commit_gate.py` for scope-aware git safety.
+- `status` and `stop` are background-only controls. Foreground runs stay in the current session and therefore do not use runtime controller artifacts.
 - `Mode: exec` remains the advanced / CI path for fully specified non-interactive runs.
 
 Advanced backend usage is available when you are scripting or debugging the runtime directly:
@@ -645,7 +633,7 @@ codex-autoresearch/
 
 **Works with any language?** Yes. The protocol is language-agnostic. Only the verify command is domain-specific.
 
-**How do I stop it?** Ask `$codex-autoresearch` to stop the current run, or call `python3 <skill-root>/scripts/autoresearch_runtime_ctl.py stop --repo <repo>` if you are automating the backend directly. `Iterations: N` and stop conditions still work too.
+**How do I stop it?** In foreground mode, interrupt the active Codex session. In background mode, ask `$codex-autoresearch` to stop the current run, or call `python3 <skill-root>/scripts/autoresearch_runtime_ctl.py stop --repo <repo>` if you are automating the backend directly. `Iterations: N` and stop conditions still work too.
 
 **Does security mode touch my code?** No. Read-only analysis. Tell Codex to "also fix critical findings" during setup to opt into remediation.
 
@@ -653,7 +641,7 @@ codex-autoresearch/
 
 **Does it learn across runs?** Yes. Lessons are extracted after each kept iteration, after each pivot, and at runtime completion when no recent lesson exists. The lessons file persists across sessions and is consulted at the start of the next run.
 
-**Can it resume after an interruption?** Yes, for managed runs that already have `autoresearch-launch.json`, `research-results.tsv`, and `autoresearch-state.json`. If the confirmed launch state is missing, start a new run through the normal launch flow.
+**Can it resume after an interruption?** Yes. Foreground runs resume from `research-results.tsv` plus `autoresearch-state.json`. Background runs also need an existing `autoresearch-launch.json`; if that confirmed launch state is missing, start a new background run through the normal launch flow instead.
 
 **Can it search the web?** Yes, when stuck after multiple strategy pivots. Web search results are treated as hypotheses and verified mechanically.
 

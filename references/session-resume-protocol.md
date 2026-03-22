@@ -9,16 +9,17 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
 ```json
 {
   "version": 1,
+  "session_mode": "foreground",
   "run_tag": "<run-tag>",
   "mode": "loop",
   "config": {
+    "session_mode": "foreground",
     "goal": "<goal text>",
     "scope": "<glob pattern>",
     "repos": [
       {"path": "/path/to/primary-repo", "scope": "src/**", "role": "primary"},
       {"path": "/path/to/companion-repo", "scope": "pkg/**", "role": "companion"}
     ],
-    "execution_policy": "danger_full_access",
     "metric": "<metric name>",
     "direction": "lower | higher",
     "verify": "<verify command>",
@@ -65,6 +66,8 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
 ```
 
 Write protocol: write to a uniquely named temporary file in the same directory, fsync, then rename to `autoresearch-state.json` (atomic). Never commit this file to git.
+
+`session_mode` distinguishes foreground runs from background managed runs. Foreground runs resume from `research-results.tsv` plus `autoresearch-state.json` alone. Background runs still require a confirmed `autoresearch-launch.json` in addition to results/state.
 
 `config.repos` is optional for older single-repo states. When present, it is the authoritative managed-repo list: one primary repo plus any companion repos, each with its own scope. `config.scope` remains the primary repo's scope for backward-compatible callers.
 
@@ -138,7 +141,7 @@ When the helper reports `full_resume`:
 4. Read the lessons file if present.
 5. Let the runtime preflight confirm that the configured verify command still resolves before continuing.
 6. If the current metric drifted, log a `drift` row and continue from the recalibrated state.
-7. Managed-runtime resume requires an existing `autoresearch-launch.json`. Runs that predate that manifest are no longer resumable under the detached runtime; start fresh through the single-entry launch flow instead of synthesizing compatibility artifacts.
+7. Background managed-runtime resume requires an existing `autoresearch-launch.json`. Foreground resume does not. Runs that predate that manifest are no longer resumable under the detached runtime; switch to a fresh background launch instead of synthesizing compatibility artifacts.
 
 ### Priority 2: Mini-Wizard
 
@@ -163,7 +166,7 @@ When JSON is missing or unusable but the helper reports `tsv_fallback`:
    python3 <skill-root>/scripts/autoresearch_resume_check.py --write-repaired-state
    ```
 3. Present one condensed confirmation block sourced from the reconstructed state.
-4. After confirmation, create a fresh launch manifest and continue from the next main iteration.
+4. After confirmation, continue from the next main iteration in the chosen mode. Background runs should create a fresh launch manifest at this point; foreground runs resume directly from results/state.
 5. Do not start the detached runtime directly from bare TSV fallback without a confirmed launch manifest.
 
 ### Priority 4: Fresh Start
@@ -215,9 +218,10 @@ Split the session when any of the following is true:
 
 The public human entry stays `$codex-autoresearch`.
 
-- New interactive run: answer the confirmation questions, then reply `go`.
-- After approval, Codex writes `autoresearch-launch.json` and starts the detached runtime controller automatically.
-- Later `status`, `stop`, and `resume` requests should still come through the same skill entrypoint.
+- New interactive run: answer the confirmation questions, choose foreground or background, then reply `go`.
+- Foreground stays in the current session and resumes from results/state.
+- Background writes `autoresearch-launch.json` and starts the detached runtime controller automatically.
+- Later `status` and `stop` requests are background-only, but should still come through the same skill entrypoint.
 
 Advanced backend commands are available when scripting or debugging the controller:
 

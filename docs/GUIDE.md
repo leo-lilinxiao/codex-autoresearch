@@ -45,10 +45,11 @@ Codex: I found 47 `any` occurrences across src/**/*.ts.
        - Verify: grep count, Guard: tsc --noEmit
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Run until all gone, or cap at N iterations?
        - Any other safety checks beyond tsc?
 
-       Reply "go" to start, or tell me what to change.
+       Choose a run mode, then reply "go" to start, or tell me what to change.
 ```
 
 The wizard runs for at most 5 rounds. It always asks at least one confirming question, even when it could infer everything.
@@ -57,7 +58,7 @@ For unattended runs, the wizard may also ask one safety question about rollback 
 
 ### Phase 2: Execution (fully autonomous)
 
-Once you say "go" (or "start", "launch", or any clear approval), the loop takes over. From this point on, Codex will never pause to ask you anything. If it hits ambiguity, it applies best practices and keeps going. You can walk away, go to sleep, or work on something else.
+Once you say "go" (or "start", "launch", or any clear approval), the chosen run mode takes over. From this point on, Codex will never pause to ask you anything. If it hits ambiguity, it applies best practices and keeps going. In foreground it continues in the current session; in background it hands off so you can walk away, go to sleep, or work on something else.
 For that to hold in practice, launch Codex CLI with approvals / sandbox settings that will not interrupt git commit or revert commands. In a disposable or otherwise trusted repo, giving Codex fuller permissions is the simplest option.
 
 The only things that stop the loop:
@@ -346,7 +347,7 @@ Reference: `references/security-workflow.md`
 
 Gated release verification. Auto-detects what you are shipping (PR, deployment, release) and generates a checklist.
 
-Under the hood, ship mode still resolves a shipment scope, a readiness metric, and a mechanical verify command before the managed runtime launches.
+Under the hood, ship mode still resolves a shipment scope, a readiness metric, and a mechanical verify command before the chosen interactive run mode begins.
 
 ```
 You:   $codex-autoresearch
@@ -522,8 +523,9 @@ If you interrupt a run and come back later, Codex can resume from where you left
 
 - It first validates `autoresearch-state.json`, the primary recovery source, against the retained-state summary reconstructed from `research-results.tsv`.
 - `autoresearch-lessons.md` is still read as context, but it is not the primary resume source.
-- Direct detached-runtime resume requires an existing `autoresearch-launch.json`.
-- If state is consistent and the launch manifest is present: resumes immediately, no wizard needed.
+- Foreground resume uses `research-results.tsv` plus `autoresearch-state.json`.
+- Direct detached-runtime resume still requires an existing `autoresearch-launch.json`.
+- If state is consistent: resumes immediately, no wizard needed. Background resume additionally requires the launch manifest.
 - If state is partially consistent: runs a mini-wizard (1 round) to re-confirm.
 - If state is inconsistent, the launch manifest is missing, or the goal has changed: starts fresh and archives the prior persistent run-control artifacts.
 
@@ -543,30 +545,33 @@ You do not need to do anything to enable this. It runs automatically as part of 
 
 If the context has been compacted twice or more, or the iteration counter reaches 40, the agent will proactively stop the loop and save a checkpoint. The results log will contain a `[SESSION-SPLIT]` entry with the reason. Simply re-invoke the skill to resume -- session resume picks up exactly where the split occurred.
 
-### Managed Runtime
+### Interactive Run Modes
 
 The public human workflow now stays on a single entrypoint: `$codex-autoresearch`.
 
 1. Start the skill and describe the goal naturally.
 2. Answer the confirmation questions.
-3. Reply `go`.
-4. Codex writes `autoresearch-launch.json` and starts the detached runtime controller automatically.
-5. Single-repo runs are still the default. In that case the declared scope applies only to the primary repo that owns the run-control artifacts.
-6. If the experiment spans multiple repos, the confirmed launch manifest can declare companion repos with their own scopes. The detached runtime still writes `research-results.tsv`, `autoresearch-state.json`, `autoresearch-launch.json`, and `autoresearch-runtime.json` in the primary repo, but preflight checks cover every managed repo.
+3. Choose **foreground** or **background**.
+4. Reply `go`.
+5. In **foreground**, Codex keeps the loop in the current session. Only `research-results.tsv`, `autoresearch-state.json`, and lessons are created.
+6. In **background**, Codex writes `autoresearch-launch.json` and starts the detached runtime controller automatically.
+   The two modes share the same loop protocol and repo/scope semantics, but they are mutually exclusive for a given repo/run. Do not keep both modes active against the same primary repo artifacts at once.
+7. Single-repo runs are still the default. In that case the declared scope applies only to the primary repo that owns the run-control artifacts.
+8. If the experiment spans multiple repos, either mode can declare companion repos with their own scopes. `research-results.tsv` and `autoresearch-state.json` stay anchored in the primary repo; background mode also keeps launch/runtime control files there.
    Script-level entrypoints represent this with repeated `--companion-repo-scope PATH=SCOPE` flags.
    The TSV `commit` column remains the primary repo commit; companion-repo commit provenance lives in `autoresearch-state.json`.
-7. Each detached runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
-   The launch manifest carries an `execution_policy`; this skill now defaults to `danger_full_access`, so detached sessions run with `--dangerously-bypass-approvals-and-sandbox` unless you explicitly opt back into the sandboxed `workspace_write` path.
-8. Before each detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
-9. If `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
-10. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.
+9. Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
+   Background launch manifests carry an `execution_policy`; this skill now defaults to `danger_full_access`, so detached sessions run with `--dangerously-bypass-approvals-and-sandbox` unless you explicitly opt back into the sandboxed `workspace_write` path.
+10. Before each background detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
+11. If background `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
+12. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.
 
-After that, the run continues through fresh Codex sessions in the background until a terminal condition, blocker, or explicit stop request.
+Foreground keeps iterating in the current session until a terminal condition, blocker, or interruption. Background continues through fresh Codex sessions in the background until a terminal condition, blocker, or explicit stop request.
 
 Use the same skill entry for follow-up control:
 
-- ask for status -> the skill reads the runtime controller state
-- ask to stop -> the skill stops the runtime controller
+- ask for status -> background mode only; the skill reads the runtime controller state
+- ask to stop -> background mode only; the skill stops the runtime controller
 - ask to resume -> the skill checks launch/runtime state and continues if safe
 
 Advanced backend commands are still available for scripting or debugging:
@@ -628,7 +633,7 @@ This should not happen after you say "go." If it does, report it as a bug. The t
 
 ### How do I see runtime status or stop a run?
 
-Use the same `$codex-autoresearch` entry and ask for status or stop. For backend automation, call `autoresearch_runtime_ctl.py status` or `autoresearch_runtime_ctl.py stop` directly. The interactive `go` handoff now goes through `autoresearch_runtime_ctl.py launch`.
+Use the same `$codex-autoresearch` entry and ask for status or stop, but note that these are background-run controls. Foreground runs stay in the active session and therefore do not use `autoresearch_runtime_ctl.py` status/stop files.
 
 ### The verify command fails on the first run
 
