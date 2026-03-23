@@ -105,18 +105,18 @@ These helper scripts live in the skill bundle. Do not confuse them with the targ
 Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`, so the exact command becomes `python3 .agents/skills/codex-autoresearch/scripts/...`.
 
 - `python3 <skill-root>/scripts/autoresearch_init_run.py ...`
-  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement. Interactive runs now record `session_mode` explicitly; foreground is the default, while background initialization should pass `--session-mode background`. `execution_policy` is only persisted for paths that actually spawn nested Codex sessions: background managed runs and exec. In exec mode it also archives the configured results log plus any repo-root `autoresearch-state.json` to `.prev`, clears stale default scratch state, and enforces the prelaunch commit gate. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to persist companion-repo baseline provenance in JSON state.
-- `python3 <skill-root>/scripts/autoresearch_set_session_mode.py ...`
+  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement. Interactive runs now record `session_mode` explicitly; foreground is the default, while background initialization should pass `--session-mode background`. `execution_policy` is only persisted for paths that actually spawn nested Codex sessions: background managed runs and exec. In exec mode it also archives the configured results log plus any repo-root `autoresearch-state.json` to `.prev` variants, clears stale default scratch state, and enforces the prelaunch commit gate. With the default repo-root filenames this means `research-results.prev.tsv` and `autoresearch-state.prev.json`; callers should let the helper perform that archival instead of manually renaming those files first. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to persist companion-repo baseline provenance in JSON state.
+- `python3 <skill-root>/scripts/autoresearch_set_session_mode.py --repo <repo> ...`
   Synchronizes an existing interactive run's shared JSON state to `foreground` or `background` before the next iteration. Use it when a stopped background run continues in foreground; background `start` performs the same sync automatically when it resumes existing results/state.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...`
   Appends one authoritative main iteration row and updates JSON state atomically. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to update companion-repo commit provenance while the TSV `commit` column continues to track the primary repo.
-- `python3 <skill-root>/scripts/autoresearch_resume_check.py ...`
+- `python3 <skill-root>/scripts/autoresearch_resume_check.py --repo <repo>`
   Reconstructs retained state from the TSV and decides `full_resume`, `mini_wizard`, `tsv_fallback`, or `fresh_start`.
 - `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py --batch-file ...`
   Logs worker rows, runs the batch-boundary health/worktree preflight, appends the main batch row, and updates JSON state once per batch. Worker batch items may include `repo_commits` for companion-repo provenance.
 - `python3 <skill-root>/scripts/autoresearch_exec_state.py`
   Prints the deterministic exec scratch-state path under `/tmp` and cleans it up on `--cleanup`.
-- `python3 <skill-root>/scripts/autoresearch_supervisor_status.py`
+- `python3 <skill-root>/scripts/autoresearch_supervisor_status.py --repo <repo>`
   Computes whether the runtime control plane should relaunch, stop, or ask for human help after a finished turn.
 
 In exec mode, the helper scripts keep JSON state in scratch storage by default instead of repo-root `autoresearch-state.json`. The exec workflow must clean that scratch state before exiting so exec persists only `research-results.tsv`.
@@ -149,4 +149,4 @@ In exec mode, the helper scripts keep JSON state in scratch storage by default i
 - **Multi-repo provenance:** when `state.last_repo_commits` or `state.last_trial_repo_commits` are present, they are auxiliary JSON-only provenance keyed by repo path. They are not reconstructed from the TSV and therefore do not participate in TSV/JSON consistency blocking.
 - **Parallel tolerance:** Worker rows (`5a`, `5b`, `5c`) are ignored for `state.iteration` matching. They provide audit detail only.
 
-During session resume, `python3 <skill-root>/scripts/autoresearch_resume_check.py` reconstructs the retained state from the TSV and compares it with `autoresearch-state.json`. Any mismatch triggers a mini-wizard rather than a silent full resume.
+During session resume, `python3 <skill-root>/scripts/autoresearch_resume_check.py --repo <repo>` reconstructs the retained state from the TSV and compares it with `autoresearch-state.json`. Any mismatch triggers a mini-wizard rather than a silent full resume.

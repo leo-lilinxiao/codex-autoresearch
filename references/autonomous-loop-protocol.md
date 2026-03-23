@@ -38,7 +38,7 @@ Before anything else, check for a prior interrupted run per `references/session-
 Use the launch gate first:
 
 ```bash
-python3 <skill-root>/scripts/autoresearch_launch_gate.py ...
+python3 <skill-root>/scripts/autoresearch_launch_gate.py --repo /path/to/repo
 ```
 
 1. Check for `autoresearch-state.json` first (primary recovery source), then `research-results.tsv`, `autoresearch-lessons.md`, and recent `experiment:` commits.

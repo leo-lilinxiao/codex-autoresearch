@@ -29,7 +29,7 @@ Run before each detached Codex session. In a runtime-managed loop, this means th
 | Disk space | `df -m . \| awk 'NR==2{print $4}'` >= 500MB | Warning at <1GB, hard blocker at <500MB |
 | Git state | For single-repo runs, `git status --porcelain` shows only expected files and autoresearch-owned artifacts. For multi-repo runs, apply the same check to the primary repo and every companion repo declared in the launch manifest. | Warning if unexpected files; hard blocker if repo is corrupt |
 | Verify command | Confirm the configured verify command still resolves to an executable | Hard blocker if the verify command is missing |
-| Log integrity | `python3 <skill-root>/scripts/autoresearch_resume_check.py` can reconstruct TSV state | Hard blocker if the TSV is corrupt |
+| Log integrity | `python3 <skill-root>/scripts/autoresearch_resume_check.py --repo <repo>` can reconstruct TSV state | Hard blocker if the TSV is corrupt |
 | JSON state integrity | Resume helper reports `full_resume` or a recoverable fallback | Warning on divergence; optionally rewrite state from TSV. Hard blocker if both TSV and JSON are unusable |
 
 ### Every 10 Iterations (Extended Review)

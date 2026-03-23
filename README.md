@@ -465,6 +465,8 @@ Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker.
 
 Before using `codex exec` in CI, configure Codex CLI authentication in advance. In controlled automation environments, prefer `codex exec --dangerously-bypass-approvals-and-sandbox ...` so standalone exec runs match the managed runtime's default `danger_full_access` policy. For programmatic runs, API key authentication is the preferred option.
 
+When the bundled helper scripts drive `Mode: exec`, let `autoresearch_init_run.py --mode exec ...` archive prior repo-root artifacts automatically. With the default filenames it rotates `research-results.tsv` to `research-results.prev.tsv` and `autoresearch-state.json` to `autoresearch-state.prev.json`; do not hand-rename those files first.
+
 See `references/exec-workflow.md`.
 
 ---
@@ -479,7 +481,7 @@ Every iteration is recorded in complementary artifacts:
 - **`autoresearch-runtime.json`** -- background runtime control state (PID, status, last decision)
 - **`autoresearch-runtime.log`** -- background runtime log for long runs
 
-In `exec` mode, the state snapshot is scratch-only under `/tmp/codex-autoresearch-exec/...`. The exec workflow is responsible for removing that scratch JSON before exit, typically via `autoresearch_exec_state.py --cleanup`.
+In `exec` mode, the state snapshot is scratch-only under `/tmp/codex-autoresearch-exec/...`. The exec workflow is responsible for removing that scratch JSON before exit, typically via `autoresearch_exec_state.py --cleanup`. The default helper flow also archives prior repo-root `research-results.tsv` and `autoresearch-state.json` to `research-results.prev.tsv` and `autoresearch-state.prev.json` automatically before the new exec run starts.
 
 ```
 iteration  commit   metric  delta   status    description
@@ -506,6 +508,16 @@ Stateful artifact updates are backed by bundled helper scripts. Call them via th
 - `python3 <skill-root>/scripts/autoresearch_decision.py`
 - `python3 <skill-root>/scripts/autoresearch_lessons.py`
 - `python3 <skill-root>/scripts/autoresearch_supervisor_status.py`
+
+Repo-managed control-plane helpers are repo-first by default. For example, prefer:
+
+- `python3 <skill-root>/scripts/autoresearch_resume_check.py --repo <repo>`
+- `python3 <skill-root>/scripts/autoresearch_launch_gate.py --repo <repo>`
+- `python3 <skill-root>/scripts/autoresearch_runtime_ctl.py status --repo <repo>`
+- `python3 <skill-root>/scripts/autoresearch_runtime_ctl.py stop --repo <repo>`
+
+`--results-path`, `--state-path`, `--launch-path`, and `--runtime-path` remain available as advanced overrides when you need non-standard artifact locations or repo-external scripting.
+The same repo-first convention also applies to `autoresearch_resume_prompt.py` and `autoresearch_supervisor_status.py` when you invoke those helpers directly.
 
 Human-facing usage now has a single entrypoint: **`$codex-autoresearch`**.
 

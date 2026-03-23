@@ -578,6 +578,10 @@ Use the same skill entry for follow-up control:
 Advanced backend commands are still available for scripting or debugging:
 
 ```bash
+python3 <skill-root>/scripts/autoresearch_resume_check.py --repo /path/to/repo
+python3 <skill-root>/scripts/autoresearch_launch_gate.py --repo /path/to/repo
+python3 <skill-root>/scripts/autoresearch_resume_prompt.py --repo /path/to/repo
+python3 <skill-root>/scripts/autoresearch_supervisor_status.py --repo /path/to/repo
 python3 <skill-root>/scripts/autoresearch_runtime_ctl.py status --repo /path/to/repo
 python3 <skill-root>/scripts/autoresearch_runtime_ctl.py stop --repo /path/to/repo
 ```
@@ -611,6 +615,8 @@ Non-interactive mode for automation pipelines. Differences from interactive mode
 - Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker
 
 Before using `codex exec` in CI, configure Codex CLI authentication in advance. In controlled automation environments, prefer `codex exec --dangerously-bypass-approvals-and-sandbox ...` so the verify command has the same full-access behavior as the managed runtime. For programmatic runs, API key authentication is the preferred option.
+
+When the bundled helper scripts drive `Mode: exec`, do not manually rename old repo-root artifacts first. `autoresearch_init_run.py --mode exec ...` already archives the default `research-results.tsv` and `autoresearch-state.json` files to `research-results.prev.tsv` and `autoresearch-state.prev.json` before it initializes the fresh run.
 
 See `references/exec-workflow.md` for full details and CI integration examples.
 

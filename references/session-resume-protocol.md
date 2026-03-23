@@ -96,7 +96,7 @@ If none of these signals are present, proceed with a fresh run (normal wizard fl
 Prefer the bundled helper script over ad hoc TSV/JSON parsing:
 
 ```bash
-python3 <skill-root>/scripts/autoresearch_resume_check.py
+python3 <skill-root>/scripts/autoresearch_resume_check.py --repo /path/to/repo
 ```
 
 Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`.
@@ -165,7 +165,7 @@ When JSON is missing or unusable but the helper reports `tsv_fallback`:
 1. Reconstruct retained state from integer main rows in `research-results.tsv`.
 2. If the user wants to resume, prefer:
    ```bash
-   python3 <skill-root>/scripts/autoresearch_resume_check.py --write-repaired-state
+   python3 <skill-root>/scripts/autoresearch_resume_check.py --repo /path/to/repo --write-repaired-state
    ```
 3. Present one condensed confirmation block sourced from the reconstructed state.
 4. After confirmation, continue from the next main iteration in the chosen mode. Background runs should create a fresh launch manifest at this point; foreground runs resume directly from results/state.
@@ -228,6 +228,10 @@ The public human entry stays `$codex-autoresearch`.
 Advanced backend commands are available when scripting or debugging the controller:
 
 ```bash
+python3 <skill-root>/scripts/autoresearch_resume_check.py --repo /path/to/repo
+python3 <skill-root>/scripts/autoresearch_launch_gate.py --repo /path/to/repo
+python3 <skill-root>/scripts/autoresearch_resume_prompt.py --repo /path/to/repo
+python3 <skill-root>/scripts/autoresearch_supervisor_status.py --repo /path/to/repo
 python3 <skill-root>/scripts/autoresearch_runtime_ctl.py status --repo /path/to/repo
 python3 <skill-root>/scripts/autoresearch_runtime_ctl.py stop --repo /path/to/repo
 ```

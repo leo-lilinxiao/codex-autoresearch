@@ -130,8 +130,8 @@ optimize:
 ## Artifact Handling
 
 Exec mode always starts fresh:
-- If the configured `results_path` already exists from a prior run, rename it to a `.prev` variant before writing the new log.
-- If repo-root `autoresearch-state.json` exists from a prior run, rename it to `autoresearch-state.prev.json`. Exec mode does not write or update this file (session resume is disabled).
+- If the configured `results_path` already exists from a prior run, archive it before writing the new log. With the default helper flow and default filename, this means `research-results.tsv -> research-results.prev.tsv`.
+- If repo-root `autoresearch-state.json` exists from a prior run, archive it to `autoresearch-state.prev.json`. Exec mode does not write or update this file (session resume is disabled).
 - If `autoresearch-lessons.md` exists, read it for hypothesis filtering but never modify it.
 - Do not revert prior experiment commits (assume external cleanup between CI runs).
 
@@ -139,6 +139,7 @@ When using the bundled helper scripts in exec mode:
 Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`.
 
 - `python3 <skill-root>/scripts/autoresearch_init_run.py --mode exec ...` defaults its JSON state to a deterministic scratch file under `/tmp/codex-autoresearch-exec/...`.
+- In that default helper flow, do not manually rename old `research-results.tsv` or `autoresearch-state.json` first. `autoresearch_init_run.py` already archives them to the canonical `research-results.prev.tsv` and `autoresearch-state.prev.json` names before it starts fresh.
 - The initialized `research-results.tsv` header includes `# mode: exec`, so `autoresearch_resume_check.py` can rediscover the matching scratch state without a manual `--state-path`.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...` and `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py ...` automatically reuse that scratch state when the repo-root JSON file is absent.
 - Before exiting, run `python3 <skill-root>/scripts/autoresearch_exec_state.py --cleanup` so exec mode leaves only `research-results.tsv` as its persistent run artifact.
@@ -151,7 +152,7 @@ Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the co
 - No launch question: do not ask for "go" or any extra confirmation; the prompt/env config is the approval.
 - No web search: CI environments should not make unexpected network calls.
 - No parallel: CI resource limits are unpredictable; use serial mode only.
-- No session resume: every CI run starts fresh. Rename the configured prior results log to `.prev` if it exists, and archive any repo-root `autoresearch-state.json`.
+- No session resume: every CI run starts fresh. When using the default helper flow, let `autoresearch_init_run.py --mode exec ...` perform the archival automatically instead of hand-renaming repo-root artifacts.
 - Dirty worktree: `autoresearch_init_run.py` runs the prelaunch commit gate in exec mode. If `git status --porcelain` shows anything beyond autoresearch-owned artifacts before launch, it emits a blocker and exits with code 2 instead of asking.
 - Lessons: read `autoresearch-lessons.md` if it exists in the repo (useful for persistent learning across CI runs), but **never create or modify it** during exec mode -- not even after keep or pivot decisions. Exec mode is read-only for lessons.
 
