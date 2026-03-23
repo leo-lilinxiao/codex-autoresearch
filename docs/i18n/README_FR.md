@@ -540,7 +540,7 @@ Les commandes directes de pilotage restent disponibles pour le scripting ou le d
 | Effets de bord externes | Le mode `ship` exige une confirmation explicite pendant l'assistant de pre-lancement |
 | Limites de l'environnement | Detection au demarrage ; les hypotheses irrealisables sont filtrees automatiquement |
 | Session interrompue | Reprise a partir du dernier etat coherent lors de la prochaine invocation |
-| Derive du contexte (longues executions) | Verification d'empreinte du protocole toutes les 10 iterations ; relecture depuis le disque en cas d'echec ; division de session apres 2 compactions |
+| Derive du contexte (longues executions) | Verification d'empreinte du protocole toutes les 10 iterations ; verification plus frequente apres compaction ; relecture depuis le disque en cas d'echec |
 
 ---
 

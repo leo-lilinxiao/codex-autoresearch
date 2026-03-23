@@ -18,7 +18,6 @@ All modes share these status values (see `references/results-logging.md` for ful
 | `pivot` | Strategy abandoned, fundamentally new approach |
 | `search` | Web search performed for external knowledge |
 | `drift` | Metric drifted from expected value during session resume |
-| `split` | Session split triggered to prevent context drift in long runs |
 
 ## Common Response Sections
 

@@ -46,7 +46,7 @@ iteration	commit	metric	delta	guard	status	description
 | Column | Meaning |
 |--------|---------|
 | `iteration` | Integer main iteration counter starting at `0` for the baseline. Parallel worker detail rows use suffix notation (`5a`, `5b`, `5c`) |
-| `commit` | Short hash for the kept or attempted commit. Use `-` only for meta rows that did not test a committed trial (for example `pivot`, `search`, `split`, or a strategy-only `refine`) |
+| `commit` | Short hash for the kept or attempted commit. Use `-` only for meta rows that did not test a committed trial (for example `pivot`, `search`, or a strategy-only `refine`) |
 | `metric` | Parsed metric value for that row's attempt or recalibration |
 | `delta` | `metric - retained_metric_before_row` |
 | `guard` | `pass`, `fail`, or `-` |
@@ -69,7 +69,6 @@ For multi-repo runs, the TSV `commit` column still records the **primary repo** 
 | `pivot` | Strategy abandoned, fundamentally new approach (see `pivot-protocol.md`) |
 | `search` | Web search performed for external knowledge (see `web-search-protocol.md`) |
 | `drift` | Metric drifted from expected value during session resume |
-| `split` | Session split triggered to prevent context drift in long runs |
 
 ## Example
 

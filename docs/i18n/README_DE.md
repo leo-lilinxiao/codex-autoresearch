@@ -553,7 +553,7 @@ Direkte Steuerbefehle bleiben fuer Skripting oder das Debugging der Laufzeit ver
 | Externe Seiteneffekte | Der Modus `ship` erfordert explizite Bestaetigung waehrend des Pre-Launch-Assistenten |
 | Umgebungslimits | Werden beim Start ermittelt; undurchfuehrbare Hypothesen werden automatisch gefiltert |
 | Unterbrochene Sitzung | Wiederaufnahme vom letzten konsistenten Zustand bei naechstem Aufruf |
-| Kontextdrift (Langzeitlaufe) | Protokoll-Fingerprint-Check alle 10 Iterationen; bei Fehlschlag vom Datentrager neu lesen; Session-Split nach 2 Kompaktierungen |
+| Kontextdrift (Langzeitlaufe) | Protokoll-Fingerprint-Check alle 10 Iterationen; nach Kompaktierungen haeufiger pruefen; bei Fehlschlag vom Datentrager neu lesen |
 
 ---
 

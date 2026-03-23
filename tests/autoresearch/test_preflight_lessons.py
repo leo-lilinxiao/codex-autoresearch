@@ -776,7 +776,6 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                             "crashes": 0,
                             "no_ops": 0,
                             "blocked": 0,
-                            "splits": 0,
                             "consecutive_discards": 0,
                             "pivot_count": 0,
                             "last_status": "baseline",

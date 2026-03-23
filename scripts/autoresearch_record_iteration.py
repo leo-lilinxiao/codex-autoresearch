@@ -23,7 +23,7 @@ from autoresearch_helpers import (
 from autoresearch_lessons import append_iteration_lesson, lessons_path_from_results
 
 
-STATUSES = ["keep", "discard", "crash", "no-op", "blocked", "drift", "refine", "pivot", "search", "split"]
+STATUSES = ["keep", "discard", "crash", "no-op", "blocked", "drift", "refine", "pivot", "search"]
 
 
 def build_parser() -> argparse.ArgumentParser:

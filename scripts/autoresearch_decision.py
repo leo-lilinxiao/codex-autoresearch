@@ -16,7 +16,7 @@ from autoresearch_helpers import (
 )
 
 
-STATUSES = ["keep", "discard", "crash", "no-op", "blocked", "drift", "refine", "pivot", "search", "split"]
+STATUSES = ["keep", "discard", "crash", "no-op", "blocked", "drift", "refine", "pivot", "search"]
 TRIAL_COMMIT_STATUSES = {"keep", "discard", "crash"}
 
 
@@ -125,9 +125,6 @@ def apply_status_transition(
             state["best_iteration"] = next_iteration
     elif status == "pivot":
         state["pivot_count"] = state.get("pivot_count", 0) + 1
-    elif status == "split":
-        state["splits"] = state.get("splits", 0) + 1
-
     rewritten_summary = {
         "iteration": state["iteration"],
         "baseline_metric": parse_decimal(state["baseline_metric"], "baseline_metric"),
@@ -142,7 +139,6 @@ def apply_status_transition(
         "crashes": state["crashes"],
         "no_ops": state.get("no_ops", 0),
         "blocked": state.get("blocked", 0),
-        "splits": state.get("splits", 0),
         "consecutive_discards": state["consecutive_discards"],
         "pivot_count": state["pivot_count"],
         "last_status": state["last_status"],

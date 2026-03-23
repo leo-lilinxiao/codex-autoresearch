@@ -242,10 +242,6 @@ def determine_base_decision(
         )
         return STOP, "iteration_cap_reached", "terminal", reasons
 
-    if last_status == "split":
-        reasons.append("Last recorded status is split; restart is the expected continuation path.")
-        return RELAUNCH, "session_split", "session_split", reasons
-
     reasons.append(
         f"Last recorded status is {last_status!r}; the loop remains resumable and should continue in a fresh Codex session."
     )

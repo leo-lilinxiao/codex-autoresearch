@@ -456,8 +456,8 @@ Track the number of context compaction events observed during the session:
 
 - **0 compactions (default):** Fingerprint check every 10 iterations.
 - **1 compaction:** Fingerprint check every 5 iterations.
-- **2 compactions:** Recommend session split (see `references/session-resume-protocol.md` Session Splitting). Continue if the operator has not set up auto-restart.
-- **3+ compactions:** Soft blocker. Run the fingerprint check every iteration. Strongly recommend session split.
+- **2 compactions:** Run the fingerprint check every iteration until stability returns. Re-read protocol files immediately on any failure.
+- **3+ compactions:** Soft drift warning. Keep the loop running, run the fingerprint check every iteration, and re-anchor from disk on any failure.
 
 ## Progress Reporting
 

@@ -540,7 +540,7 @@ Os comandos diretos de controle continuam disponiveis para scripting ou depuraca
 | Efeitos colaterais externos | O modo `ship` requer confirmacao explicita durante o assistente de pre-lancamento |
 | Limites do ambiente | Detectados na inicializacao; hipoteses inviaveis sao filtradas automaticamente |
 | Sessao interrompida | Retomada do ultimo estado consistente na proxima invocacao |
-| Deriva de contexto (execucoes longas) | Verificacao de impressao digital do protocolo a cada 10 iteracoes; releitura do disco em caso de falha; divisao de sessao apos 2 compactacoes |
+| Deriva de contexto (execucoes longas) | Verificacao de impressao digital do protocolo a cada 10 iteracoes; aumentar a frequencia apos compaction; releitura do disco em caso de falha |
 
 ---
 

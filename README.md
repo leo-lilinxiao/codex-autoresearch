@@ -548,7 +548,7 @@ Advanced backend usage is available when you are scripting or debugging the runt
 | External side effects | `ship` mode requires explicit confirmation during the pre-launch wizard |
 | Environment limits | Probed at startup; infeasible hypotheses filtered automatically |
 | Interrupted session | Resume from last consistent state on next invocation |
-| Context drift (long runs) | Protocol Fingerprint Check every 10 iterations; re-read from disk on failure; session split after 2 compactions |
+| Context drift (long runs) | Protocol Fingerprint Check every 10 iterations; increase check frequency after compaction; re-read from disk on failure |
 
 ---
 

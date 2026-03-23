@@ -46,7 +46,6 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
     "crashes": 1,
     "no_ops": 0,
     "blocked": 0,
-    "splits": 0,
     "consecutive_discards": 2,
     "pivot_count": 0,
     "last_status": "discard"
@@ -55,7 +54,7 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
     "recommended_action": "relaunch | stop | needs_human",
     "should_continue": true,
     "terminal_reason": "none | blocked | iteration_cap_reached | ...",
-    "last_exit_kind": "turn_complete | session_split | terminal | ...",
+    "last_exit_kind": "turn_complete | terminal | ...",
     "last_turn_finished_at": "2026-03-19T08:20:10Z",
     "restart_count": 3,
     "stagnation_count": 0
@@ -191,49 +190,6 @@ If `research-results.tsv` is missing a baseline row, has a broken header, or con
 ### Different Goal
 
 If the recovered config clearly belongs to a different goal than the current request, start fresh and archive the old run-control artifacts to `.prev` through `autoresearch_runtime_ctl.py launch --fresh-start ...`.
-
-## Session Splitting
-
-Long-running sessions accumulate context that may be compacted by the CLI, causing protocol drift. Session splitting is a controlled shutdown that preserves all state for automatic resumption in a fresh session.
-
-### When to Split
-
-Split the session when any of the following is true:
-
-- Context compaction has occurred 2 or more times in the current session
-- The iteration counter has reached 40 or higher
-- The Protocol Fingerprint Check (Phase 8.7) has failed 3 or more times in the current session
-- 10 or more iterations have passed since the last compaction with no improvement in fingerprint check reliability
-
-### How to Split
-
-1. Confirm that `autoresearch-state.json`, `research-results.tsv`, and `autoresearch-lessons.md` are consistent and up to date.
-2. Log a TSV row with status `split` and description `[SESSION-SPLIT] <reason>` (e.g., `[SESSION-SPLIT] compaction count 2, iteration 42`).
-3. Print a completion summary that includes:
-   - Current iteration, retained metric, best metric
-   - Reason for splitting
-   - Instructions: "Re-invoke the skill to resume automatically."
-4. Stop the loop. Do not continue iterating.
-
-### Operator Guidance
-
-The public human entry stays `$codex-autoresearch`.
-
-- New interactive run: answer the confirmation questions, choose foreground or background, then reply `go`.
-- Foreground stays in the current session and resumes from results/state.
-- Background writes `autoresearch-launch.json` and starts the detached runtime controller automatically.
-- Later `status` and `stop` requests are background-only, but should still come through the same skill entrypoint.
-
-Advanced backend commands are available when scripting or debugging the controller:
-
-```bash
-python3 <skill-root>/scripts/autoresearch_resume_check.py --repo /path/to/repo
-python3 <skill-root>/scripts/autoresearch_launch_gate.py --repo /path/to/repo
-python3 <skill-root>/scripts/autoresearch_resume_prompt.py --repo /path/to/repo
-python3 <skill-root>/scripts/autoresearch_supervisor_status.py --repo /path/to/repo
-python3 <skill-root>/scripts/autoresearch_runtime_ctl.py status --repo /path/to/repo
-python3 <skill-root>/scripts/autoresearch_runtime_ctl.py stop --repo /path/to/repo
-```
 
 
 ## Integration Points

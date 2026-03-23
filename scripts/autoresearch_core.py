@@ -48,7 +48,6 @@ MAIN_STATUSES = {
     "pivot",
     "refine",
     "search",
-    "split",
 }
 REQUIRED_STATE_FIELDS = {
     "iteration",
@@ -64,7 +63,6 @@ REQUIRED_STATE_FIELDS = {
     "crashes",
     "no_ops",
     "blocked",
-    "splits",
     "consecutive_discards",
     "pivot_count",
     "last_status",
