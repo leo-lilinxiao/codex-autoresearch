@@ -173,7 +173,7 @@ BOUCLE PARTAGEE (infini ou N fois) :
   7. Journaliser le resultat
   8. Controle de sante (disque, git, sante de la verification)
   9. 3+ rejets consecutifs -> REFINE ; 5+ -> PIVOT ; 2 PIVOTs -> recherche web
-  10. Repeter. Ne jamais s'arreter. Ne jamais demander.
+  10. Repeter jusqu'a la condition d'arret, un arret manuel, `needs_human` ou la limite d'iterations configuree.
 ```
 
 ---
@@ -215,6 +215,7 @@ Codex infere tout a partir de votre phrase et de votre depot. Vous n'ecrivez jam
 Avant de demarrer, Codex vous montre toujours ce qu'il a trouve et demande confirmation.
 Un minimum d'un echange, jusqu'a cinq si necessaire. Ensuite vous choisissez `foreground` ou `background` puis vous dites "go". En `foreground`, l'iteration reste dans la session actuelle ; en `background`, elle est confiee au runtime detache pour que vous puissiez partir.
 Pour un vrai fonctionnement sans surveillance, lancez Codex CLI avec des reglages d'approbation / sandbox qui n'interrompront pas `git commit` ou `git revert`. Dans un depot jetable ou autrement fiable, donner plus de permissions a Codex est l'option la plus simple.
+Si votre objectif comporte une contrainte structurelle en plus d'un seuil numerique, Codex peut aussi conditionner l'arret a des labels structures. Par exemple : "arrete-toi seulement lorsque la latence <= 120 ms et que le keep retenu porte les labels `production-path` et `real-backend`." Cela evite de s'arreter sur un meilleur resultat numerique obtenu par le mauvais mecanisme, sous-systeme ou chemin d'implementation.
 
 ### Verification a double porte
 
@@ -357,12 +358,13 @@ Codex: Detecte : PR vers main avec 3 commits.
        - Cible : branche main
 
        A confirmer :
+       - Mode d'execution : foreground ou background ?
        - Simulation d'abord, ou publication directe ?
        - Surveillance post-deploiement ? (5 min / 15 min / aucune)
 
-       Repondez avec votre preference.
+       Choisissez un mode d'execution puis repondez avec votre preference.
 
-Vous:  Simulation d'abord.
+Vous:  Foreground, simulation d'abord.
 ```
 
 Voir [GUIDE.md](../GUIDE.md) pour l'utilisation detaillee et les options avancees de chaque mode.

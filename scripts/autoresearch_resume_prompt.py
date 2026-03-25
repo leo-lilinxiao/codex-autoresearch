@@ -23,6 +23,7 @@ OPTIONAL_CONFIG_FIELDS = (
     ("guard", "Guard"),
     ("iterations", "Iterations"),
     ("stop_condition", "Stop condition"),
+    ("required_stop_labels", "Required stop labels"),
     ("rollback_policy", "Rollback policy"),
     ("parallel_mode", "Parallel mode"),
     ("web_search", "Web search"),

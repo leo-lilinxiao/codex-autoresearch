@@ -628,6 +628,148 @@ class AutoresearchSupervisorLaunchTest(AutoresearchScriptsTestBase):
             self.assertEqual(status["decision"], "stop")
             self.assertEqual(status["reason"], "goal_reached")
 
+    def test_supervisor_status_does_not_stop_without_required_stop_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "research-results.tsv"
+            state_path = tmpdir / "autoresearch-state.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Improve MFU through PTO-ISA shmem",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "mfu",
+                "--direction",
+                "higher",
+                "--verify",
+                "python eval.py",
+                "--baseline-metric",
+                "52",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline mfu",
+                "--stop-condition",
+                "stop when metric reaches 55",
+                "--required-stop-label",
+                "pto-isa",
+                "--required-stop-label",
+                "shmem",
+            )
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "55",
+                "--commit",
+                "keep055",
+                "--guard",
+                "pass",
+                "--label",
+                "pto-isa",
+                "--description",
+                "improved MFU but not through the full PTO-ISA shmem path",
+            )
+
+            status = self.run_script(
+                "autoresearch_supervisor_status.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--after-run",
+            )
+            self.assertEqual(status["decision"], "relaunch")
+            self.assertEqual(status["reason"], "none")
+            self.assertTrue(
+                any("required stop labels" in reason for reason in status["reasons"])
+            )
+
+    def test_supervisor_status_stops_when_required_stop_labels_are_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "research-results.tsv"
+            state_path = tmpdir / "autoresearch-state.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Improve MFU through PTO-ISA shmem",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "mfu",
+                "--direction",
+                "higher",
+                "--verify",
+                "python eval.py",
+                "--baseline-metric",
+                "52",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline mfu",
+                "--stop-condition",
+                "stop when metric reaches 55",
+                "--required-stop-label",
+                "pto-isa",
+                "--required-stop-label",
+                "shmem",
+            )
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "55",
+                "--commit",
+                "keep055",
+                "--guard",
+                "pass",
+                "--label",
+                "pto-isa",
+                "--label",
+                "shmem",
+                "--description",
+                "improved MFU through the PTO-ISA shmem path",
+            )
+
+            status = self.run_script(
+                "autoresearch_supervisor_status.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--after-run",
+            )
+            self.assertEqual(status["decision"], "stop")
+            self.assertEqual(status["reason"], "goal_reached")
+            self.assertTrue(any("retained labels" in reason for reason in status["reasons"]))
+
     def test_supervisor_status_detects_stagnation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

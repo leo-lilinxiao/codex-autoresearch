@@ -173,7 +173,7 @@ BUCLE COMPARTIDO (para siempre o N veces):
   7. Registrar el resultado
   8. Health check (disco, git, salud de verificacion)
   9. Si 3+ descartes -> REFINE; 5+ -> PIVOT; 2 PIVOTs -> busqueda web
-  10. Repetir. Nunca parar. Nunca preguntar.
+  10. Repetir hasta alcanzar la condicion de parada, una detencion manual, `needs_human` o el limite de iteraciones configurado.
 ```
 
 ---
@@ -215,6 +215,7 @@ Codex infiere todo a partir de tu frase y tu repositorio. Nunca escribes configu
 Antes de empezar, Codex siempre te muestra lo que encontro y pide confirmacion.
 Minimo una ronda de confirmacion, hasta cinco si es necesario. Luego eliges `foreground` o `background` y dices "go". En `foreground`, la iteracion sigue en la sesion actual; en `background`, se entrega al runtime desacoplado para que puedas irte.
 Para ejecuciones realmente desatendidas, inicia Codex CLI con ajustes de aprobacion / sandbox que no interrumpan `git commit` ni `git revert`. En un repositorio desechable o de confianza, dar a Codex permisos mas amplios es la opcion mas simple.
+Si tu objetivo tiene una condicion estructural ademas de un umbral numerico, Codex tambien puede condicionar la parada con labels estructurados. Por ejemplo: "detente solo cuando la latencia <= 120 ms y el resultado retenido tenga los labels `production-path` y `real-backend`." Esto evita detenerse por una mejora numerica que venga del mecanismo, subsistema o camino de implementacion equivocado.
 
 ### Verificacion de doble puerta
 
@@ -357,12 +358,13 @@ Codex: Detectado: PR a main con 3 commits.
        - Destino: rama main
 
        Necesito confirmar:
+       - Modo de ejecucion: foreground o background?
        - Primero un ensayo o directamente en vivo?
        - Monitoreo post-lanzamiento? (5 min / 15 min / omitir)
 
-       Dime tu preferencia.
+       Elige un modo de ejecucion y luego dime tu preferencia.
 
-Tu:    Primero un ensayo.
+Tu:    Foreground, primero un ensayo.
 ```
 
 Consulta [GUIDE.md](../GUIDE.md) para uso detallado y opciones avanzadas de cada modo.

@@ -40,7 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-file",
         required=True,
-        help="JSON array of worker results. Each item needs worker_id, description, and optionally commit, repo_commits, metric, guard, status, diff_size.",
+        help=(
+            "JSON array of worker results. Each item needs worker_id, description, "
+            "and optionally commit, repo_commits, labels, metric, guard, status, diff_size."
+        ),
     )
     return parser
 
@@ -139,6 +142,7 @@ def main() -> int:
                 "worker_id": worker_id,
                 "commit": commit,
                 "repo_commits": normalize_repo_commit_map(item.get("repo_commits")),
+                "labels": item.get("labels", []),
                 "metric": metric,
                 "guard": guard,
                 "description": description,
@@ -215,6 +219,7 @@ def main() -> int:
         main_description = (
             f"[PARALLEL batch] selected worker-{winner['worker_id']}: {winner['description']}"
         )
+        main_labels = winner.get("labels", [])
         last_trial_commit = winner_commit
         last_trial_repo_commits = repo_commit_map_for_targets(
             repo_targets=repo_targets,
@@ -234,6 +239,7 @@ def main() -> int:
             f"best discarded worker-{best_completed_record['worker_id']}: "
             f"{best_completed_record['description']}"
         )
+        main_labels = best_completed_record.get("labels", [])
         last_trial_commit = str(best_completed_record["commit"])
         last_trial_repo_commits = repo_commit_map_for_targets(
             repo_targets=repo_targets,
@@ -246,6 +252,7 @@ def main() -> int:
             or payload["state"].get("last_repo_commits"),
         )
     else:
+        main_labels = []
         last_trial_repo_commits = normalize_repo_commit_map(
             payload["state"].get("last_trial_repo_commits")
             or payload["state"].get("last_repo_commits")
@@ -266,6 +273,7 @@ def main() -> int:
                 guard=str(record["guard"]),
                 status=row_status,
                 description=f"[PARALLEL worker-{record['worker_id']}] {record['description']}",
+                labels=record.get("labels", []),
             )
         )
 
@@ -277,6 +285,7 @@ def main() -> int:
         guard=main_guard,
         status=main_status,
         description=main_description,
+        labels=main_labels,
     )
     append_rows(results_path, worker_rows + [main_row])
 
@@ -289,13 +298,14 @@ def main() -> int:
         direction=direction,
         next_iteration=next_iteration,
         repo_commit_map=last_trial_repo_commits,
+        labels=main_labels,
     )
     write_json_atomic(state_path, final_payload)
     append_iteration_lesson(
         lessons_path=lessons_path_from_results(results_path),
         state_payload=final_payload,
         status=main_status,
-        description=main_description,
+        description=main_row["description"],
         iteration=next_iteration,
     )
 
@@ -306,6 +316,7 @@ def main() -> int:
                 "selected_worker": None if winner is None else winner["worker_id"],
                 "status": main_status,
                 "retained_metric": final_payload["state"]["current_metric"],
+                "retained_labels": final_payload["state"].get("current_labels", []),
                 "batch_file": str(args.batch_file),
                 "message": f"Parallel batch recorded at iteration {next_iteration}.",
             },

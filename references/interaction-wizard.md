@@ -62,6 +62,7 @@ Before launching, present a structured confirmation summary. The user should be 
 - Metric: `any` occurrence count (current: 47), direction: lower
 - Verify: `grep -r ":\s*any" src/ --include="*.ts" | wc -l`
 - Guard: `tsc --noEmit` must still pass
+- Required stop labels: `production-path`, `real-backend` (when structural success criteria matter)
 
 **Need to confirm**
 - Run until all gone, or cap at N iterations?
@@ -79,6 +80,7 @@ Before launching, present a structured confirmation summary. The user should be 
 - 指标：any 出现次数（当前 47），方向：降低
 - 验证：`grep -r ":\s*any" src/ --include="*.ts" | wc -l`
 - 守护：`tsc --noEmit` 必须继续通过
+- 必需停止标签：`production-path`、`real-backend`（仅在存在结构性成功条件时展示）
 
 **还需确认**
 - 跑到全部消除，还是限制在 N 次迭代？
@@ -96,6 +98,7 @@ Before launching, present a structured confirmation summary. The user should be 
 4. The "Need to confirm" section should only contain genuine blockers, not padding.
 5. End with a clear call to action.
 6. If run mode is still undecided, list it under "Need to confirm" and then ask the user to choose foreground or background. Do not omit the summary just because run mode is the only remaining blocker.
+7. Only show "Required stop labels" when the goal truly has a structural success requirement in addition to the numeric target.
 
 The user replies "go", "start", "launch", or corrects something. No field names, no YAML, no structured input required.
 
@@ -135,6 +138,7 @@ Categorized questions for common autoresearch scenarios. Pick 1-3 that are actua
 - "What's your target -- 80%? 90%? Or just push as high as I can?"
 - "I see MFU is logged in the training output. Are we targeting a specific number, or just higher-is-better?"
 - "The verify command currently measures response time. Should I track p50, p95, or p99?"
+- "If I hit the target with the wrong mechanism or path, should I keep going? I can require structured stop labels so the run only stops when the retained keep matches the mechanism you care about, for example `production-path`, `root-cause`, or `real-backend`."
 
 ### Verification & Guard
 
@@ -197,6 +201,7 @@ The wizard internally maps the conversation to these fields (the user never sees
 - Verify -- Codex proposes a command based on repo tooling
 - Guard (optional) -- Codex suggests if there's a regression risk
 - Iterations (optional) -- asked only if user wants bounded run
+- Required stop labels (optional) -- ask only when the run should stop on a specific mechanism, path, backend, or root-cause signal in addition to the metric target
 - Rollback (optional) -- ask only if destructive rollback may be needed for unattended execution; otherwise default to non-destructive revert
 - Parallel (optional) -- ask if environment supports it (CPU >= 4, RAM >= 8GB)
 - Web search (optional) -- ask if user wants web search when stuck
@@ -276,9 +281,10 @@ When `session-resume-protocol.md` detects a prior run with a valid `autoresearch
    - **Resume:** use the JSON `config` as the authoritative source. Briefly confirm scope, metric, and verify command in a single confirmation block.
    - **Fresh start:** archive old artifacts with `.prev` suffixes and proceed with the full wizard.
 3. If the user chooses to resume, present a condensed confirmation summary (same format as Step 3 above but sourced from JSON `config` instead of repo scanning).
-4. The user replies "go" and the loop starts immediately:
-   - if they chose resume, call `autoresearch_runtime_ctl.py launch ...`
-   - if they chose fresh start, call `autoresearch_runtime_ctl.py launch --fresh-start ...`
+4. The user replies "go" and the loop starts immediately in the chosen run mode:
+   - foreground resume continues directly from `research-results.tsv` + `autoresearch-state.json`
+   - background resume launches through `autoresearch_runtime_ctl.py launch ...`
+   - fresh-start background handoff uses `autoresearch_runtime_ctl.py launch --fresh-start ...`
    No further rounds.
 
 The mini-wizard respects the same two-phase boundary: all questions happen before launch.

@@ -1,8 +1,8 @@
 interface:
   display_name: "Codex Autoresearch"
-  short_description: "Single-entry runtime-managed experimentation"
+  short_description: "Single-entry autonomous experimentation with foreground or background runs"
   brand_color: "#2563EB"
-  default_prompt: "Use $codex-autoresearch as the single human entrypoint: infer a goal, metric, scope, and verify/guard commands for this repo, confirm once, then launch the runtime-managed loop. Reuse the same skill for status, stop, or resume requests."
+  default_prompt: "Use $codex-autoresearch as the single human entrypoint: infer a goal, metric, scope, verify/guard commands, and any structural stop labels this repo needs, confirm once, then launch either a foreground or background run. Reuse the same skill for status, stop, or resume requests."
 
 policy:
   allow_implicit_invocation: true

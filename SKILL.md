@@ -64,7 +64,7 @@ Optional but recommended:
 - `Run tag`
 - `Stop condition`
 
-If required fields are missing, use the wizard contract in `references/interaction-wizard.md`.
+For every new interactive run, use the wizard contract in `references/interaction-wizard.md`.
 
 ## Explicit Run Modes
 

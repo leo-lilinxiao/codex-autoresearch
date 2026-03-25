@@ -18,6 +18,7 @@ from autoresearch_helpers import (
     find_repo_root,
     format_decimal,
     make_row,
+    normalize_labels,
     parse_decimal,
     resolve_state_path,
     serialize_repo_targets,
@@ -73,6 +74,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-tag")
     parser.add_argument("--stop-condition")
     parser.add_argument("--rollback-policy")
+    parser.add_argument(
+        "--required-stop-label",
+        action="append",
+        default=[],
+        help=(
+            "Require retained keep labels before stop_condition can mechanically stop the run. "
+            "May be repeated."
+        ),
+    )
     parser.add_argument("--parallel-mode", choices=["serial", "parallel"], default="serial")
     parser.add_argument("--web-search", choices=["enabled", "disabled"], default="disabled")
     parser.add_argument("--environment-summary")
@@ -153,6 +163,7 @@ def main() -> int:
         guard="-",
         status="baseline",
         description=args.baseline_description,
+        labels=[],
     )
     write_results_log(results_path, comments, [baseline_row])
 
@@ -178,6 +189,9 @@ def main() -> int:
         config["session_mode"] = session_mode
     if args.mode == "exec" or session_mode == "background":
         config["execution_policy"] = args.execution_policy
+    required_stop_labels = normalize_labels(args.required_stop_label)
+    if required_stop_labels:
+        config["required_stop_labels"] = required_stop_labels
     summary = {
         "iteration": 0,
         "baseline_metric": baseline_metric,
@@ -187,6 +201,8 @@ def main() -> int:
         "last_commit": args.baseline_commit,
         "last_trial_commit": args.baseline_commit,
         "last_trial_metric": baseline_metric,
+        "current_labels": [],
+        "last_trial_labels": [],
         "keeps": 0,
         "discards": 0,
         "crashes": 0,

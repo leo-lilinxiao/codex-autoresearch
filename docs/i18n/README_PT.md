@@ -173,7 +173,7 @@ LOOP COMPARTILHADO (para sempre ou N vezes):
   7. Registrar o resultado
   8. Health check (disco, git, saude da verificacao)
   9. Se 3+ descartes -> REFINE; 5+ -> PIVOT; 2 PIVOTs -> busca web
-  10. Repetir. Nunca parar. Nunca perguntar.
+  10. Repetir ate a condicao de parada, uma parada manual, `needs_human` ou o limite de iteracoes configurado.
 ```
 
 ---
@@ -215,6 +215,7 @@ O Codex infere tudo a partir da sua frase e do seu repositorio. Voce nunca escre
 Antes de comecar, o Codex sempre mostra o que encontrou e pede confirmacao.
 Minimo uma rodada de confirmacao, ate cinco se necessario. Depois voce escolhe `foreground` ou `background` e diz "go". Em `foreground`, a iteracao continua na sessao atual; em `background`, ela e entregue ao runtime desacoplado para que voce possa se afastar.
 Para execucoes realmente sem supervisao, inicie o Codex CLI com configuracoes de aprovacao / sandbox que nao interrompam `git commit` nem `git revert`. Em um repositorio descartavel ou confiavel, dar permissoes mais amplas ao Codex e a opcao mais simples.
+Se o seu objetivo tiver uma exigencia estrutural alem de um limite numerico, o Codex tambem pode condicionar a parada a labels estruturados. Por exemplo: "pare somente quando a latencia <= 120 ms e o keep retido estiver marcado com `production-path` e `real-backend`." Isso evita parar por uma melhora numerica que veio do mecanismo, subsistema ou caminho de implementacao errado.
 
 ### Verificacao de duplo portao
 
@@ -357,12 +358,13 @@ Codex: Detectado: PR para main com 3 commits.
        - Destino: branch main
 
        Preciso confirmar:
+       - Modo de execucao: foreground ou background?
        - Primeiro um ensaio ou direto em producao?
        - Monitoramento pos-lancamento? (5 min / 15 min / pular)
 
-       Me diga sua preferencia.
+       Escolha um modo de execucao e depois me diga sua preferencia.
 
-Voce:  Primeiro um ensaio.
+Voce:  Foreground, primeiro um ensaio.
 ```
 
 Consulte [GUIDE.md](../GUIDE.md) para uso detalhado e opcoes avancadas de cada modo.

@@ -72,13 +72,14 @@ Codex: 47 `any`-Vorkommen in src/**/*.ts gefunden.
        - Verifikation: grep-Zaehlung + tsc --noEmit als Schutz
 
        Zu bestaetigen:
+       - Laufmodus: foreground oder background?
        - Bis auf null laufen lassen, oder auf N Iterationen begrenzen?
 
-       Antworten Sie "go" zum Starten, oder sagen Sie mir, was geaendert werden soll.
+       Waehlen Sie zuerst einen Laufmodus und antworten Sie dann mit "go", oder sagen Sie mir, was geaendert werden soll.
 
-Du:    Go, lass es die ganze Nacht laufen.
+Du:    Background, go. Lass es die ganze Nacht laufen.
 
-Codex: Start -- Ausgangswert: 47. Iteration bis zur Unterbrechung.
+Codex: Starte den background-Lauf -- Ausgangswert: 47. Der losgeloeste Runtime-Controller iteriert jetzt weiter.
 ```
 
 Jede Verbesserung akkumuliert sich. Jeder Fehlschlag wird zurueckgesetzt. Alles wird protokolliert.
@@ -101,92 +102,76 @@ Karpathys autoresearch hat bewiesen, dass eine einfache Schleife -- aendern, ver
 
 ## Architektur
 
+Die folgende Grafik zeigt zuerst den interaktiven Startfluss und danach den gemeinsamen Schleifenkern. Bevor die Schleife beginnt, sondiert Codex die Umgebung, prueft, ob eine wiederaufnehmbare Sitzung existiert, bestaetigt die Konfiguration und verlangt eine explizite Wahl zwischen `foreground` und `background`.
+
 ```
-              +---------------------+
-              | Umgebungserkennung  |  <-- Phase 0: CPU/GPU/RAM/Toolchains erkennen
-              +---------+-----------+
-                        |
-              +---------v-----------+
-              | Sitzung fortsetzen? |  <-- auf fruehere Laufartefakte pruefen
-              +---------+-----------+
-                        |
-              +---------v-----------+
-              |   Kontext lesen     |  <-- Scope + Erkenntnisdatei lesen
-              +---------+-----------+
-                        |
-              +---------v-----------+
-              |Ausgangswert festlegen| <-- iteration #0
-              +---------+-----------+
-                        |
-         +--------------v--------------+
-         |                             |
-         |  +----------------------+   |
-         |  | Hypothese waehlen    |   |  <-- Erkenntnisse + Perspektiven heranziehen
-         |  | (oder N parallel)    |   |      nach Umgebung filtern
-         |  +---------+------------+   |
-         |            |                |
-         |  +---------v------------+   |
-         |  |EINE Aenderung vornehmen| |
-         |  +---------+------------+   |
-         |            |                |
-         |  +---------v------------+   |
-         |  | git commit           |   |
-         |  +---------+------------+   |
-         |            |                |
-         |  +---------v------------+   |
-         |  | Run Verify + Guard   |   |
-         |  +---------+------------+   |
-         |            |                |
-         |        verbessert?          |
-         |       /         \           |
-         |     yes          no         |
-         |     /              \        |
-         |  +-v------+   +----v-----+ |
-         |  |  KEEP  |   | REVERT   | |
-         |  |+lesson |   +----+-----+ |
-         |  +--+-----+        |       |
-         |      \            /         |
-         |   +--v----------v---+      |
-         |   |Ergebnis protokollieren| |
-         |   +--------+--------+      |
-         |            |               |
-         |   +--------v--------+      |
-         |   |  Health Check   |      |  <-- Speicher, git, Verifikationsgesundheit
-         |   +--------+--------+      |
-         |            |               |
-         |     3+ Verwerfungen?       |
-         |    /             \         |
-         |  no              yes       |
-         |  |          +----v-----+   |
-         |  |          | REFINE / |   |  <-- Pivot-Protokoll-Eskalation
-         |  |          | PIVOT    |   |
-         |  |          +----+-----+   |
-         |  |               |         |
-         +--+------+--------+         |
-         |         (wiederholen)      |
-         +----------------------------+
+              +----------------------+
+              | Umgebungserkennung   |  <-- CPU/GPU/RAM/Toolchains erkennen
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              | Sitzung fortsetzen?  |  <-- bestehende Ergebnisse/Zustaende pruefen
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              | Kontext lesen        |  <-- Scope + Erkenntnisse + Repo-Zustand
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              | Wizard bestaetigen   |  <-- Ziel/Metrik/Verify/Guard
+              | + Ausfuehrungsmodus  |      + foreground oder background
+              +----------+-----------+
+                         |
+               +---------+---------+
+               |                   |
+     +---------v--------+  +-------v---------+
+     | Foreground-Lauf  |  | Background-Lauf |
+     | aktuelle Sitzung |  | Launch-Manifest |
+     | ohne Runtime-    |  | + detached ctl  |
+     | Dateien          |  |                 |
+     +---------+--------+  +-------+---------+
+               |                   |
+               +---------+---------+
+                         |
+              +----------v-----------+
+              | Gemeinsamer          |
+              | Schleifenkern        |
+              | baseline -> change   |
+              | -> verify/guard ->   |
+              | keep/discard/log     |
+              +----------+-----------+
+                         |
+              +----------v-----------+
+              | Supervisor-Ergebnis  |  <-- continue / stop / needs_human
+              +----------------------+
 ```
 
-Die Schleife laeuft bis zur Unterbrechung (unbegrenzt) oder fuer genau N Iterationen (begrenzt durch `Iterations: N`).
+Foreground und background teilen sich dasselbe Experimentprotokoll. Der einzige Unterschied ist, wo die Schleife ausgefuehrt wird: in der aktuellen Codex-Sitzung fuer foreground oder im detached runtime controller fuer background. Beide laufen bis zur Unterbrechung (unbegrenzt) oder fuer genau N Iterationen (begrenzt durch `Iterations: N`).
 
 **Pseudocode:**
 
 ```
 PHASE 0: Umgebung pruefen, auf Sitzungswiederaufnahme pruefen
 PHASE 1: Kontext + Erkenntnisdatei einlesen
+PHASE 2: Konfiguration bestaetigen + foreground oder background waehlen
 
-LOOP (endlos oder N-mal):
+IF foreground:
+  die Schleife in der aktuellen Codex-Sitzung ausfuehren
+ELSE background:
+  autoresearch-launch.json schreiben und den detached runtime starten
+
+GEMEINSAME SCHLEIFE (endlos oder N-mal):
   1. Aktuellen Zustand + git-Historie + Ergebnisprotokoll + Erkenntnisse ueberpruefen
   2. EINE Hypothese waehlen (Perspektiven anwenden, nach Umgebung filtern)
      -- oder N Hypothesen im parallelen Modus
   3. EINE atomare Aenderung durchfuehren
   4. git commit (vor der Verifikation)
   5. Mechanische Verifikation + Guard ausfuehren
-  6. Verbessert -> behalten (Erkenntnis extrahieren). Verschlechtert -> git reset. Abgestuerzt -> reparieren oder ueberspringen.
+  6. Verbessert -> behalten (Erkenntnis extrahieren). Verschlechtert -> genehmigte Rollback-Strategie. Abgestuerzt -> reparieren oder ueberspringen.
   7. Ergebnis protokollieren
   8. Health Check (Speicherplatz, git, Verifikationsgesundheit)
   9. Bei 3+ Verwerfungen -> REFINE; 5+ -> PIVOT; 2 PIVOTs -> Websuche
-  10. Wiederholen. Nie anhalten. Nie fragen.
+  10. Wiederholen, bis die Stop-Bedingung, ein manueller Stopp, needs_human oder das konfigurierte Iterationslimit erreicht ist.
 ```
 
 ---
@@ -228,6 +213,7 @@ Codex leitet alles aus Ihrem Satz und Ihrem Repository ab. Sie schreiben keine K
 Vor dem Start zeigt Codex Ihnen immer, was es gefunden hat, und bittet um Bestaetigung.
 Mindestens eine Runde Bestaetigung, bis zu fuenf bei Bedarf. Danach waehlen Sie `foreground` oder `background` und sagen "go". In `foreground` laeuft die Iteration in der aktuellen Sitzung weiter; in `background` wird sie an den losgeloesten Runtime-Controller uebergeben, sodass Sie sich zuruecklehnen koennen.
 Fuer wirklich unbeaufsichtigte Laeufe sollten Sie Codex CLI mit Freigabe-/Sandbox-Einstellungen starten, die `git commit` oder `git revert` nicht unterbrechen. In einem wegwerfbaren oder anderweitig vertrauenswuerdigen Repository ist es am einfachsten, Codex weitergehende Berechtigungen zu geben.
+Wenn Ihr Ziel neben einem Metrikschwellenwert auch eine strukturelle Anforderung hat, kann Codex das Stoppen auch an strukturierten Labels festmachen. Zum Beispiel: "erst stoppen, wenn die Latenz <= 120 ms ist und der beibehaltene Keep mit `production-path` und `real-backend` markiert ist." So wird vermieden, dass ein numerisch besseres Ergebnis aus dem falschen Mechanismus, Subsystem oder Implementierungspfad den Lauf zu frueh beendet.
 
 ### Doppelte Verifikation
 
@@ -370,12 +356,13 @@ Codex: Erkannt: PR nach main mit 3 Commits.
        - Ziel: main-Branch
 
        Zu bestaetigen:
+       - Laufmodus: foreground oder background?
        - Erst Probelauf, oder direkt live?
        - Ueberwachung nach Veroeffentlichung? (5 Min / 15 Min / keine)
 
-       Antworten Sie mit Ihrer Praeferenz.
+       Waehlen Sie zuerst einen Laufmodus und antworten Sie dann mit Ihrer Praeferenz.
 
-Du:    Erst Probelauf.
+Du:    Foreground, erst Probelauf.
 ```
 
 Siehe [GUIDE.md](../GUIDE.md) fuer detaillierte Nutzung und erweiterte Optionen jedes Modus.

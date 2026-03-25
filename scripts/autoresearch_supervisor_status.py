@@ -12,6 +12,7 @@ from autoresearch_helpers import (
     AutoresearchError,
     compare_summary_to_state,
     decimal_to_json_number,
+    normalize_labels,
     parse_decimal,
     parse_results_log,
     read_state_payload,
@@ -103,6 +104,7 @@ def progress_signature(payload: dict[str, Any]) -> str:
         "last_status": state.get("last_status"),
         "last_trial_commit": state.get("last_trial_commit"),
         "last_trial_metric": state.get("last_trial_metric"),
+        "last_trial_labels": normalize_labels(state.get("last_trial_labels", [])),
     }
     return json.dumps(signature, sort_keys=True, separators=(",", ":"))
 
@@ -191,7 +193,43 @@ def parse_stop_condition_rule(
     return None
 
 
-def goal_reached_reason(payload: dict[str, Any], current_metric: Decimal) -> str | None:
+def stop_condition_gate_gap_reason(
+    payload: dict[str, Any],
+    current_metric: Decimal,
+    retained_labels: list[str],
+) -> str | None:
+    config = payload.get("config", {})
+    direction = config.get("direction")
+    stop_condition = config.get("stop_condition")
+    if not stop_condition:
+        return None
+
+    rule = parse_stop_condition_rule(str(stop_condition), direction)
+    if rule is None:
+        return None
+
+    operator, target, description = rule
+    if not compare_metric(current_metric, target, operator):
+        return None
+
+    required_labels = normalize_labels(config.get("required_stop_labels", []))
+    if not required_labels:
+        return None
+
+    missing = [label for label in required_labels if label not in retained_labels]
+    if not missing:
+        return None
+    retained_text = ", ".join(retained_labels) if retained_labels else "<none>"
+    return (
+        f"Numeric stop condition is satisfied ({description}), but retained labels "
+        f"[{retained_text}] do not cover required stop labels {required_labels}; "
+        f"missing {missing}."
+    )
+
+
+def goal_reached_reason(
+    payload: dict[str, Any], current_metric: Decimal, retained_labels: list[str]
+) -> str | None:
     config = payload.get("config", {})
     direction = config.get("direction")
     if payload.get("mode") == "fix":
@@ -208,12 +246,21 @@ def goal_reached_reason(payload: dict[str, Any], current_metric: Decimal) -> str
 
     operator, target, description = rule
     if compare_metric(current_metric, target, operator):
+        required_labels = normalize_labels(config.get("required_stop_labels", []))
+        if required_labels:
+            missing = [label for label in required_labels if label not in retained_labels]
+            if missing:
+                return None
+            return (
+                f"Configured stop condition is satisfied ({description}) and retained labels "
+                f"{required_labels} are present."
+            )
         return f"Configured stop condition is satisfied ({description})."
     return None
 
 
 def determine_base_decision(
-    payload: dict[str, Any], current_metric: object
+    payload: dict[str, Any], current_metric: object, retained_labels: list[str]
 ) -> tuple[str, str, str, list[str]]:
     reasons: list[str] = []
     mode = payload.get("mode")
@@ -227,10 +274,13 @@ def determine_base_decision(
         reasons.append("Exec mode is one-shot and should not be relaunched automatically.")
         return STOP, "exec_mode_completed", "exec_complete", reasons
 
-    goal_reason = goal_reached_reason(payload, current_metric)
+    goal_reason = goal_reached_reason(payload, current_metric, retained_labels)
     if goal_reason is not None:
         reasons.append(goal_reason)
         return STOP, "goal_reached", "terminal", reasons
+    gate_gap_reason = stop_condition_gate_gap_reason(payload, current_metric, retained_labels)
+    if gate_gap_reason is not None:
+        reasons.append(gate_gap_reason)
 
     if last_status == "blocked":
         reasons.append("Last recorded status is blocked; unattended relaunch would likely spin without progress.")
@@ -323,7 +373,9 @@ def evaluate_supervisor_status(
         ]
     else:
         decision, reason, exit_kind, reasons = determine_base_decision(
-            payload, reconstructed["current_metric"]
+            payload,
+            reconstructed["current_metric"],
+            reconstructed.get("current_labels", []),
         )
 
     if decision == RELAUNCH and stagnation_count >= max_stagnation:

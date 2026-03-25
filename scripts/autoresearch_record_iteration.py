@@ -44,6 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--guard", default="-")
     parser.add_argument("--description", required=True)
     parser.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="Attach structured labels/tags to this iteration for stop gating and audit. May be repeated.",
+    )
+    parser.add_argument(
         "--repo-commit",
         action="append",
         default=[],
@@ -90,6 +96,7 @@ def main() -> int:
         guard=args.guard,
         status=args.status,
         description=args.description,
+        labels=args.label,
     )
     append_rows(results_path, [new_row])
 
@@ -110,6 +117,7 @@ def main() -> int:
         direction=direction,
         next_iteration=next_iteration,
         repo_commit_map=repo_commit_map,
+        labels=args.label,
     )
     write_json_atomic(state_path, final_payload)
 
@@ -117,7 +125,7 @@ def main() -> int:
         lessons_path=lessons_path_from_results(results_path),
         state_payload=final_payload,
         status=args.status,
-        description=args.description,
+        description=new_row["description"],
         iteration=next_iteration,
     )
 
@@ -128,6 +136,8 @@ def main() -> int:
                 "status": args.status,
                 "retained_metric": final_payload["state"]["current_metric"],
                 "trial_metric": final_payload["state"]["last_trial_metric"],
+                "trial_labels": final_payload["state"].get("last_trial_labels", []),
+                "retained_labels": final_payload["state"].get("current_labels", []),
                 "trial_repo_commits": final_payload["state"].get("last_trial_repo_commits", {}),
                 "results_path": str(results_path),
                 "state_path": str(state_path),

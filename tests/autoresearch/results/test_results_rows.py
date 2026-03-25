@@ -103,6 +103,151 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
             self.assertFalse((tmpdir / "autoresearch-runtime.json").exists())
             self.assertFalse((tmpdir / "autoresearch-runtime.log").exists())
 
+    def test_required_stop_labels_and_iteration_labels_are_persisted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "research-results.tsv"
+            state_path = tmpdir / "autoresearch-state.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Improve throughput with PTO-ISA",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "mfu",
+                "--direction",
+                "higher",
+                "--verify",
+                "python3 -c pass",
+                "--stop-condition",
+                "stop when metric reaches 55",
+                "--required-stop-label",
+                "pto-isa",
+                "--required-stop-label",
+                "shmem",
+                "--baseline-metric",
+                "52",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline mfu",
+            )
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "54",
+                "--commit",
+                "b2c3d4e",
+                "--guard",
+                "pass",
+                "--label",
+                "pto-isa",
+                "--label",
+                "shmem",
+                "--description",
+                "fused training path improved overlap",
+            )
+
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["config"]["required_stop_labels"], ["pto-isa", "shmem"])
+            self.assertEqual(state["state"]["current_labels"], ["pto-isa", "shmem"])
+            self.assertEqual(state["state"]["last_trial_labels"], ["pto-isa", "shmem"])
+            log_text = results_path.read_text(encoding="utf-8")
+            self.assertIn(
+                "[labels: pto-isa, shmem] fused training path improved overlap",
+                log_text,
+            )
+
+    def test_tsv_reconstruction_preserves_structured_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "research-results.tsv"
+            state_path = tmpdir / "autoresearch-state.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Improve latency through the production path",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "latency ms",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--stop-condition",
+                "stop when metric reaches 120",
+                "--required-stop-label",
+                "production-path",
+                "--required-stop-label",
+                "real-backend",
+                "--baseline-metric",
+                "150",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline latency",
+            )
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "119",
+                "--commit",
+                "b2c3d4e",
+                "--guard",
+                "pass",
+                "--label",
+                "production-path",
+                "--label",
+                "real-backend",
+                "--description",
+                "optimized the retained production path",
+            )
+
+            state_path.unlink()
+
+            resume = self.run_script(
+                "autoresearch_resume_check.py",
+                "--results-path",
+                str(results_path),
+            )
+            self.assertEqual(resume["decision"], "tsv_fallback")
+            self.assertEqual(
+                resume["tsv_summary"]["current_labels"],
+                ["production-path", "real-backend"],
+            )
+            self.assertEqual(
+                resume["tsv_summary"]["last_trial_labels"],
+                ["production-path", "real-backend"],
+            )
+
     def test_resume_check_accepts_repo_as_primary_entrypoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

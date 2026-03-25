@@ -11,6 +11,7 @@ from autoresearch_helpers import (
     clone_state_payload,
     decimal_to_json_number,
     improvement,
+    normalize_labels,
     normalize_repo_commit_map,
     parse_decimal,
 )
@@ -67,10 +68,12 @@ def apply_status_transition(
     direction: str,
     next_iteration: int,
     repo_commit_map: dict[str, str] | None = None,
+    labels: list[str] | None = None,
 ) -> dict[str, Any]:
     new_payload = clone_state_payload(payload)
     state = new_payload["state"]
     metric_decimal = parse_decimal(metric, "metric")
+    normalized_labels = normalize_labels(labels)
     existing_retained_repo_commits = normalize_repo_commit_map(state.get("last_repo_commits"))
     existing_trial_repo_commits = normalize_repo_commit_map(state.get("last_trial_repo_commits"))
     incoming_repo_commits = normalize_repo_commit_map(repo_commit_map or {})
@@ -80,6 +83,7 @@ def apply_status_transition(
     state["last_status"] = status
     state["last_trial_commit"] = commit
     state["last_trial_metric"] = decimal_to_json_number(metric_decimal)
+    state["last_trial_labels"] = list(normalized_labels)
     if trial_repo_commits:
         state["last_trial_repo_commits"] = dict(trial_repo_commits)
     else:
@@ -88,6 +92,7 @@ def apply_status_transition(
     if status == "keep":
         state["keeps"] = state.get("keeps", 0) + 1
         state["current_metric"] = decimal_to_json_number(metric_decimal)
+        state["current_labels"] = list(normalized_labels)
         state["last_commit"] = commit
         if trial_repo_commits:
             state["last_repo_commits"] = dict(trial_repo_commits)
@@ -112,6 +117,8 @@ def apply_status_transition(
         state["blocked"] = state.get("blocked", 0) + 1
     elif status == "drift":
         state["current_metric"] = decimal_to_json_number(metric_decimal)
+        if normalized_labels:
+            state["current_labels"] = list(normalized_labels)
         if commit != "-":
             state["last_commit"] = commit
             if trial_repo_commits:
@@ -134,6 +141,8 @@ def apply_status_transition(
         "last_commit": state["last_commit"],
         "last_trial_commit": state["last_trial_commit"],
         "last_trial_metric": parse_decimal(state["last_trial_metric"], "last_trial_metric"),
+        "current_labels": list(normalize_labels(state.get("current_labels", []))),
+        "last_trial_labels": list(normalize_labels(state.get("last_trial_labels", []))),
         "keeps": state["keeps"],
         "discards": state["discards"],
         "crashes": state["crashes"],

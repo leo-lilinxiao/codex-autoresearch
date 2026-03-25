@@ -55,6 +55,15 @@ def add_manifest_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--iterations", type=int)
     parser.add_argument("--run-tag")
     parser.add_argument("--stop-condition")
+    parser.add_argument(
+        "--required-stop-label",
+        action="append",
+        default=[],
+        help=(
+            "Require retained keep labels before stop_condition can mechanically stop the run. "
+            "May be repeated."
+        ),
+    )
     parser.add_argument("--rollback-policy")
     parser.add_argument("--parallel-mode", choices=["serial", "parallel"], default="serial")
     parser.add_argument("--web-search", choices=["enabled", "disabled"], default="disabled")

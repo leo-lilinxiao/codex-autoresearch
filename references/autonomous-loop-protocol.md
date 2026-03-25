@@ -23,9 +23,10 @@ Optional:
 - `Iterations`
 - `Run tag`
 - `Stop condition`
+- `Required stop labels` (when the goal has a structural or causal success requirement, not just a numeric threshold)
 - `Rollback policy` (required before launch if destructive rollback may be used)
 
-If any required input is missing, use the wizard contract from `references/interaction-wizard.md` to scan the repo and clarify with the user.
+For every new interactive loop, use the wizard contract from `references/interaction-wizard.md` to scan the repo, clarify with the user, and confirm the launch-ready config before the loop begins.
 
 ## Phase 0: Preconditions
 

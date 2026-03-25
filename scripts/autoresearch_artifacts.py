@@ -17,10 +17,13 @@ from autoresearch_core import (
     LogRow,
     ParsedLog,
     decimal_to_json_number,
+    format_description_with_labels,
     format_decimal,
     format_delta,
     improvement,
+    normalize_labels,
     parse_decimal,
+    split_labels_from_description,
     utc_now,
     REQUIRED_STATE_FIELDS,
 )
@@ -172,6 +175,7 @@ def parse_results_log(path: Path) -> ParsedLog:
                 status=columns[5],
                 description=columns[6],
                 line_number=line_number,
+                labels=tuple(split_labels_from_description(columns[6])[0]),
             )
         )
 
@@ -249,6 +253,8 @@ def log_summary(parsed: ParsedLog, direction: str) -> dict[str, Any]:
         "last_commit": baseline.commit,
         "last_trial_commit": baseline.commit,
         "last_trial_metric": baseline.metric,
+        "current_labels": list(baseline.labels),
+        "last_trial_labels": list(baseline.labels),
         "keeps": 0,
         "discards": 0,
         "crashes": 0,
@@ -279,11 +285,13 @@ def log_summary(parsed: ParsedLog, direction: str) -> dict[str, Any]:
         summary["last_status"] = row.status
         summary["last_trial_commit"] = row.commit
         summary["last_trial_metric"] = row.metric
+        summary["last_trial_labels"] = list(row.labels)
 
         if row.status == "keep":
             summary["keeps"] += 1
             summary["current_metric"] = row.metric
             summary["last_commit"] = row.commit
+            summary["current_labels"] = list(row.labels)
             summary["consecutive_discards"] = 0
             summary["pivot_count"] = 0
             if improvement(row.metric, summary["best_metric"], direction):
@@ -305,6 +313,8 @@ def log_summary(parsed: ParsedLog, direction: str) -> dict[str, Any]:
             if row.commit != "-":
                 summary["last_commit"] = row.commit
             summary["consecutive_discards"] = 0
+            if row.labels:
+                summary["current_labels"] = list(row.labels)
             if improvement(row.metric, summary["best_metric"], direction):
                 summary["best_metric"] = row.metric
                 summary["best_iteration"] = main_iteration
@@ -363,6 +373,18 @@ def compare_summary_to_state(
     compare_scalar_field("consecutive_discards")
     compare_scalar_field("pivot_count")
     compare_scalar_field("last_status")
+    if "current_labels" in state:
+        if normalize_labels(state["current_labels"]) != reconstructed.get("current_labels", []):
+            mismatches.append(
+                f"current_labels: state={normalize_labels(state['current_labels'])!r} "
+                f"tsv={reconstructed.get('current_labels', [])!r}"
+            )
+    if "last_trial_labels" in state:
+        if normalize_labels(state["last_trial_labels"]) != reconstructed.get("last_trial_labels", []):
+            mismatches.append(
+                f"last_trial_labels: state={normalize_labels(state['last_trial_labels'])!r} "
+                f"tsv={reconstructed.get('last_trial_labels', [])!r}"
+            )
     return mismatches
 
 
@@ -389,6 +411,8 @@ def build_state_payload(
             "last_commit": summary["last_commit"],
             "last_trial_commit": summary["last_trial_commit"],
             "last_trial_metric": decimal_to_json_number(summary["last_trial_metric"]),
+            "current_labels": list(summary.get("current_labels", [])),
+            "last_trial_labels": list(summary.get("last_trial_labels", [])),
             "keeps": summary["keeps"],
             "discards": summary["discards"],
             "crashes": summary["crashes"],
@@ -508,6 +532,7 @@ def make_row(
     guard: str,
     status: str,
     description: str,
+    labels: Any = None,
 ) -> dict[str, str]:
     metric_decimal = parse_decimal(metric, "metric")
     delta_decimal = parse_decimal(delta, "delta")
@@ -520,7 +545,7 @@ def make_row(
         "delta": format_delta(delta_decimal),
         "guard": guard,
         "status": status,
-        "description": description,
+        "description": format_description_with_labels(description, labels),
     }
 
 

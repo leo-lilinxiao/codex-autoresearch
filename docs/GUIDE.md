@@ -165,6 +165,7 @@ Codex infers these from your natural language input and repo context. You never 
 | `Iterations` | unlimited | Stop after N iterations |
 | `Run tag` | auto-generated | Label for this run in the results log |
 | `Stop condition` | none | Custom early-stop rule (e.g., "stop when metric reaches 1" or "stop when metric reaches 90") |
+| `Required stop labels` | none | Structured labels that the retained keep must carry before a numeric stop condition can terminate the run (for example `production-path`, `root-cause`) |
 
 ### Bounded vs unbounded runs
 
@@ -202,11 +203,11 @@ The default. Iterates toward a measurable target.
 You:   $codex-autoresearch
        Our TypeScript codebase has 47 `any` types, eliminate them all
 
-Codex: [scans repo, confirms target, asks about iteration cap]
+Codex: [scans repo, confirms target, asks about run mode and iteration cap]
 
-You:   Go, run overnight.
+You:   Background, go. Run overnight.
 
-Codex: Starting -- baseline: 47. Iterating until interrupted.
+Codex: Starting background run -- baseline: 47. Detached runtime is now iterating.
        ...
        Iteration 1: replaced any in auth module -> 41 (-6) KEEP
        Iteration 2: generic wrapper attempt -> 49 (+8) DISCARD
@@ -251,12 +252,13 @@ Codex: I see connection pooling in src/db/pool.ts, rate limiting in
        src/middleware/, and 3 async handlers without error boundaries.
 
        Need to confirm:
+       - Run mode: foreground or background?
        - When did this start? After a specific change, or always?
        - If I find the cause, should I also fix it?
 
-You:   Started after the pool refactor last week. Find cause first.
+You:   Foreground. Started after the pool refactor last week. Find cause first.
 
-Codex: Starting investigation.
+Codex: Starting foreground investigation.
        ...
        Hypothesis 1: pool exhaustion under concurrent requests
          Evidence: pool.ts max=10, /search handler holds 3 connections
@@ -292,12 +294,13 @@ Codex: I see 12 failures across tests/.
        - Current: 12 failures
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Should I also guard with ruff to avoid introducing lint issues?
        - Fix all 12, or focus on a specific module first?
 
-You:   Fix all, yes guard with ruff. Go.
+You:   Foreground. Fix all, yes guard with ruff. Go.
 
-Codex: Starting -- baseline: 12 failures.
+Codex: Starting foreground run -- baseline: 12 failures.
        ...
        Iteration 1: fixed import path in test_auth.py -> 10 (-2) KEEP
        ...
@@ -320,12 +323,13 @@ Codex: Confirmed:
        - Focus: SQL injection, XSS, input sanitization
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Report only, or also fix critical findings?
        - Should I also cover auth/access control?
 
-You:   Report first, and yes cover auth too.
+You:   Foreground. Report first, and yes cover auth too.
 
-Codex: Starting audit.
+Codex: Starting foreground audit.
        ...
        Finding S-1 [HIGH]: SQL injection in src/api/search.ts:42
          Raw user input passed to query builder without parameterization
@@ -360,10 +364,11 @@ Codex: Detected: PR to main with 3 commits.
        - Target: main branch
 
        Need to confirm:
+       - Run mode: foreground or background?
        - Dry run first, or go live?
        - Post-ship monitoring? (5 min / 15 min / skip)
 
-You:   Dry run first.
+You:   Foreground, dry run first.
 ```
 
 External actions (deploy, publish, merge) must be confirmed during this setup phase. If not confirmed before "go," they are skipped and logged as blockers.

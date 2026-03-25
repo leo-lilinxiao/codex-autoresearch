@@ -10,6 +10,7 @@ from autoresearch_helpers import (
     AutoresearchError,
     build_repo_targets,
     default_state_path,
+    normalize_labels,
     read_state_payload,
     read_runtime_payload,
     resolve_repo_path,
@@ -96,7 +97,7 @@ def manifest_config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         primary_scope=args.scope,
         companion_repo_scopes=getattr(args, "companion_repo_scope", []),
     )
-    return {
+    config = {
         "session_mode": "background",
         "goal": args.goal,
         "scope": repo_targets[0].scope,
@@ -113,6 +114,10 @@ def manifest_config_from_args(args: argparse.Namespace) -> dict[str, Any]:
         "parallel_mode": args.parallel_mode,
         "web_search": args.web_search,
     }
+    required_stop_labels = normalize_labels(getattr(args, "required_stop_label", []))
+    if required_stop_labels:
+        config["required_stop_labels"] = required_stop_labels
+    return config
 
 
 def codex_args_for_execution_policy(

@@ -21,6 +21,21 @@ import autoresearch_runtime_ops
 class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     maxDiff = None
 
+    def test_create_launch_manifest_persists_required_stop_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            created = self.create_launch_manifest(
+                tmpdir,
+                goal="Improve MFU through PTO-ISA shmem",
+                metric_name="mfu",
+                direction="higher",
+                verify="python eval.py",
+                stop_condition="stop when metric reaches 55",
+                required_stop_labels=["pto-isa", "shmem"],
+            )
+            manifest = json.loads(Path(created["launch_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["config"]["required_stop_labels"], ["pto-isa", "shmem"])
+
     def test_runtime_launch_command_atomically_creates_manifest_and_starts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

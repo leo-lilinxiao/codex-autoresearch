@@ -37,6 +37,11 @@ AUTORESEARCH_OWNED_BASENAMES = {
 
 MAIN_LABEL_RE = re.compile(r"^(0|[1-9]\d*)$")
 WORKER_LABEL_RE = re.compile(r"^(0|[1-9]\d*)([a-z]+)$")
+STRUCTURED_LABEL_RE = re.compile(r"^[a-z0-9][a-z0-9._/-]*$")
+STRUCTURED_LABEL_PREFIX_RE = re.compile(
+    r"^\[labels:\s*([A-Za-z0-9._/-]+(?:\s*,\s*[A-Za-z0-9._/-]+)*)\]\s*",
+    re.IGNORECASE,
+)
 MAIN_STATUSES = {
     "baseline",
     "blocked",
@@ -84,6 +89,7 @@ class LogRow:
     status: str
     description: str
     line_number: int
+    labels: tuple[str, ...] = ()
 
     @property
     def main_iteration(self) -> int | None:
@@ -178,3 +184,57 @@ def command_is_executable(command: str) -> bool:
     if candidate.is_absolute() or "/" in executable or "\\" in executable:
         return candidate.is_file() and os.access(candidate, os.X_OK)
     return shutil.which(executable) is not None
+
+
+def normalize_labels(values: Any) -> list[str]:
+    if values in (None, "", []):
+        return []
+
+    if isinstance(values, str):
+        raw_values = [values]
+    else:
+        try:
+            raw_values = list(values)
+        except TypeError as exc:
+            raise AutoresearchError(f"Invalid labels value: {values!r}") from exc
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        if not isinstance(raw, str):
+            raise AutoresearchError(f"Invalid label: {raw!r}")
+        for piece in raw.split(","):
+            label = piece.strip().lower()
+            if not label:
+                continue
+            if not STRUCTURED_LABEL_RE.fullmatch(label):
+                raise AutoresearchError(
+                    "Invalid label "
+                    f"{raw!r}; labels must match {STRUCTURED_LABEL_RE.pattern!r}."
+                )
+            if label not in seen:
+                seen.add(label)
+                normalized.append(label)
+    return normalized
+
+
+def split_labels_from_description(description: str) -> tuple[list[str], str]:
+    text = str(description).strip()
+    if not text.lower().startswith("[labels:"):
+        return [], text
+    match = STRUCTURED_LABEL_PREFIX_RE.match(text)
+    if match is None:
+        raise AutoresearchError(f"Malformed label prefix in description: {description!r}")
+    labels = normalize_labels(match.group(1).split(","))
+    remainder = text[match.end() :].lstrip()
+    if not remainder:
+        raise AutoresearchError("A structured label prefix must be followed by a description.")
+    return labels, remainder
+
+
+def format_description_with_labels(description: str, labels: Any) -> str:
+    existing_labels, base_description = split_labels_from_description(description)
+    normalized = normalize_labels([*existing_labels, *normalize_labels(labels)])
+    if not normalized:
+        return base_description
+    return f"[labels: {', '.join(normalized)}] {base_description}"

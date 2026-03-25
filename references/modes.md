@@ -20,7 +20,7 @@ All specialized modes must:
 
 1. load `core-principles.md`,
 2. follow `structured-output-spec.md`,
-3. use `interaction-wizard.md` when required fields are missing (except `exec` mode),
+3. use `interaction-wizard.md` for every new interactive launch (except `exec` mode),
 4. load `autonomous-loop-protocol.md` for all iterating modes (loop, debug, fix, security, ship, exec),
 5. load `lessons-protocol.md` for cross-run learning (iterating modes; exec mode reads lessons but never writes them),
 6. load `pivot-protocol.md` for stuck recovery (iterating modes, including ship prepare loops),

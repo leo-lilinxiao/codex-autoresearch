@@ -51,9 +51,30 @@ iteration	commit	metric	delta	guard	status	description
 | `delta` | `metric - retained_metric_before_row` |
 | `guard` | `pass`, `fail`, or `-` |
 | `status` | See Status Values below |
-| `description` | One-sentence explanation of the iteration |
+| `description` | One-sentence explanation of the iteration. Structured stop-gating labels may prefix the sentence as `[labels: foo, bar] ...` |
 
 For multi-repo runs, the TSV `commit` column still records the **primary repo** commit. Per-repo commit provenance for companion repos lives in `autoresearch-state.json` (`state.last_repo_commits` and `state.last_trial_repo_commits`) so the primary audit trail stays compact while the JSON snapshot preserves cross-repo detail.
+
+## Structured Labels For Stop Gating
+
+Some goals need more than a numeric threshold. Example: "Stop only when latency <= 120 ms and the retained keep uses the required production path and real backend."
+
+For those runs:
+
+- persist `config.required_stop_labels` in JSON config/state
+- record structured iteration labels with `autoresearch_record_iteration.py --label ...`
+- let the helper write a canonical TSV prefix like:
+
+```text
+[labels: production-path, real-backend] optimized query path preserved real backend behavior
+```
+
+The supervisor only treats `stop_condition` as satisfied when both are true:
+
+- the numeric threshold is met, and
+- the retained keep labels cover every `required_stop_labels` entry
+
+This keeps causal or implementation-specific success criteria machine-checkable instead of leaving them in free-form prose.
 
 ## Status Values
 
@@ -104,15 +125,15 @@ These helper scripts live in the skill bundle. Do not confuse them with the targ
 Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`, so the exact command becomes `python3 .agents/skills/codex-autoresearch/scripts/...`.
 
 - `python3 <skill-root>/scripts/autoresearch_init_run.py ...`
-  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement. Interactive runs record `config.session_mode` explicitly; foreground is the default, while background initialization should pass `--session-mode background`. `execution_policy` is only persisted for paths that actually spawn nested Codex sessions: background managed runs and exec. In exec mode it also archives the configured results log plus any repo-root `autoresearch-state.json` to `.prev` variants, clears stale default scratch state, and enforces the prelaunch commit gate. With the default repo-root filenames this means `research-results.prev.tsv` and `autoresearch-state.prev.json`; callers should let the helper perform that archival instead of manually renaming those files first. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to persist companion-repo baseline provenance in JSON state.
+  Initializes `research-results.tsv` and `autoresearch-state.json` together from the baseline measurement. Interactive runs record `config.session_mode` explicitly; foreground is the default, while background initialization should pass `--session-mode background`. `execution_policy` is only persisted for paths that actually spawn nested Codex sessions: background managed runs and exec. In exec mode it also archives the configured results log plus any repo-root `autoresearch-state.json` to `.prev` variants, clears stale default scratch state, and enforces the prelaunch commit gate. With the default repo-root filenames this means `research-results.prev.tsv` and `autoresearch-state.prev.json`; callers should let the helper perform that archival instead of manually renaming those files first. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to persist companion-repo baseline provenance in JSON state. Runs with structural success criteria may add repeated `--required-stop-label LABEL` flags so the supervisor only stops when the retained keep also carries those labels.
 - `python3 <skill-root>/scripts/autoresearch_set_session_mode.py --repo <repo> ...`
   Internal/scripted helper that synchronizes an existing interactive run's shared JSON state to `foreground` or `background` before the next iteration. Use it only for scripted recovery flows; the normal human-facing skill entrypoint should handle this sync internally, and background `start` already performs the same sync automatically when it resumes existing results/state.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...`
-  Appends one authoritative main iteration row and updates JSON state atomically. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to update companion-repo commit provenance while the TSV `commit` column continues to track the primary repo.
+  Appends one authoritative main iteration row and updates JSON state atomically. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to update companion-repo commit provenance while the TSV `commit` column continues to track the primary repo. Repeated `--label LABEL` flags record structured stop-gating labels on the attempted row and retained state.
 - `python3 <skill-root>/scripts/autoresearch_resume_check.py --repo <repo>`
   Reconstructs retained state from the TSV and decides `full_resume`, `mini_wizard`, `tsv_fallback`, or `fresh_start`.
 - `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py --batch-file ...`
-  Logs worker rows, runs the batch-boundary health/worktree preflight, appends the main batch row, and updates JSON state once per batch. Worker batch items may include `repo_commits` for companion-repo provenance.
+  Logs worker rows, runs the batch-boundary health/worktree preflight, appends the main batch row, and updates JSON state once per batch. Worker batch items may include `repo_commits` for companion-repo provenance and `labels` for structured stop gating.
 - `python3 <skill-root>/scripts/autoresearch_exec_state.py`
   Prints the deterministic exec scratch-state path under `/tmp` and cleans it up on `--cleanup`.
 - `python3 <skill-root>/scripts/autoresearch_supervisor_status.py --repo <repo>`
