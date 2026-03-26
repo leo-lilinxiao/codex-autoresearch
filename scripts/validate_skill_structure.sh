@@ -154,6 +154,21 @@ if ! grep -q 'load `runtime-hard-invariants.md` for active execution' "$ROOT/ref
   exit 1
 fi
 
+if grep -q 'NEVER STOP\. NEVER ASK "should I continue\?"' "$ROOT/references/autonomous-loop-protocol.md"; then
+  echo "autonomous-loop-protocol.md still contains the old NEVER STOP runtime contract" >&2
+  exit 1
+fi
+
+if grep -q 'Hard Rule 13 (NEVER STOP)' "$ROOT/references/autonomous-loop-protocol.md"; then
+  echo "autonomous-loop-protocol.md still contains stale hard-rule fingerprint content" >&2
+  exit 1
+fi
+
+if ! grep -q 'Use `runtime-hard-invariants.md` plus the selected mode workflow as the source of truth\.' "$ROOT/references/autonomous-loop-protocol.md"; then
+  echo "autonomous-loop-protocol.md must anchor Phase 8.7 to runtime-hard-invariants.md" >&2
+  exit 1
+fi
+
 if ! grep -q 'Log every completed experiment before the next one starts\.' "$ROOT/references/interaction-wizard.md"; then
   echo "interaction-wizard.md is missing the runtime logging checklist reminder" >&2
   exit 1

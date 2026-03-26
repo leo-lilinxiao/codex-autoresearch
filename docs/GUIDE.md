@@ -550,7 +550,7 @@ Long-running sessions (20+ iterations) may experience context drift when the CLI
 
 ### Automatic Re-Anchoring
 
-Every 10 iterations (or more frequently after compaction), the agent runs a Protocol Fingerprint Check -- a zero-cost internal self-test that verifies it still remembers all critical rules and phase definitions. If any item fails, the agent re-reads the protocol files from disk before continuing. These events are marked with `[RE-ANCHOR]` in the results log.
+Every 10 iterations (or more frequently after compaction), the agent runs a Protocol Fingerprint Check -- a zero-cost internal self-test that verifies it still remembers the runtime checklist and selected mode workflow. If any item fails, the agent re-reads the loaded runtime docs from disk before continuing. These events are marked with `[RE-ANCHOR]` in the results log.
 
 You do not need to do anything to enable this. It runs automatically as part of Phase 8.7 in the iteration cycle.
 

@@ -43,7 +43,7 @@ Run at iterations 10, 20, 30, etc. only when the workflow or runtime explicitly 
 | Environment drift | Re-check disk space, verify GPU if initially detected | Warning on degradation |
 | Verify consistency | Run verify twice, compare results | Warning if results differ (flaky verify) |
 | Guard consistency | Run guard once, confirm still passes on current state | Warning if guard started failing without code changes |
-| Context health | Protocol Fingerprint Check from Phase 8.7 | Re-read protocol files; log `[RE-ANCHOR]` |
+| Context health | Protocol Fingerprint Check from `runtime-hard-invariants.md` (detailed in Phase 8.7) | Re-read loaded runtime docs; log `[RE-ANCHOR]` |
 | Wall-clock | Compare current iteration time with the recent rolling average | Warning if >3x average (possible resource contention) |
 
 ## Helper Output Contract
