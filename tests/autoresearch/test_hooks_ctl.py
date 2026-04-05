@@ -106,6 +106,16 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             stop_command = hooks_payload["hooks"]["Stop"][0]["hooks"][0]["command"]
             self.assertIn(str(self.installed_hook_path(home, "session_start.py")), session_command)
             self.assertIn(str(self.installed_hook_path(home, "stop.py")), stop_command)
+            self.assertEqual(
+                session_command,
+                subprocess.list2cmdline(
+                    [sys.executable, str(self.installed_hook_path(home, "session_start.py"))]
+                ),
+            )
+            self.assertEqual(
+                stop_command,
+                subprocess.list2cmdline([sys.executable, str(self.installed_hook_path(home, "stop.py"))]),
+            )
 
             reinstalled = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
             self.assertTrue(reinstalled["ready_for_future_sessions"])
@@ -156,6 +166,55 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
                 env=env,
             )
             self.assertIn("managed_groups_removed", removed)
+
+    def test_install_replaces_legacy_python_command_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            env = self.hook_env(home)
+            old_session = self.installed_hook_path(home, "session_start.py")
+            old_stop = self.installed_hook_path(home, "stop.py")
+            (codex_home / "hooks.json").write_text(
+                json.dumps(
+                    {
+                        "hooks": {
+                            "SessionStart": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "type": "command",
+                                            "command": f"python3 {old_session}",
+                                            "statusMessage": "old session",
+                                        }
+                                    ]
+                                }
+                            ],
+                            "Stop": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "type": "command",
+                                            "command": f"python {old_stop}",
+                                            "statusMessage": "old stop",
+                                        }
+                                    ]
+                                }
+                            ],
+                        }
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            self.assertTrue(installed["ready_for_future_sessions"])
+            hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
+            self.assertEqual(len(hooks_payload["hooks"]["Stop"]), 1)
 
     def test_uninstall_turns_feature_off_when_installer_enabled_it_and_no_other_hooks_remain(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
