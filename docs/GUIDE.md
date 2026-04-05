@@ -82,7 +82,7 @@ Once execution begins, keep the runtime contract tiny:
 The interactive skill requires these user-level Codex session hooks and auto-installs them right after the initial repo scan when they are missing. This bootstrap happens before the first clarification question. If you want to preinstall them yourself:
 
 ```bash
-python /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
+python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
 ```
 
 They provide the continuity layer for the interactive skill:
