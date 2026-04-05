@@ -113,7 +113,8 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
                 ),
             )
             self.assertEqual(
-                stop_command, subprocess.list2cmdline([sys.executable, str(self.installed_hook_path(home, "stop.py"))])
+                stop_command,
+                subprocess.list2cmdline([sys.executable, str(self.installed_hook_path(home, "stop.py"))]),
             )
 
             reinstalled = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)

@@ -102,10 +102,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def ensure_supported_platform() -> None:
-    return None
-
-
 def read_text(path: Path) -> str:
     if not path.exists():
         return ""
@@ -364,7 +360,6 @@ def status() -> dict[str, Any]:
 
 
 def install() -> dict[str, Any]:
-    ensure_supported_platform()
     config_before = read_text(config_path())
     previous_feature = parse_feature_value(config_before)
     feature_enabled_by_installer = previous_feature is not True
@@ -431,7 +426,6 @@ def install() -> dict[str, Any]:
 
 
 def uninstall() -> dict[str, Any]:
-    ensure_supported_platform()
     manifest = read_manifest()
     feature_enabled_by_installer = bool(manifest.get("feature_enabled_by_installer"))
 
