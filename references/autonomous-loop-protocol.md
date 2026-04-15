@@ -27,6 +27,10 @@ Optional:
 - `Stop condition`
 - `Required keep labels` (when the run should only retain results from a specific mechanism, path, backend, or root-cause signal)
 - `Required stop labels` (when the goal has a structural or causal success requirement, not just a numeric threshold)
+- `Verify format` — `scalar` (default) or `metrics_json`; use `metrics_json` when the verify command outputs a JSON object with multiple metrics as its final line
+- `Primary metric key` — which key in the metrics JSON to use as the TSV primary metric; defaults to the metric name
+- `Acceptance criteria` — list of `{metric_key, operator, target}` thresholds the retained result must satisfy before the run can stop (see `references/results-logging.md` Metrics And Acceptance Contract)
+- `Required keep criteria` — list of `{metric_key, operator, target}` hard gates every retained result must satisfy to enter `keep` state; use when some metrics must never regress regardless of primary metric improvement
 - `Rollback policy` (required before launch if destructive rollback may be used)
 
 For every new interactive loop, use the wizard contract from `references/interaction-wizard.md` to scan the repo, clarify with the user, and confirm the launch-ready config before the loop begins.

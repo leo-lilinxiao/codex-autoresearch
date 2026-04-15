@@ -26,6 +26,10 @@ All fields must be provided at invocation time. There is no wizard fallback.
 | Guard | no | prompt or env `AUTORESEARCH_GUARD` |
 | Iterations | yes (always bounded) | prompt or env `AUTORESEARCH_ITERATIONS` |
 | Execution policy | no | prompt or env `AUTORESEARCH_EXECUTION_POLICY` (`danger_full_access` by default) |
+| Verify format | no | prompt or env `AUTORESEARCH_VERIFY_FORMAT` (`scalar` or `metrics_json`, default `scalar`) |
+| Primary metric key | no | prompt or env `AUTORESEARCH_PRIMARY_METRIC_KEY` (defaults to the metric name; set it explicitly for `metrics_json` when the JSON key differs) |
+| Acceptance criteria | no | prompt or env `AUTORESEARCH_ACCEPTANCE_CRITERIA` (JSON list of `{metric_key, operator, target}`) |
+| Required keep criteria | no | prompt or env `AUTORESEARCH_REQUIRED_KEEP_CRITERIA` (JSON list of `{metric_key, operator, target}`) |
 
 If any required field is missing, exit immediately with code 2 and a JSON error.
 

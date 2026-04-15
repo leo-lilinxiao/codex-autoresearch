@@ -53,6 +53,7 @@ Rules:
 - If the goal is still unclear after 3 rounds, propose the most reasonable interpretation and let the user approve or edit.
 - If the user says the experiment spans multiple repos, identify one **primary repo** for run-control artifacts and list any additional **companion repos** separately, each with its own scope.
 - Do not replace the structured summary with a single-line "foreground or background?" prompt. The user should see what you inferred from the repo before they are asked to approve launch.
+- When the user describes multiple goals, says they cannot prioritize into a single metric, or the repo scan reveals a verify/metrics script that naturally emits multiple metrics, suggest `verify_format=metrics_json` with a primary metric for the TSV plus acceptance criteria on the others. Do not proactively ask about multi-metric when the user's goal is clearly single-metric.
 
 ### Step 3: Confirm (Structured Format)
 
@@ -66,6 +67,7 @@ Before launching, present a structured confirmation summary. The user should be 
 - Metric: `any` occurrence count (current: 47), direction: lower
 - Verify: `grep -r ":\s*any" src/ --include="*.ts" | wc -l`
 - Guard: `tsc --noEmit` must still pass
+- Also keeping: hard_conflicts == 0, oversized_rooms <= 100 *(only when multi-metric)*
 
 **Need to confirm**
 - Run until all gone, or cap at N iterations?
@@ -92,6 +94,7 @@ Before launching, present a structured confirmation summary. The user should be 
 8. Only show "Required keep labels" and/or "Required stop labels" when the goal truly has structural success requirements beyond the numeric target.
 9. Keep the runtime checklist short. It exists to reinforce execution order, not to restate the whole protocol.
 10. Only show the optional hooks note when hooks were just installed in the current session and the mode choice would otherwise be misleading.
+11. When the run tracks multiple metrics, show the additional thresholds in plain language (e.g., "Also keeping: hard_conflicts == 0") rather than exposing internal field names. Omit this line entirely for single-metric runs.
 
 The user replies "go", "start", "launch", or corrects something. No field names, no YAML, no structured input required.
 
@@ -137,6 +140,7 @@ Use this appendix only when you need help choosing the shortest useful question 
 - "I see MFU is logged in the training output. Are we targeting a specific number, or just higher-is-better?"
 - "The verify command currently measures response time. Should I track p50, p95, or p99?"
 - "If I hit the target with the wrong mechanism or path, should I keep going? I can require structured keep labels so only the right mechanism can enter retained state, and structured stop labels so the run only stops when the retained keep matches the mechanism you care about."
+- "You mentioned several goals. Should I pick one as the primary metric and set hard thresholds on the others, or would you prefer a single combined score?"
 
 ### Verification & Guard
 
@@ -201,6 +205,10 @@ The wizard internally maps the conversation to these fields (the user never sees
 - Iterations (optional) -- asked only if user wants bounded run
 - Required keep labels (optional) -- ask only when only a specific mechanism, path, backend, or root-cause signal should be allowed into retained state
 - Required stop labels (optional) -- ask only when the run should stop on a specific mechanism, path, backend, or root-cause signal in addition to the metric target
+- Verify format (optional) -- default `scalar`; use `metrics_json` when the goal involves multiple metrics and the verify command outputs a JSON object as its final line
+- Primary metric key (optional) -- which key in the metrics JSON to track in the TSV; defaults to the metric name
+- Acceptance criteria (optional) -- list of `{metric_key, operator, target}` thresholds that the retained result must satisfy before the run can stop; only configure when the goal has multi-metric success requirements
+- Required keep criteria (optional) -- list of `{metric_key, operator, target}` hard gates that every retained result must satisfy to enter `keep` state (e.g., `hard_conflicts == 0`); use when some metrics must never regress regardless of primary metric improvement
 - Rollback (optional) -- ask only if destructive rollback may be needed for unattended execution; otherwise default to non-destructive revert
 - Parallel (optional) -- ask if environment supports it (CPU >= 4, RAM >= 8GB)
 - Web search (optional) -- ask if user wants web search when stuck

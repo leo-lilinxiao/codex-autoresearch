@@ -31,6 +31,10 @@ Derived or collected:
 - Iterations
 - Required keep labels
 - Required stop labels
+- Verify format (`scalar` or `metrics_json`)
+- Primary metric key (when `verify_format=metrics_json`)
+- Acceptance criteria (when multi-metric stop gating is needed)
+- Required keep criteria (when some metrics must never regress)
 
 ## Flags
 
@@ -44,6 +48,10 @@ Derived or collected:
 | `--guard "<command>"` | Pre-fill guard |
 | `--required-keep-label <label>` | Require retained-state eligibility labels before an improved result can become `keep` |
 | `--required-stop-label <label>` | Require retained labels before a numeric stop condition can stop the run |
+| `--verify-format scalar\|metrics_json` | Pre-fill verify output format (default `scalar`) |
+| `--primary-metric-key <key>` | Pre-fill primary metric key for `metrics_json` mode |
+| `--acceptance-criteria '<json>'` | Pre-fill acceptance criteria as JSON list of `{metric_key, operator, target}` |
+| `--required-keep-criteria '<json>'` | Pre-fill required keep criteria as JSON list of `{metric_key, operator, target}` |
 | `--launch` | Launch immediately after validation |
 | `--iterations N` | Pre-fill bounded iteration count |
 
@@ -150,6 +158,8 @@ Required keep labels:
 Required stop labels:
 Iterations:
 ```
+
+When the analysis identifies a multi-metric scenario, the launch block should describe the acceptance thresholds in natural language inside the Goal field (e.g., "reduce bad_days, keeping hard_conflicts at 0 and saturday_events under 10") rather than exposing internal field names like `Verify format` or `Acceptance criteria`. The model translates these into the correct `--acceptance-criteria` and `--verify-format` flags internally when launching.
 
 If the user says `launch`, switch to the generic loop with that config.
 
