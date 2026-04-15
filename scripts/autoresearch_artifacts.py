@@ -422,32 +422,11 @@ def config_from_results_metadata(metadata: dict[str, str]) -> dict[str, Any]:
             config[config_key] = value
 
     repos_json = metadata.get("repos_json")
-    if repos_json:
-        try:
-            repos = json.loads(repos_json)
-        except json.JSONDecodeError:
-            repos = None
-        if isinstance(repos, list):
-            normalized_repos: list[dict[str, str]] = []
-            for entry in repos:
-                if not isinstance(entry, dict):
-                    normalized_repos = []
-                    break
-                path = entry.get("path")
-                scope = entry.get("scope")
-                role = entry.get("role")
-                if not all(isinstance(value, str) and value.strip() for value in (path, scope, role)):
-                    normalized_repos = []
-                    break
-                normalized_repos.append(
-                    {
-                        "path": path.strip(),
-                        "scope": scope.strip(),
-                        "role": role.strip(),
-                    }
-                )
-            if normalized_repos:
-                config["repos"] = normalized_repos
+    if repos_json is not None:
+        config["repos"] = parse_results_metadata_repos(
+            repos_json,
+            metadata_key="repos_json",
+        )
 
     iterations_text = metadata.get("iterations")
     if iterations_text is not None and iterations_text.strip():
@@ -497,6 +476,60 @@ def parse_results_metadata_criteria(
         return normalize_criteria_config(parsed, field_name=field_name)
     except AutoresearchError as exc:
         raise AutoresearchError(f"Malformed {metadata_key} in results metadata: {exc}") from exc
+
+
+def parse_results_metadata_repos(
+    raw: str,
+    *,
+    metadata_key: str,
+) -> list[dict[str, str]]:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AutoresearchError(f"Malformed {metadata_key} in results metadata: {exc}") from exc
+    if not isinstance(parsed, list) or not parsed:
+        raise AutoresearchError(
+            f"Malformed {metadata_key} in results metadata: expected a non-empty JSON list."
+        )
+
+    normalized: list[dict[str, str]] = []
+    primary_count = 0
+    for index, entry in enumerate(parsed):
+        if not isinstance(entry, dict):
+            raise AutoresearchError(
+                f"Malformed {metadata_key} in results metadata: entry {index} must be an object."
+            )
+        path = entry.get("path")
+        scope = entry.get("scope")
+        role = entry.get("role")
+        if not isinstance(path, str) or not path.strip():
+            raise AutoresearchError(
+                f"Malformed {metadata_key} in results metadata: entry {index}.path must be a non-empty string."
+            )
+        if not isinstance(scope, str) or not scope.strip():
+            raise AutoresearchError(
+                f"Malformed {metadata_key} in results metadata: entry {index}.scope must be a non-empty string."
+            )
+        if role not in {"primary", "companion"}:
+            raise AutoresearchError(
+                "Malformed "
+                f"{metadata_key} in results metadata: entry {index}.role must be 'primary' or 'companion'."
+            )
+        if role == "primary":
+            primary_count += 1
+        normalized.append(
+            {
+                "path": path.strip(),
+                "scope": scope.strip(),
+                "role": role,
+            }
+        )
+
+    if primary_count != 1:
+        raise AutoresearchError(
+            f"Malformed {metadata_key} in results metadata: expected exactly one primary repo."
+        )
+    return normalized
 
 
 def build_state_payload(

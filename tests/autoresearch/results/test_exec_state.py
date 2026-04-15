@@ -313,6 +313,84 @@ class AutoresearchExecStateTest(AutoresearchScriptsTestBase):
             self.assertIn("Malformed acceptance_criteria_json in results metadata", completed.stderr)
             self.assertFalse(scratch_state_path.exists())
 
+    def test_exec_rebuild_fails_on_malformed_repos_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            primary = workspace / "primary"
+            companion = workspace / "companion"
+            self.init_git_repo(primary)
+            self.init_git_repo(companion)
+            results_path = self.managed_results_path(workspace)
+            scratch_state_path = Path(
+                self.run_script_text(
+                    "autoresearch_exec_state.py",
+                    "--repo-root",
+                    str(workspace),
+                )
+            )
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--repo",
+                str(primary),
+                "--workspace-root",
+                str(workspace),
+                "--results-path",
+                str(results_path),
+                "--mode",
+                "exec",
+                "--goal",
+                "Improve latency across primary and companion repos",
+                "--scope",
+                "src/**/*.py",
+                "--companion-repo-scope",
+                f"{companion}=pkg/**/*.py",
+                "--metric-name",
+                "latency ms",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "base111",
+                "--baseline-description",
+                "baseline latency",
+                cwd=primary,
+            )
+            scratch_state_path.unlink()
+
+            lines = results_path.read_text(encoding="utf-8").splitlines()
+            for index, line in enumerate(lines):
+                if line.startswith("# repos_json: "):
+                    lines[index] = "# repos_json: {"
+                    break
+            results_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            completed = self.run_script_completed(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--status",
+                "keep",
+                "--metric",
+                "8",
+                "--commit",
+                "keep222",
+                "--repo-commit",
+                f"{companion}=comp333",
+                "--guard",
+                "pass",
+                "--description",
+                "optimized both repos",
+                cwd=primary,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Malformed repos_json in results metadata", completed.stderr)
+            self.assertFalse(scratch_state_path.exists())
+
     def test_exec_rebuild_fails_on_legacy_required_keep_criteria_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

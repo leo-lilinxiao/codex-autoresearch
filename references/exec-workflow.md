@@ -131,6 +131,8 @@ optimize:
   allow_failure: true
 ```
 
+Most exec runs should stay on the default scalar metric path. Only switch to `AUTORESEARCH_VERIFY_FORMAT=metrics_json` when the verify command already emits a final-line JSON metrics map and the goal truly needs multiple thresholds. In that mode, keep stop/retention thresholds in `AUTORESEARCH_ACCEPTANCE_CRITERIA` and `AUTORESEARCH_REQUIRED_KEEP_CRITERIA`; use `Guard` only for regression checks such as tests, typecheck, or a smoke build.
+
 ## Artifact Handling
 
 Exec mode always starts fresh:

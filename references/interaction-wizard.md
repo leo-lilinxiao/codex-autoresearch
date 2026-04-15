@@ -53,7 +53,7 @@ Rules:
 - If the goal is still unclear after 3 rounds, propose the most reasonable interpretation and let the user approve or edit.
 - If the user says the experiment spans multiple repos, identify one **primary repo** for run-control artifacts and list any additional **companion repos** separately, each with its own scope.
 - Do not replace the structured summary with a single-line "foreground or background?" prompt. The user should see what you inferred from the repo before they are asked to approve launch.
-- When the user describes multiple goals, says they cannot prioritize into a single metric, or the repo scan reveals a verify/metrics script that naturally emits multiple metrics, suggest `verify_format=metrics_json` with a primary metric for the TSV plus acceptance criteria on the others. Do not proactively ask about multi-metric when the user's goal is clearly single-metric.
+- When the user explicitly describes multiple goals or says they cannot prioritize into a single metric, suggest `verify_format=metrics_json` with a primary metric for the TSV plus acceptance criteria on the others. If the repo scan reveals a verify script that outputs structured multi-metric data, mention it as an option but let the user decide whether they want multi-metric tracking or just a single primary metric. Do not proactively suggest multi-metric when the user's goal is clearly single-metric.
 
 ### Step 3: Confirm (Structured Format)
 
