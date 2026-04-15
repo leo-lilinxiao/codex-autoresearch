@@ -662,5 +662,6 @@ def legacy_layout_error(repo: Path) -> str | None:
         return None
     return (
         "Found legacy repo-root autoresearch artifacts. This version uses workspace-owned "
-        "autoresearch-results/. Start a fresh run or move/archive the old artifacts."
+        "autoresearch-results/. Former autoresearch-hook-context.json is now context.json "
+        "inside that directory. Start a fresh run or move/archive the old artifacts."
     )

@@ -9,6 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from autoresearch_acceptance import normalize_criteria_config
 from autoresearch_core import (
     HEADER,
     MAIN_STATUSES,
@@ -465,19 +466,37 @@ def config_from_results_metadata(metadata: dict[str, str]) -> dict[str, Any]:
 
     acceptance_json = metadata.get("acceptance_criteria_json")
     if acceptance_json:
-        try:
-            config["acceptance_criteria"] = json.loads(acceptance_json)
-        except json.JSONDecodeError:
-            pass
+        config["acceptance_criteria"] = parse_results_metadata_criteria(
+            acceptance_json,
+            metadata_key="acceptance_criteria_json",
+            field_name="acceptance_criteria",
+        )
 
     required_keep_json = metadata.get("required_keep_criteria_json")
     if required_keep_json:
-        try:
-            config["required_keep_criteria"] = json.loads(required_keep_json)
-        except json.JSONDecodeError:
-            pass
+        config["required_keep_criteria"] = parse_results_metadata_criteria(
+            required_keep_json,
+            metadata_key="required_keep_criteria_json",
+            field_name="required_keep_criteria",
+        )
 
     return config
+
+
+def parse_results_metadata_criteria(
+    raw: str,
+    *,
+    metadata_key: str,
+    field_name: str,
+) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AutoresearchError(f"Malformed {metadata_key} in results metadata: {exc}") from exc
+    try:
+        return normalize_criteria_config(parsed, field_name=field_name)
+    except AutoresearchError as exc:
+        raise AutoresearchError(f"Malformed {metadata_key} in results metadata: {exc}") from exc
 
 
 def build_state_payload(

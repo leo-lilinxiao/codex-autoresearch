@@ -22,6 +22,51 @@ lessons.md
 context.json
 ```
 
+### `context.json` Schema
+
+`context.json` is the canonical run context written by `autoresearch_workspace.py`. It replaces the former `autoresearch-hook-context.json` and serves as the single source of truth for session hooks and control-plane helpers to locate the active run's artifacts.
+
+```json
+{
+  "version": 2,
+  "active": true,
+  "session_mode": "foreground",
+  "workspace_root": "/abs/path/to/workspace",
+  "artifact_root": "/abs/path/to/workspace/autoresearch-results",
+  "primary_repo": "/abs/path/to/repo",
+  "repo_targets": [
+    {"path": "/abs/path/to/repo", "scope": "src/**/*.ts", "role": "primary"},
+    {"path": "/abs/path/to/companion", "scope": "lib/**/*.py", "role": "companion"}
+  ],
+  "verify_cwd": "workspace_root",
+  "results_path": "/abs/path/to/workspace/autoresearch-results/results.tsv",
+  "state_path": "/abs/path/to/workspace/autoresearch-results/state.json",
+  "launch_path": "/abs/path/to/workspace/autoresearch-results/launch.json",
+  "runtime_path": "/abs/path/to/workspace/autoresearch-results/runtime.json",
+  "log_path": "/abs/path/to/workspace/autoresearch-results/runtime.log",
+  "updated_at": "2026-04-15T12:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | `int` | Schema version, currently `2` |
+| `active` | `bool` | Whether this run context is active |
+| `session_mode` | `string \| null` | `"foreground"`, `"background"`, or `null` |
+| `workspace_root` | `string` | Absolute path to the workspace root |
+| `artifact_root` | `string` | Absolute path to `autoresearch-results/` |
+| `primary_repo` | `string` | Absolute path to the primary git repo |
+| `repo_targets` | `array` | List of managed repos with path, scope, and role |
+| `verify_cwd` | `string \| null` | `"workspace_root"` or `"primary_repo"` |
+| `results_path` | `string` | Absolute path to `results.tsv` |
+| `state_path` | `string` | Absolute path to `state.json` |
+| `launch_path` | `string \| null` | Absolute path to `launch.json` (background only) |
+| `runtime_path` | `string \| null` | Absolute path to `runtime.json` (background only) |
+| `log_path` | `string \| null` | Absolute path to `runtime.log` (background only) |
+| `updated_at` | `string` | ISO 8601 UTC timestamp |
+
+Each managed repo also stores a git-local pointer at `.git/codex-autoresearch/pointer.json` that references back to the workspace-owned `context.json`.
+
 Add a direction comment at the top:
 
 ```text

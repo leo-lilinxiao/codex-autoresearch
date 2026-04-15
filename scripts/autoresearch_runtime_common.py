@@ -25,6 +25,7 @@ from autoresearch_helpers import (
     workspace_artifact_root,
     write_json_atomic,
 )
+from autoresearch_workspace import resolve_workspace_root
 from autoresearch_launch_gate import runtime_process_state
 from autoresearch_lessons import append_summary_lesson_if_needed, lessons_path_from_results
 
@@ -58,15 +59,6 @@ def parse_optional_json_argument(raw: str | None, *, field_name: str) -> Any:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
         raise AutoresearchError(f"Invalid JSON for {field_name}: {exc}") from exc
-
-
-def resolve_workspace_root(repo: Path, raw: str | None) -> Path:
-    if raw is None or not str(raw).strip():
-        raise AutoresearchError("--workspace-root is required for workspace-owned autoresearch runs.")
-    candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        candidate = repo / candidate
-    return candidate.resolve()
 
 
 def load_runtime_if_exists(runtime_path: Path) -> dict[str, Any] | None:

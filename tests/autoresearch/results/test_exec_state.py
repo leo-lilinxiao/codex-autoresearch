@@ -245,6 +245,145 @@ class AutoresearchExecStateTest(AutoresearchScriptsTestBase):
             log_text = results_path.read_text(encoding="utf-8")
             self.assertIn("# repos_json: ", log_text)
 
+    def test_exec_rebuild_fails_on_malformed_acceptance_criteria_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            scratch_state_path = Path(
+                self.run_script_text(
+                    "autoresearch_exec_state.py",
+                    "--repo-root",
+                    str(tmpdir),
+                )
+            )
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--mode",
+                "exec",
+                "--goal",
+                "Improve accuracy",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "accuracy",
+                "--direction",
+                "higher",
+                "--verify",
+                "python3 -c pass",
+                "--acceptance-criteria",
+                json.dumps([{"metric_key": "accuracy", "operator": ">=", "target": 0.9}]),
+                "--baseline-metric",
+                "0.5",
+                "--baseline-commit",
+                "base111",
+                "--baseline-description",
+                "baseline accuracy",
+                cwd=tmpdir,
+            )
+            scratch_state_path.unlink()
+
+            lines = results_path.read_text(encoding="utf-8").splitlines()
+            for index, line in enumerate(lines):
+                if line.startswith("# acceptance_criteria_json: "):
+                    lines[index] = "# acceptance_criteria_json: {"
+                    break
+            results_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            completed = self.run_script_completed(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0.95",
+                "--commit",
+                "keep222",
+                "--guard",
+                "pass",
+                "--description",
+                "improved accuracy",
+                cwd=tmpdir,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Malformed acceptance_criteria_json in results metadata", completed.stderr)
+            self.assertFalse(scratch_state_path.exists())
+
+    def test_exec_rebuild_fails_on_legacy_required_keep_criteria_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            scratch_state_path = Path(
+                self.run_script_text(
+                    "autoresearch_exec_state.py",
+                    "--repo-root",
+                    str(tmpdir),
+                )
+            )
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--mode",
+                "exec",
+                "--goal",
+                "Improve accuracy",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "accuracy",
+                "--direction",
+                "higher",
+                "--verify",
+                "python3 -c pass",
+                "--required-keep-criteria",
+                json.dumps([{"metric_key": "accuracy", "operator": ">=", "target": 0.9}]),
+                "--baseline-metric",
+                "0.5",
+                "--baseline-commit",
+                "base111",
+                "--baseline-description",
+                "baseline accuracy",
+                cwd=tmpdir,
+            )
+            scratch_state_path.unlink()
+
+            lines = results_path.read_text(encoding="utf-8").splitlines()
+            for index, line in enumerate(lines):
+                if line.startswith("# required_keep_criteria_json: "):
+                    lines[index] = (
+                        '# required_keep_criteria_json: [{"metric":"accuracy","op":">=","value":0.9}]'
+                    )
+                    break
+            results_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+            completed = self.run_script_completed(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0.95",
+                "--commit",
+                "keep222",
+                "--guard",
+                "pass",
+                "--description",
+                "improved accuracy",
+                cwd=tmpdir,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Malformed required_keep_criteria_json in results metadata", completed.stderr)
+            self.assertIn("metric_key", completed.stderr)
+            self.assertFalse(scratch_state_path.exists())
+
     def test_resume_check_defaults_to_exec_scratch_when_log_declares_exec_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
