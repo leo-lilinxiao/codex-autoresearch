@@ -87,7 +87,7 @@ def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
         suffix=".tmp",
         delete=False,
     ) as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
+        json.dump(payload, handle, ensure_ascii=False, indent=2, sort_keys=True)
         handle.write("\n")
         temp_path = Path(handle.name)
     temp_path.replace(path)

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-
+from autoresearch_core import json_dumps
 from autoresearch_hook_common import build_context
 
 
@@ -21,7 +20,7 @@ def emit_additional_context(text: str) -> None:
             "additionalContext": text,
         }
     }
-    print(json.dumps(payload), end="")
+    print(json_dumps(payload), end="")
 
 
 def main() -> int:

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -29,7 +28,7 @@ from autoresearch_helpers import (
     write_json_atomic,
     write_results_log,
 )
-from autoresearch_core import SESSION_MODE_CHOICES
+from autoresearch_core import SESSION_MODE_CHOICES, json_dumps, print_json
 from autoresearch_hook_context import write_hook_context_pointer
 from autoresearch_preflight import evaluate_managed_repos_preflight
 from autoresearch_runtime_common import (
@@ -289,7 +288,7 @@ def main() -> int:
             f"# goal: {args.goal}",
             f"# scope: {repo_targets[0].scope}",
             "# repos_json: "
-            + json.dumps(serialize_repo_targets(repo_targets), sort_keys=True, separators=(",", ":")),
+            + json_dumps(serialize_repo_targets(repo_targets), sort_keys=True, separators=(",", ":")),
             f"# metric: {args.metric_name}",
             f"# verify: {args.verify}",
             f"# verify_cwd: {args.verify_cwd}",
@@ -316,12 +315,12 @@ def main() -> int:
     if acceptance_criteria:
         comments.append(
             "# acceptance_criteria_json: "
-            + json.dumps(acceptance_criteria, sort_keys=True, separators=(",", ":"))
+            + json_dumps(acceptance_criteria, sort_keys=True, separators=(",", ":"))
         )
     if required_keep_criteria:
         comments.append(
             "# required_keep_criteria_json: "
-            + json.dumps(required_keep_criteria, sort_keys=True, separators=(",", ":"))
+            + json_dumps(required_keep_criteria, sort_keys=True, separators=(",", ":"))
         )
 
     baseline_row = make_row(
@@ -393,23 +392,19 @@ def main() -> int:
         verify_cwd=args.verify_cwd,
     )
 
-    print(
-        json.dumps(
-            {
-                "workspace_root": str(workspace_root),
-                "artifact_root": str(artifact_defaults.artifact_root),
-                "primary_repo": str(repo.resolve()),
-                "results_path": str(results_path),
-                "state_path": str(state_path),
-                "baseline_metric": decimal_to_json_number(baseline_metric),
-                "baseline_commit": args.baseline_commit,
-                "parallel_mode": args.parallel_mode,
-                "session_mode": session_mode,
-                "message": f"Initialized run at baseline metric {format_decimal(baseline_metric)}.",
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    print_json(
+        {
+            "workspace_root": str(workspace_root),
+            "artifact_root": str(artifact_defaults.artifact_root),
+            "primary_repo": str(repo.resolve()),
+            "results_path": str(results_path),
+            "state_path": str(state_path),
+            "baseline_metric": decimal_to_json_number(baseline_metric),
+            "baseline_commit": args.baseline_commit,
+            "parallel_mode": args.parallel_mode,
+            "session_mode": session_mode,
+            "message": f"Initialized run at baseline metric {format_decimal(baseline_metric)}.",
+        }
     )
     return 0
 

@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_decision import apply_status_transition, requires_trial_commit
 from autoresearch_helpers import (
     AutoresearchError,
@@ -238,24 +238,20 @@ def main() -> int:
         iteration=next_iteration,
     )
 
-    print(
-        json.dumps(
-            {
-                "iteration": next_iteration,
-                "status": final_status,
-                "retained_metric": final_payload["state"]["current_metric"],
-                "retained_acceptance": final_payload["state"].get("current_acceptance"),
-                "trial_metric": final_payload["state"]["last_trial_metric"],
-                "trial_acceptance": final_payload["state"].get("last_trial_acceptance"),
-                "trial_labels": final_payload["state"].get("last_trial_labels", []),
-                "retained_labels": final_payload["state"].get("current_labels", []),
-                "trial_repo_commits": final_payload["state"].get("last_trial_repo_commits", {}),
-                "results_path": str(results_path),
-                "state_path": str(state_path),
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    print_json(
+        {
+            "iteration": next_iteration,
+            "status": final_status,
+            "retained_metric": final_payload["state"]["current_metric"],
+            "retained_acceptance": final_payload["state"].get("current_acceptance"),
+            "trial_metric": final_payload["state"]["last_trial_metric"],
+            "trial_acceptance": final_payload["state"].get("last_trial_acceptance"),
+            "trial_labels": final_payload["state"].get("last_trial_labels", []),
+            "retained_labels": final_payload["state"].get("current_labels", []),
+            "trial_repo_commits": final_payload["state"].get("last_trial_repo_commits", {}),
+            "results_path": str(results_path),
+            "state_path": str(state_path),
+        }
     )
     return 0
 

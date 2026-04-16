@@ -84,6 +84,50 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 ["real-backend", "production-path"],
             )
 
+    def test_create_launch_manifest_preserves_utf8_text_in_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            completed = self.run_script_completed(
+                "autoresearch_runtime_ctl.py",
+                "create-launch",
+                "--repo",
+                str(tmpdir),
+                "--workspace-root",
+                str(tmpdir),
+                "--original-goal",
+                "我需要交付一个支持中文描述的 TodoList",
+                "--prompt-text",
+                "请从零搭建一个支持中文内容的 TodoList 项目。",
+                "--mode",
+                "loop",
+                "--goal",
+                "从零交付支持中文内容的 TodoList",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "delivery_score",
+                "--direction",
+                "higher",
+                "--verify",
+                "python3 -c pass",
+                "--note",
+                "默认技术栈：React + Go Gin",
+            )
+            completed.check_returncode()
+            created = json.loads(completed.stdout)
+
+            manifest_path = Path(str(created["launch_path"]))
+            manifest_text = manifest_path.read_text(encoding="utf-8")
+
+            self.assertIn("我需要交付一个支持中文描述的 TodoList", completed.stdout)
+            self.assertIn("从零交付支持中文内容的 TodoList", completed.stdout)
+            self.assertNotIn("\\u6211", completed.stdout)
+            self.assertNotIn("\\u4ece", completed.stdout)
+            self.assertIn("我需要交付一个支持中文描述的 TodoList", manifest_text)
+            self.assertIn("默认技术栈：React + Go Gin", manifest_text)
+            self.assertNotIn("\\u6211", manifest_text)
+            self.assertNotIn("\\u9ed8", manifest_text)
+
     def test_runtime_launch_command_atomically_creates_manifest_and_starts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

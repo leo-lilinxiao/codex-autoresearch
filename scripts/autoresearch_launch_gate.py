@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     LAUNCH_MANIFEST_NAME,
@@ -514,7 +514,7 @@ def main() -> int:
         runtime_path=runtime_path,
         ignore_running_runtime=False,
     )
-    print(json.dumps(decision, indent=2, sort_keys=True))
+    print_json(decision)
     return 0
 
 

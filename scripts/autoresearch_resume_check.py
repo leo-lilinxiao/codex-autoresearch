@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     build_state_payload,
@@ -250,7 +250,7 @@ def main() -> int:
         write_repaired_state=args.write_repaired_state,
     )
 
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print_json(output)
     return 0
 
 

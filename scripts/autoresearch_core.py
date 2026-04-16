@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -166,6 +167,41 @@ def decimal_to_json_number(value: Decimal) -> int | float:
     if value == value.to_integral_value():
         return int(value)
     return float(value)
+
+
+def json_dumps(
+    payload: Any,
+    *,
+    indent: int | None = None,
+    sort_keys: bool = False,
+    separators: tuple[str, str] | None = None,
+) -> str:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        indent=indent,
+        sort_keys=sort_keys,
+        separators=separators,
+    )
+
+
+def print_json(
+    payload: Any,
+    *,
+    indent: int | None = 2,
+    sort_keys: bool = True,
+    separators: tuple[str, str] | None = None,
+    end: str = "\n",
+) -> None:
+    print(
+        json_dumps(
+            payload,
+            indent=indent,
+            sort_keys=sort_keys,
+            separators=separators,
+        ),
+        end=end,
+    )
 
 
 def utc_now() -> str:

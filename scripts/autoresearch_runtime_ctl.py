@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
 )
@@ -159,13 +159,13 @@ def main() -> int:
     runner_path = Path(__file__).resolve()
 
     if args.command == "create-launch":
-        print(json.dumps(create_launch_manifest(args), indent=2, sort_keys=True))
+        print_json(create_launch_manifest(args))
         return 0
     if args.command == "launch":
-        print(json.dumps(launch_and_start_runtime(args, runner_path=runner_path), indent=2, sort_keys=True))
+        print_json(launch_and_start_runtime(args, runner_path=runner_path))
         return 0
     if args.command == "start":
-        print(json.dumps(start_runtime(args, runner_path=runner_path), indent=2, sort_keys=True))
+        print_json(start_runtime(args, runner_path=runner_path))
         return 0
     if args.command == "run":
         return run_runtime(args)
@@ -191,23 +191,19 @@ def main() -> int:
             paths = path_resolver(**resolver_kwargs)
         else:
             paths = path_resolver(**resolver_kwargs, require_context=True)
-        print(
-            json.dumps(
-                runtime_summary(
-                    repo=repo,
-                    results_path=Path(paths["results_path"]),
-                    state_path_arg=str(paths["state_path"]),
-                    default_state_path=Path(paths["state_path"]),
-                    launch_path=Path(paths["launch_path"]),
-                    runtime_path=Path(paths["runtime_path"]),
-                ),
-                indent=2,
-                sort_keys=True,
+        print_json(
+            runtime_summary(
+                repo=repo,
+                results_path=Path(paths["results_path"]),
+                state_path_arg=str(paths["state_path"]),
+                default_state_path=Path(paths["state_path"]),
+                launch_path=Path(paths["launch_path"]),
+                runtime_path=Path(paths["runtime_path"]),
             )
         )
         return 0
     if args.command == "stop":
-        print(json.dumps(stop_runtime(args), indent=2, sort_keys=True))
+        print_json(stop_runtime(args))
         return 0
     raise AutoresearchError(f"Unsupported command: {args.command}")
 

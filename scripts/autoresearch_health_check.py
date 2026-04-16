@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     RepoTarget,
@@ -200,7 +200,7 @@ def main() -> int:
         min_free_mb=args.min_free_mb,
         companion_targets=companion_targets,
     )
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print_json(output)
     return 0
 
 

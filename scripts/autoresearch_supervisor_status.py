@@ -8,6 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     acceptance_state,
@@ -553,7 +554,7 @@ def main() -> int:
         after_run=args.after_run,
         write_state=args.write_state,
     )
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print_json(output)
     return 0
 
 

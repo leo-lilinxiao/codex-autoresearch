@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 
+from autoresearch_core import json_dumps
 from autoresearch_hook_context import update_hook_context_pointer
 from autoresearch_hook_common import build_context
 
@@ -59,7 +60,7 @@ def emit_block(reason: str) -> None:
         "decision": "block",
         "reason": reason,
     }
-    print(json.dumps(payload), end="")
+    print(json_dumps(payload), end="")
 
 
 def main() -> int:

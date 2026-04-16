@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import AutoresearchError, utc_now
 
 
@@ -303,7 +304,10 @@ def write_manifest(*, feature_enabled_by_installer: bool) -> None:
         "managed_scripts": managed_scripts,
     }
     manifest_path().parent.mkdir(parents=True, exist_ok=True)
-    manifest_path().write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    manifest_path().write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def read_manifest() -> dict[str, Any]:
@@ -425,7 +429,7 @@ def install() -> dict[str, Any]:
 
     hooks_backup = write_text_with_backup(
         hooks_path(),
-        json.dumps(payload, indent=2) + "\n",
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
     )
     write_manifest(feature_enabled_by_installer=feature_enabled_by_installer)
 
@@ -467,7 +471,7 @@ def uninstall() -> dict[str, Any]:
     if hooks_path().exists() or removed_count > 0:
         hooks_backup = write_text_with_backup(
             hooks_path(),
-            json.dumps(payload, indent=2) + "\n",
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         )
 
     config_backup = None
@@ -506,7 +510,7 @@ def main() -> int:
         payload = install()
     else:
         payload = uninstall()
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    print_json(payload)
     return 0
 
 

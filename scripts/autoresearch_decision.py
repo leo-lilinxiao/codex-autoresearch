@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     build_state_payload,
@@ -236,17 +236,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    print(
-        json.dumps(
-            derive_trial_status(
-                direction=args.direction,
-                current_metric=args.current_metric,
-                trial_metric=args.trial_metric,
-                guard=args.guard,
-                crashed=args.crashed,
-            ),
-            indent=2,
-            sort_keys=True,
+    print_json(
+        derive_trial_status(
+            direction=args.direction,
+            current_metric=args.current_metric,
+            trial_metric=args.trial_metric,
+            guard=args.guard,
+            crashed=args.crashed,
         )
     )
     return 0

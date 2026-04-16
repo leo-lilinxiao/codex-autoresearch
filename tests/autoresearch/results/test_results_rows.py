@@ -105,6 +105,59 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
             self.assertFalse((tmpdir / "autoresearch-results/runtime.json").exists())
             self.assertFalse((tmpdir / "autoresearch-results/runtime.log").exists())
 
+    def test_init_run_preserves_utf8_paths_in_results_state_and_context_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            workspace = tmpdir / "工作区"
+            repo = workspace / "仓库"
+            artifact_root = workspace / "autoresearch-results"
+            results_path = artifact_root / "results.tsv"
+            state_path = artifact_root / "state.json"
+            context_path = artifact_root / "context.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--repo",
+                str(repo),
+                "--workspace-root",
+                str(workspace),
+                "--mode",
+                "loop",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+            )
+
+            results_text = results_path.read_text(encoding="utf-8")
+            state_text = state_path.read_text(encoding="utf-8")
+            context_text = context_path.read_text(encoding="utf-8")
+
+            self.assertIn("工作区", results_text)
+            self.assertIn("仓库", results_text)
+            self.assertIn("工作区", state_text)
+            self.assertIn("仓库", state_text)
+            self.assertIn("工作区", context_text)
+            self.assertIn("仓库", context_text)
+            self.assertNotIn("\\u5de5", results_text)
+            self.assertNotIn("\\u4ed3", results_text)
+            self.assertNotIn("\\u5de5", state_text)
+            self.assertNotIn("\\u4ed3", state_text)
+            self.assertNotIn("\\u5de5", context_text)
+            self.assertNotIn("\\u4ed3", context_text)
+
     def test_required_stop_labels_and_iteration_labels_are_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     RepoTarget,
@@ -193,7 +193,7 @@ def main() -> int:
         rollback_policy=args.rollback_policy,
         destructive_approved=args.destructive_approved,
     )
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print_json(output)
     return 0
 
 

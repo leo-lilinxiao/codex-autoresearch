@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_decision import apply_status_transition
 from autoresearch_helpers import (
     AutoresearchError,
@@ -408,23 +409,19 @@ def main() -> int:
         iteration=next_iteration,
     )
 
-    print(
-        json.dumps(
-            {
-                "iteration": next_iteration,
-                "selected_worker": None if winner is None else winner["worker_id"],
-                "status": main_status,
-                "retained_metric": final_payload["state"]["current_metric"],
-                "retained_acceptance": final_payload["state"].get("current_acceptance"),
-                "retained_labels": final_payload["state"].get("current_labels", []),
-                "trial_metric": final_payload["state"]["last_trial_metric"],
-                "trial_acceptance": final_payload["state"].get("last_trial_acceptance"),
-                "batch_file": str(args.batch_file),
-                "message": f"Parallel batch recorded at iteration {next_iteration}.",
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    print_json(
+        {
+            "iteration": next_iteration,
+            "selected_worker": None if winner is None else winner["worker_id"],
+            "status": main_status,
+            "retained_metric": final_payload["state"]["current_metric"],
+            "retained_acceptance": final_payload["state"].get("current_acceptance"),
+            "retained_labels": final_payload["state"].get("current_labels", []),
+            "trial_metric": final_payload["state"]["last_trial_metric"],
+            "trial_acceptance": final_payload["state"].get("last_trial_acceptance"),
+            "batch_file": str(args.batch_file),
+            "message": f"Parallel batch recorded at iteration {next_iteration}.",
+        }
     )
     return 0
 

@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
-from autoresearch_core import SESSION_MODE_CHOICES
+from autoresearch_core import SESSION_MODE_CHOICES, print_json
 from autoresearch_hook_context import update_hook_context_pointer
 from autoresearch_helpers import (
     ARTIFACT_DIR_NAME,
@@ -114,18 +113,14 @@ def main() -> int:
         runtime_path=runtime_path.resolve(),
     )
 
-    print(
-        json.dumps(
-            {
-                "results_path": str(results_path),
-                "state_path": str(state_path),
-                "runtime_path": str(runtime_path),
-                "session_mode": updated.get("config", {}).get("session_mode", ""),
-                "execution_policy": updated.get("config", {}).get("execution_policy", ""),
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    print_json(
+        {
+            "results_path": str(results_path),
+            "state_path": str(state_path),
+            "runtime_path": str(runtime_path),
+            "session_mode": updated.get("config", {}).get("session_mode", ""),
+            "execution_policy": updated.get("config", {}).get("execution_policy", ""),
+        }
     )
     return 0
 
