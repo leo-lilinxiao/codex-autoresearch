@@ -55,6 +55,7 @@ def _ps_field(pid: int, field: str) -> str | None:
         ["ps", "-p", str(pid), "-o", f"{field}="],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     if completed.returncode != 0:
         return None

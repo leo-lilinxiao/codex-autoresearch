@@ -115,6 +115,7 @@ def resolve_git_repo(cwd: Path) -> Path | None:
         ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     if completed.returncode != 0:
         return None

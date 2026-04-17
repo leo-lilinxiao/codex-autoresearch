@@ -928,6 +928,7 @@ def run_runtime(args: argparse.Namespace) -> int:
                 cwd=workspace_root,
                 input=prompt_text,
                 text=True,
+                encoding="utf-8",
                 env=codex_env,
             ).returncode
         except OSError as exc:

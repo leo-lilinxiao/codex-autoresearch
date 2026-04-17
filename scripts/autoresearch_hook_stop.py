@@ -44,6 +44,7 @@ def run_supervisor(context) -> dict[str, object] | None:
         command,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         cwd=context.repo,
     )
     if completed.returncode != 0:

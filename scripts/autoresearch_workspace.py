@@ -129,6 +129,7 @@ def resolve_git_repo(start: Path | None = None) -> Path | None:
             ["git", "-C", str(current), "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
     except OSError:
@@ -154,6 +155,7 @@ def git_path(repo: Path, relative_path: str) -> Path:
             ["git", "-C", str(repo), "rev-parse", "--git-path", relative_path],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
     except OSError as exc:
