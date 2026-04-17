@@ -281,6 +281,7 @@ class AutoresearchScriptsTestBase(unittest.TestCase):
             [sys.executable, str(SCRIPTS_DIR / script_name), *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             cwd=cwd,
             env=env,
         )
