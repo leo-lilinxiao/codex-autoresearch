@@ -46,6 +46,7 @@ You:   $codex-autoresearch
        I want to get rid of all the `any` types in my TypeScript code
 
 Codex: I found 47 `any` occurrences across src/**/*.ts.
+       Results directory: ./autoresearch-results/
        Metric: `any` count (current: 47), direction: lower
        Verify: grep count + tsc --noEmit as guard
        Run mode: foreground or background?
@@ -114,6 +115,7 @@ You don't write config. Codex infers everything from your sentence and your repo
 | Guard | Suggests if regression risk exists | `npm test` |
 
 Before starting, Codex always shows what it found and asks you to confirm. Then you choose foreground or background and say "go."
+By default, the Results directory stays in the launch context: if you started Codex inside a git repo, that repo root is the default workspace root; if you started outside a git repo, the current launch directory is the default workspace root. Codex should not silently widen that to a parent directory unless you explicitly confirm a broader multi-repo workspace. The confirmation summary should always show the chosen Results directory before launch.
 
 ## When It Gets Stuck
 

@@ -375,6 +375,73 @@ class AutoresearchSupervisorLaunchTest(AutoresearchScriptsTestBase):
             self.assertEqual(state["supervisor"]["recommended_action"], "stop")
             self.assertEqual(state["supervisor"]["terminal_reason"], "goal_reached")
 
+    def test_supervisor_status_stops_when_symbolic_stop_condition_equals_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "fix",
+                "--goal",
+                "Fix all errors",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "error count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--stop-condition",
+                "metric == 0",
+                "--baseline-metric",
+                "1",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline error count",
+            )
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                "keep000",
+                "--guard",
+                "pass",
+                "--description",
+                "fixed last error",
+            )
+
+            status = self.run_script(
+                "autoresearch_supervisor_status.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--after-run",
+                "--write-state",
+            )
+            self.assertEqual(status["decision"], "stop")
+            self.assertEqual(status["reason"], "goal_reached")
+
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["supervisor"]["recommended_action"], "stop")
+            self.assertEqual(state["supervisor"]["terminal_reason"], "goal_reached")
+
     def test_supervisor_status_stops_when_fix_mode_reaches_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

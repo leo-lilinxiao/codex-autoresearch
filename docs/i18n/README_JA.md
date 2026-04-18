@@ -46,6 +46,7 @@ Codex を再起動してから、プロジェクトで開きます：
         TypeScript コードの any 型を全て除去してほしい
 
 Codex:  src/**/*.ts に 47 個の `any` が見つかりました。
+        Results ディレクトリ: ./autoresearch-results/
         指標：any の出現回数（現在 47）、方向：減少
         検証：grep カウント + tsc --noEmit ガード
         実行モード：foreground と background のどちらにしますか？
@@ -114,6 +115,7 @@ Codex:  background 実行を開始 — ベースライン：47。反復中。
 | ガード | リグレッションリスクがあれば提案 | `npm test` |
 
 開始前に、Codex は常に検出した内容を提示し、確認を求めます。その後 foreground か background を選んで "go" と言います。
+デフォルトでは、Results ディレクトリは起動コンテキストに置かれます。Codex を git リポジトリ内で起動した場合はそのリポジトリルートが既定の workspace root になり、git リポジトリ外で起動した場合は現在の起動ディレクトリが既定の workspace root になります。より広いマルチリポジトリ workspace を明示的に確認しない限り、Codex が黙って親ディレクトリへ広げるべきではありません。起動前の確認サマリーには、選ばれた Results ディレクトリを必ず表示するべきです。
 
 ## スタックしたとき
 

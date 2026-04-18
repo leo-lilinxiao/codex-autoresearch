@@ -441,6 +441,89 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             completed.check_returncode()
             self.assertEqual(completed.stdout, "")
 
+    def test_foreground_symbolic_stop_condition_does_not_block_stop_hook(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            env = self.hook_env(home)
+            self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            stop_hook = self.installed_hook_path(home, "stop.py")
+
+            repo = root / "symbolic-terminal-foreground"
+            repo.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            results_path = self.managed_results_path(repo)
+            state_path = self.managed_state_path(repo)
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "fix",
+                "--session-mode",
+                "foreground",
+                "--goal",
+                "Fix all errors",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--stop-condition",
+                "metric == 0",
+                "--baseline-metric",
+                "1",
+                "--baseline-commit",
+                "base111",
+                "--baseline-description",
+                "baseline failures",
+                env=env,
+            )
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                "keep000",
+                "--guard",
+                "pass",
+                "--description",
+                "fixed last error",
+                env=env,
+            )
+
+            transcript_path = root / "foreground-symbolic-terminal.jsonl"
+            self.write_transcript_marker(transcript_path)
+            completed = self.run_installed_hook(
+                stop_hook,
+                cwd=repo,
+                payload={
+                    "cwd": str(repo),
+                    "stop_hook_active": False,
+                    "transcript_path": str(transcript_path),
+                },
+                env=env,
+            )
+            completed.check_returncode()
+            self.assertEqual(completed.stdout, "")
+
+            pointer_payload = json.loads(
+                self.repo_hook_context_path(repo).read_text(encoding="utf-8")
+            )
+            self.assertFalse(pointer_payload["active"])
+
     def test_stop_hook_only_blocks_for_autoresearch_sessions_and_uses_followup_prompt_when_active(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

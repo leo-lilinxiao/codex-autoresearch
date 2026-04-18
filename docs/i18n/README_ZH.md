@@ -46,6 +46,7 @@ $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
        把 TypeScript 代码里所有的 any 类型都消除掉
 
 Codex: 在 src/**/*.ts 中找到 47 个 `any`。
+       Results 目录：./autoresearch-results/
        指标：any 出现次数（当前 47），方向：降低
        验证：grep 计数 + tsc --noEmit 守护
        运行模式：foreground 还是 background？
@@ -114,6 +115,7 @@ Codex: 开始后台运行 -- 基线：47。持续迭代中。
 | 守护 | 如果存在回归风险则建议 | `npm test` |
 
 开始之前，Codex 总是展示它发现的内容并请求确认。然后你选 foreground 或 background，说 "go"。
+默认情况下，Results 目录应留在当前启动上下文里：如果你是在 git 仓库内启动 Codex，该仓库根目录就是默认的 workspace root；如果你是在 git 仓库外启动 Codex，当前启动目录就是默认的 workspace root。除非你明确确认要使用更大的多仓库 workspace，否则 Codex 不应该静默把它上推到父目录。启动前的确认摘要也应始终展示最终选择的 Results 目录。
 
 ## 卡住时怎么办
 

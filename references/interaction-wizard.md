@@ -52,7 +52,10 @@ Rules:
 - If the user's answer introduces new ambiguity, ask about that specifically.
 - If the goal is still unclear after 3 rounds, propose the most reasonable interpretation and let the user approve or edit.
 - If the user says the experiment spans multiple repos, identify one **primary repo** for run-control artifacts and list any additional **companion repos** separately, each with its own scope.
+- Default the `workspace_root` candidate from the launch context. If Codex was started inside a git repo, use that repo root as the default candidate. If Codex was started outside a git repo, use the current launch directory as the default candidate.
+- Do not silently widen `workspace_root` to a parent directory just because nearby sibling repos, old `autoresearch-results/`, or a broader filesystem layout exist. Only widen to a broader shared workspace when the user explicitly confirms that intent.
 - Do not replace the structured summary with a single-line "foreground or background?" prompt. The user should see what you inferred from the repo before they are asked to approve launch.
+- If the chosen `workspace_root` is outside the launch context or outside the primary repo, call that out explicitly in the confirmation summary and show the resulting `Results directory`.
 - When the user explicitly describes multiple goals or says they cannot prioritize into a single metric, suggest `verify_format=metrics_json` with a primary metric for the TSV plus acceptance criteria on the others. If the repo scan reveals a verify script that outputs structured multi-metric data, mention it as an option but let the user decide whether they want multi-metric tracking or just a single primary metric. Do not proactively suggest multi-metric when the user's goal is clearly single-metric.
 
 ### Step 3: Confirm (Structured Format)
@@ -64,6 +67,7 @@ Before launching, present a structured confirmation summary. The user should be 
 ```
 **Confirmed**
 - Target: eliminate `any` types in src/**/*.ts
+- Results directory: `./autoresearch-results/`
 - Metric: `any` occurrence count (current: 47), direction: lower
 - Verify: `grep -r ":\s*any" src/ --include="*.ts" | wc -l`
 - Guard: `tsc --noEmit` must still pass
@@ -95,6 +99,7 @@ Before launching, present a structured confirmation summary. The user should be 
 9. Keep the runtime checklist short. It exists to reinforce execution order, not to restate the whole protocol.
 10. Only show the optional hooks note when hooks were just installed in the current session and the mode choice would otherwise be misleading.
 11. When the run tracks multiple metrics, show the additional thresholds in plain language (e.g., "Also keeping: hard_conflicts == 0") rather than exposing internal field names. Omit this line entirely for single-metric runs.
+12. Always show the `Results directory`. If it is the default `./autoresearch-results/` under the launch context, the relative form is fine. If it lives outside the launch context or outside the primary repo, show the absolute path and make that widening explicit before launch.
 
 The user replies "go", "start", "launch", or corrects something. No field names, no YAML, no structured input required.
 
@@ -132,6 +137,7 @@ Use this appendix only when you need help choosing the shortest useful question 
 - "I see both `src/models/` and `src/api/` -- should I optimize the model layer only, or the full src?"
 - "There are 3 training scripts here (`train_gpt2.py`, `train_llama.py`, `train_vit.py`) -- which one?"
 - "Should I only modify test files, or can I also refactor the source code to make it more testable?"
+- "I can keep the Results directory in `./autoresearch-results/` for this current launch context, or widen to a shared parent workspace if this run truly spans multiple repos. Which do you want?"
 
 ### Metric & Target
 

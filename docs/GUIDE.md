@@ -41,6 +41,7 @@ Codex: I found 47 `any` occurrences across src/**/*.ts.
 
        Confirmed:
        - Target: eliminate `any` types in src/**/*.ts
+       - Results directory: `./autoresearch-results/`
        - Metric: `any` count (current: 47), direction: lower
        - Verify: grep count, Guard: tsc --noEmit
 
@@ -589,15 +590,17 @@ The public human workflow now stays on a single entrypoint: `$codex-autoresearch
 6. In **background**, Codex writes `autoresearch-results/launch.json` and starts the detached runtime controller automatically.
    The two modes share the same loop protocol and repo/scope semantics, but they are mutually exclusive for a given workspace/run. Do not keep both modes active against the same Results directory at once.
 7. If you resume an existing interactive run in the other mode, continue through the same `$codex-autoresearch` entrypoint. The shared state must be synchronized to the chosen mode before continuing; scripted background `start` performs that sync automatically before it relaunches.
-8. Single-repo runs are still the default. In that case the declared scope applies only to the primary repo, while run artifacts still live in the workspace-owned Results directory.
-9. If the experiment spans multiple repos, either mode can declare companion repos with their own scopes. Run artifacts stay under the workspace-owned `autoresearch-results/` directory, while each managed repo stores a git-local pointer to that canonical context.
+8. For a new interactive run, the default workspace root comes from the launch context. If you started Codex inside a git repo, that repo root is the default workspace root. If you started Codex outside a git repo, the current launch directory is the default workspace root.
+9. Single-repo runs are still the default. In that case the declared scope applies only to the primary repo, while run artifacts stay in that launch-context workspace under `./autoresearch-results/`.
+10. Codex should not silently widen the workspace root to a parent directory just because sibling repos, old `autoresearch-results/`, or a broader folder layout exist. If a wider shared workspace is truly intended, the confirmation summary should make that explicit and show the resulting Results directory before launch.
+11. If the experiment spans multiple repos, either mode can declare companion repos with their own scopes. Run artifacts stay under the chosen workspace-owned `autoresearch-results/` directory, while each managed repo stores a git-local pointer to that canonical context.
    Script-level entrypoints represent this with repeated `--companion-repo-scope PATH=SCOPE` flags.
    The TSV `commit` column remains the primary repo commit; companion-repo commit provenance lives in `autoresearch-results/state.json`.
-10. Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
+12. Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
    Background launch manifests carry an `execution_policy`; this skill now defaults to `danger_full_access`, so detached sessions run with `--dangerously-bypass-approvals-and-sandbox` unless you explicitly opt back into the sandboxed `workspace_write` path.
-11. Before each background detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
-12. If background `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
-13. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.
+13. Before each background detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
+14. If background `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
+15. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.
 
 Foreground keeps iterating in the current session until a terminal condition, blocker, or interruption. Background continues through fresh Codex sessions in the background until a terminal condition, blocker, or explicit stop request.
 

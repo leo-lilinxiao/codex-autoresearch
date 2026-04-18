@@ -150,6 +150,31 @@ def parse_stop_condition_rule(
         else "current metric >= {target}"
     )
     patterns: list[tuple[str, str, str]] = [
+        (
+            rf"(?:current\s+)?metric\s*(?:==|=)\s*({NUMBER_PATTERN})",
+            "==",
+            "current metric == {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*(?:<=|=<)\s*({NUMBER_PATTERN})",
+            "<=",
+            "current metric <= {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*(?:>=|=>)\s*({NUMBER_PATTERN})",
+            ">=",
+            "current metric >= {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*<\s*({NUMBER_PATTERN})",
+            "<",
+            "current metric < {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*>\s*({NUMBER_PATTERN})",
+            ">",
+            "current metric > {target}",
+        ),
         (rf"(?:<=|=<)\s*({NUMBER_PATTERN})", "<=", "current metric <= {target}"),
         (rf"(?:>=|=>)\s*({NUMBER_PATTERN})", ">=", "current metric >= {target}"),
         (rf"(?<![<>])<\s*({NUMBER_PATTERN})", "<", "current metric < {target}"),

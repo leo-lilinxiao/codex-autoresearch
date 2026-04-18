@@ -46,6 +46,7 @@ Vous:  $codex-autoresearch
        Je veux éliminer tous les types `any` dans mon code TypeScript
 
 Codex: J'ai trouvé 47 occurrences de `any` dans src/**/*.ts.
+       Répertoire Results : ./autoresearch-results/
        Métrique : nombre de `any` (actuel : 47), direction : diminuer
        Vérification : comptage grep + tsc --noEmit comme guard
        Mode d'exécution : foreground ou background ?
@@ -114,6 +115,7 @@ Pas besoin d'écrire de configuration. Codex infère tout à partir de votre phr
 | Guard | Suggère si un risque de régression existe | `npm test` |
 
 Avant de commencer, Codex montre toujours ce qu'il a trouvé et demande confirmation. Ensuite vous choisissez foreground ou background et dites « go ».
+Par défaut, le répertoire Results reste dans le contexte de lancement : si vous avez démarré Codex dans un dépôt git, la racine de ce dépôt est le workspace root par défaut ; si vous l'avez démarré hors d'un dépôt git, le répertoire de lancement courant est le workspace root par défaut. Codex ne doit pas l'élargir silencieusement à un répertoire parent sauf si vous confirmez explicitement un workspace multi-repo plus large. Le récapitulatif de confirmation doit toujours afficher le répertoire Results choisi avant le lancement.
 
 ## Quand ça bloque
 
