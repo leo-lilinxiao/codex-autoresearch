@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import os
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -20,67 +18,25 @@ from autoresearch_helpers import (
     RUNTIME_STATE_NAME,
     STATE_FILE_NAME,
 )
+from autoresearch_platform import (
+    inspect_process_identity as platform_inspect_process_identity,
+    process_is_alive,
+    process_is_zombie,
+)
 from autoresearch_resume_check import evaluate_resume_state
 from autoresearch_workspace import default_workspace_artifacts, resolve_workspace_root
 
 
 def pid_is_zombie(pid: int) -> bool:
-    completed = subprocess.run(
-        ["ps", "-p", str(pid), "-o", "stat="],
-        capture_output=True,
-        text=True,
-    )
-    if completed.returncode != 0:
-        return False
-    state = completed.stdout.strip().upper()
-    return state.startswith("Z")
+    return process_is_zombie(pid)
 
 
 def pid_is_alive(pid: int | None) -> bool:
-    if pid is None or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except PermissionError:
-        return True
-    except ProcessLookupError:
-        return False
-    if pid_is_zombie(pid):
-        return False
-    return True
-
-
-def _ps_field(pid: int, field: str) -> str | None:
-    completed = subprocess.run(
-        ["ps", "-p", str(pid), "-o", f"{field}="],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
-    if completed.returncode != 0:
-        return None
-    value = completed.stdout.strip()
-    return value or None
+    return process_is_alive(pid)
 
 
 def inspect_process_identity(pid: int | None) -> dict[str, object] | None:
-    if pid is None or pid <= 0 or not pid_is_alive(pid):
-        return None
-    pgid_text = _ps_field(pid, "pgid")
-    started_at = _ps_field(pid, "lstart")
-    command = _ps_field(pid, "command")
-    if pgid_text is None or started_at is None or command is None:
-        return None
-    try:
-        pgid = int(pgid_text)
-    except ValueError:
-        return None
-    return {
-        "pid": pid,
-        "pgid": pgid,
-        "started_at": started_at,
-        "command": command,
-    }
+    return platform_inspect_process_identity(pid)
 
 
 def normalize_command_text(value: str | None) -> str:

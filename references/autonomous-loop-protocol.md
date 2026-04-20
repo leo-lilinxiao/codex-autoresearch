@@ -84,7 +84,7 @@ Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the co
 Bundled helpers expose `--force` only as an internal maintenance override for tests or deliberate manual recovery. Normal skill flow should prefer explicit fresh-start archival instead of using `--force` to bypass legacy-layout or existing-artifact protection.
 
 Exec-mode exception:
-- Let the helper scripts use their scratch JSON state under `/tmp/codex-autoresearch-exec/...`.
+- Let the helper scripts use their scratch JSON state under the platform temp directory (`codex-autoresearch-exec/...`).
 - Clean that scratch state before exit with `python3 <skill-root>/scripts/autoresearch_exec_state.py --cleanup`.
 
 ### Environment Probe

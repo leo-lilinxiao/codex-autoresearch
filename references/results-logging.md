@@ -221,7 +221,7 @@ Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In t
 - `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py --batch-file ...`
   Logs worker rows, runs the batch-boundary health/worktree preflight, appends the main batch row, and updates JSON state once per batch. Worker batch items may include `repo_commits` for companion-repo provenance and `labels` for structured keep/stop gating.
 - `python3 <skill-root>/scripts/autoresearch_exec_state.py`
-  Prints the deterministic exec scratch-state path under `/tmp` and cleans it up on `--cleanup`.
+  Prints the deterministic exec scratch-state path under the platform temp directory and cleans it up on `--cleanup`.
 - `python3 <skill-root>/scripts/autoresearch_supervisor_status.py --repo <repo>`
   Computes whether the runtime control plane should relaunch, stop, or ask for human help after a finished turn.
 

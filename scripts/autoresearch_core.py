@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import shlex
-import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+
+from autoresearch_platform import default_exec_scratch_root
 
 HEADER = [
     "iteration",
@@ -22,7 +21,7 @@ HEADER = [
     "description",
 ]
 SESSION_MODE_CHOICES = ("foreground", "background")
-EXEC_SCRATCH_ROOT = Path("/tmp/codex-autoresearch-exec")
+EXEC_SCRATCH_ROOT = default_exec_scratch_root()
 ARTIFACT_DIR_NAME = "autoresearch-results"
 RESULTS_FILE_NAME = "results.tsv"
 STATE_FILE_NAME = "state.json"
@@ -92,9 +91,6 @@ REQUIRED_STATE_FIELDS = {
     "pivot_count",
     "last_status",
 }
-ENV_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
-
-
 class AutoresearchError(Exception):
     pass
 
@@ -214,31 +210,6 @@ def improvement(metric: Decimal, reference: Decimal, direction: str) -> bool:
     if direction == "higher":
         return metric > reference
     raise AutoresearchError(f"Unsupported direction: {direction}")
-
-
-def command_is_executable(command: str) -> bool:
-    if not command.strip():
-        return False
-    try:
-        parts = shlex.split(command)
-    except ValueError:
-        return False
-    if not parts:
-        return False
-
-    executable = ""
-    for part in parts:
-        if ENV_ASSIGNMENT_RE.fullmatch(part):
-            continue
-        executable = part
-        break
-    if not executable:
-        return False
-
-    candidate = Path(executable)
-    if candidate.is_absolute() or "/" in executable or "\\" in executable:
-        return candidate.is_file() and os.access(candidate, os.X_OK)
-    return shutil.which(executable) is not None
 
 
 def normalize_labels(values: Any) -> list[str]:

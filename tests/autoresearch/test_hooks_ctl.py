@@ -84,6 +84,28 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
                                         }
                                     ]
                                 }
+                            ],
+                            "SessionStart": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "type": "command",
+                                            "command": f"python3 {self.installed_hook_path(home, 'session_start.py').resolve()}",
+                                            "statusMessage": "old managed",
+                                        }
+                                    ]
+                                }
+                            ],
+                            "Stop": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "type": "command",
+                                            "command": f"python3 {self.installed_hook_path(home, 'stop.py').resolve()}",
+                                            "statusMessage": "old managed",
+                                        }
+                                    ]
+                                }
                             ]
                         }
                     },
@@ -105,8 +127,11 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertEqual(len(hooks_payload["hooks"]["Stop"]), 1)
             session_command = hooks_payload["hooks"]["SessionStart"][0]["hooks"][0]["command"]
             stop_command = hooks_payload["hooks"]["Stop"][0]["hooks"][0]["command"]
+            self.assertIn(sys.executable, session_command)
+            self.assertIn(sys.executable, stop_command)
             self.assertIn(str(self.installed_hook_path(home, "session_start.py")), session_command)
             self.assertIn(str(self.installed_hook_path(home, "stop.py")), stop_command)
+            self.assertTrue(self.installed_hook_path(home, "autoresearch_platform.py").exists())
 
             reinstalled = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
             self.assertTrue(reinstalled["ready_for_future_sessions"])
@@ -122,6 +147,60 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertIn("UserPromptSubmit", hooks_payload["hooks"])
             config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
             self.assertIn("codex_hooks = true", config_text)
+
+    def test_install_replaces_managed_hooks_even_when_python_launcher_string_changed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            env = self.hook_env(home)
+
+            session_script = self.installed_hook_path(home, "session_start.py").resolve()
+            stop_script = self.installed_hook_path(home, "stop.py").resolve()
+            (codex_home / "hooks.json").write_text(
+                json.dumps(
+                    {
+                        "hooks": {
+                            "SessionStart": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "type": "command",
+                                            "command": f"python {session_script}",
+                                            "statusMessage": "old managed",
+                                        }
+                                    ]
+                                }
+                            ],
+                            "Stop": [
+                                {
+                                    "hooks": [
+                                        {
+                                            "type": "command",
+                                            "command": f"python {stop_script}",
+                                            "statusMessage": "old managed",
+                                        }
+                                    ]
+                                }
+                            ],
+                        }
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            self.assertTrue(installed["ready_for_future_sessions"])
+
+            hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
+            self.assertEqual(len(hooks_payload["hooks"]["Stop"]), 1)
+
+            removed = self.run_script("autoresearch_hooks_ctl.py", "uninstall", env=env)
+            self.assertEqual(removed["managed_groups_removed"], 2)
 
     def test_repo_flag_is_accepted_and_ignored_for_all_subcommands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

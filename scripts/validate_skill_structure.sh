@@ -49,6 +49,7 @@ required_references=(
 required_scripts=(
   "$ROOT/scripts/validate_skill_structure.sh"
   "$ROOT/scripts/autoresearch_helpers.py"
+  "$ROOT/scripts/autoresearch_platform.py"
   "$ROOT/scripts/autoresearch_launch_gate.py"
   "$ROOT/scripts/autoresearch_resume_prompt.py"
   "$ROOT/scripts/autoresearch_runtime_ctl.py"

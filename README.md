@@ -169,6 +169,8 @@ It's strongest when the goal and metric are clear — push coverage up, push err
 
 **How do I use it in CI?** `Mode: exec` with `codex exec`. All config upfront, JSON output, exit codes 0/1/2.
 
+**Does it support Windows?** macOS/Linux are the primary validated platforms. Native Windows support is best-effort; WSL2 remains recommended for long-running background runs.
+
 ## Documentation
 
 | Doc | What it covers |

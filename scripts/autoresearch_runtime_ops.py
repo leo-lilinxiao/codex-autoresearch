@@ -15,7 +15,6 @@ from autoresearch_helpers import (
     archive_path_to_prev,
     build_launch_manifest,
     build_runtime_payload,
-    command_is_executable,
     LAUNCH_MANIFEST_NAME,
     default_workspace_artifacts,
     detect_legacy_repo_root_artifacts,
@@ -43,6 +42,13 @@ from autoresearch_launch_gate import (
 from autoresearch_preflight import evaluate_managed_repos_preflight
 from autoresearch_resume_prompt import build_runtime_prompt
 from autoresearch_supervisor_status import evaluate_supervisor_status
+from autoresearch_platform import (
+    command_is_executable,
+    current_runtime_process_group_id,
+    runtime_popen_kwargs,
+    runtime_process_group_id,
+    signal_runtime_process_group,
+)
 from autoresearch_runtime_common import (
     DEFAULT_EXECUTION_POLICY,
     DEFAULT_RESULTS_PATH,
@@ -674,10 +680,10 @@ def start_runtime(args: argparse.Namespace, *, runner_path: Path) -> dict[str, A
         stdout=log_handle,
         stderr=subprocess.STDOUT,
         text=True,
-        start_new_session=True,
+        **runtime_popen_kwargs(),
     )
     log_handle.close()
-    pgid = os.getpgid(process.pid)
+    pgid = runtime_process_group_id(process.pid)
     identity = inspect_process_identity(process.pid)
     runtime = build_runtime_payload(
         repo=repo,
@@ -804,7 +810,7 @@ def run_runtime(args: argparse.Namespace) -> int:
             log_path=log_path,
             status="running",
             pid=os.getpid(),
-            pgid=os.getpgid(0),
+            pgid=current_runtime_process_group_id(),
             command=[],
             process_started_at=(
                 str(identity["started_at"]) if identity is not None and "started_at" in identity else None
@@ -1053,13 +1059,18 @@ def stop_runtime(args: argparse.Namespace) -> dict[str, Any]:
 
     if bool(runtime_state["alive"]) and bool(runtime_state["matches"]):
         try:
-            os.killpg(int(pgid), signal.SIGTERM)
+            signal_runtime_process_group(pid=int(pid), pgid=int(pgid), sig=signal.SIGTERM)
         except ProcessLookupError:
             pass
         stopped_after_term = wait_for_process_exit(pid, timeout=args.grace_seconds)
         if not stopped_after_term:
             try:
-                os.killpg(int(pgid), signal.SIGKILL)
+                signal_runtime_process_group(
+                    pid=int(pid),
+                    pgid=int(pgid),
+                    sig=getattr(signal, "SIGKILL", signal.SIGTERM),
+                    force=True,
+                )
             except ProcessLookupError:
                 pass
             stopped_after_kill = wait_for_process_exit(pid, timeout=STOP_KILL_WAIT_SECONDS)

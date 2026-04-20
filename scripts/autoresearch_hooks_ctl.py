@@ -13,6 +13,7 @@ from typing import Any
 
 from autoresearch_core import print_json
 from autoresearch_helpers import AutoresearchError, utc_now
+from autoresearch_platform import command_join, is_windows, strip_wrapping_quotes
 
 
 MANIFEST_VERSION = 1
@@ -34,6 +35,7 @@ HELPER_BUNDLE_SCRIPT_NAMES = (
     "autoresearch_helpers.py",
     "autoresearch_artifacts.py",
     "autoresearch_core.py",
+    "autoresearch_platform.py",
     "autoresearch_paths.py",
     "autoresearch_repo_targets.py",
     "autoresearch_workspace.py",
@@ -124,13 +126,6 @@ def build_parser() -> argparse.ArgumentParser:
             help="Compatibility no-op. Hooks are installed per user CODEX_HOME, not per repo.",
         )
     return parser
-
-
-def ensure_supported_platform() -> None:
-    if os.name == "nt":
-        raise AutoresearchError(
-            "Codex lifecycle hooks are not supported on Windows yet; refusing to install."
-        )
 
 
 def read_text(path: Path) -> str:
@@ -232,7 +227,14 @@ def normalize_hooks_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def installed_command(script_path: Path) -> str:
-    return f"python3 {shlex.quote(str(script_path))}"
+    return command_join([sys.executable, str(script_path)])
+
+
+def installed_command_variants(script_path: Path) -> set[str]:
+    return {
+        installed_command(script_path),
+        shlex.join(["python3", str(script_path)]),
+    }
 
 
 def build_managed_group(*, command: str, status_message: str, timeout: int, matcher: str | None = None) -> dict[str, Any]:
@@ -251,23 +253,58 @@ def build_managed_group(*, command: str, status_message: str, timeout: int, matc
     return group
 
 
-def group_matches_command(group: Any, command: str) -> bool:
+def _group_command(group: Any) -> str | None:
     if not isinstance(group, dict):
-        return False
+        return None
     hooks = group.get("hooks")
     if not isinstance(hooks, list) or len(hooks) != 1:
-        return False
+        return None
     hook = hooks[0]
     if not isinstance(hook, dict):
+        return None
+    if hook.get("type") != "command":
+        return None
+    command = hook.get("command")
+    return command if isinstance(command, str) else None
+
+
+def group_matches_command(group: Any, command: str) -> bool:
+    return _group_command(group) == command
+
+
+def group_invokes_script(group: Any, script_path: Path) -> bool:
+    command = _group_command(group)
+    if command is None:
         return False
-    return hook.get("type") == "command" and hook.get("command") == command
+    try:
+        parts = shlex.split(command, posix=not is_windows())
+    except ValueError:
+        return False
+    target = script_path.resolve()
+    for part in parts:
+        candidate = strip_wrapping_quotes(part)
+        if not candidate:
+            continue
+        try:
+            if Path(candidate).expanduser().resolve() == target:
+                return True
+        except OSError:
+            continue
+    return False
 
 
-def remove_managed_groups(groups: list[Any], commands: set[str]) -> tuple[list[Any], int]:
+def remove_managed_groups(
+    groups: list[Any],
+    *,
+    commands: set[str] = frozenset(),
+    script_paths: tuple[Path, ...] = (),
+) -> tuple[list[Any], int]:
     kept: list[Any] = []
     removed = 0
     for group in groups:
-        if any(group_matches_command(group, command) for command in commands):
+        if any(group_matches_command(group, command) for command in commands) or any(
+            group_invokes_script(group, script_path) for script_path in script_paths
+        ):
             removed += 1
             continue
         kept.append(group)
@@ -333,7 +370,8 @@ def install_managed_scripts() -> None:
         ),
     ):
         shutil.copy2(source_path, destination_path)
-        destination_path.chmod(0o755)
+        if not is_windows():
+            destination_path.chmod(0o755)
 
 
 def status() -> dict[str, Any]:
@@ -343,16 +381,24 @@ def status() -> dict[str, Any]:
     )
     manifest = read_manifest()
     managed_paths = managed_bundle_paths()
-    session_command = installed_command(session_script_path())
-    stop_command = installed_command(stop_script_path())
+    session_commands = installed_command_variants(session_script_path())
+    stop_commands = installed_command_variants(stop_script_path())
     hooks_map = hooks_payload.get("hooks", {})
     session_groups = hooks_map.get("SessionStart", []) if isinstance(hooks_map, dict) else []
     stop_groups = hooks_map.get("Stop", []) if isinstance(hooks_map, dict) else []
-    managed_session = any(group_matches_command(group, session_command) for group in session_groups)
-    managed_stop = any(group_matches_command(group, stop_command) for group in stop_groups)
+    managed_session = any(
+        any(group_matches_command(group, command) for command in session_commands)
+        or group_invokes_script(group, session_script_path())
+        for group in session_groups
+    )
+    managed_stop = any(
+        any(group_matches_command(group, command) for command in stop_commands)
+        or group_invokes_script(group, stop_script_path())
+        for group in stop_groups
+    )
 
     return {
-        "supported": os.name != "nt",
+        "supported": True,
         "codex_home": str(codex_home()),
         "config_path": str(config_path()),
         "hooks_path": str(hooks_path()),
@@ -376,7 +422,6 @@ def status() -> dict[str, Any]:
 
 
 def install() -> dict[str, Any]:
-    ensure_supported_platform()
     config_before = read_text(config_path())
     previous_feature = parse_feature_value(config_before)
     feature_enabled_by_installer = previous_feature is not True
@@ -398,12 +443,18 @@ def install() -> dict[str, Any]:
 
     session_command = installed_command(session_script_path())
     stop_command = installed_command(stop_script_path())
-    managed_commands = {session_command, stop_command}
+    managed_commands = installed_command_variants(session_script_path()) | installed_command_variants(
+        stop_script_path()
+    )
 
     existing_session = hooks_map.get("SessionStart", [])
     if not isinstance(existing_session, list):
         raise AutoresearchError("hooks.SessionStart must be a list")
-    session_groups, _ = remove_managed_groups(existing_session, managed_commands)
+    session_groups, _ = remove_managed_groups(
+        existing_session,
+        commands=managed_commands,
+        script_paths=(session_script_path(),),
+    )
     session_groups.append(
         build_managed_group(
             command=session_command,
@@ -417,7 +468,11 @@ def install() -> dict[str, Any]:
     existing_stop = hooks_map.get("Stop", [])
     if not isinstance(existing_stop, list):
         raise AutoresearchError("hooks.Stop must be a list")
-    stop_groups, _ = remove_managed_groups(existing_stop, managed_commands)
+    stop_groups, _ = remove_managed_groups(
+        existing_stop,
+        commands=managed_commands,
+        script_paths=(stop_script_path(),),
+    )
     stop_groups.append(
         build_managed_group(
             command=stop_command,
@@ -441,7 +496,6 @@ def install() -> dict[str, Any]:
 
 
 def uninstall() -> dict[str, Any]:
-    ensure_supported_platform()
     manifest = read_manifest()
     feature_enabled_by_installer = bool(manifest.get("feature_enabled_by_installer"))
 
@@ -450,17 +504,22 @@ def uninstall() -> dict[str, Any]:
     if not isinstance(hooks_map, dict):
         raise AutoresearchError("hooks.json must contain an object at top-level key 'hooks'")
 
-    managed_commands = {
-        installed_command(session_script_path()),
-        installed_command(stop_script_path()),
-    }
+    managed_commands = installed_command_variants(session_script_path()) | installed_command_variants(
+        stop_script_path()
+    )
 
     removed_count = 0
     for event_name in ("SessionStart", "Stop"):
         groups = hooks_map.get(event_name, [])
         if not isinstance(groups, list):
             raise AutoresearchError(f"hooks.{event_name} must be a list")
-        kept, removed = remove_managed_groups(groups, managed_commands)
+        kept, removed = remove_managed_groups(
+            groups,
+            commands=managed_commands,
+            script_paths=(
+                (session_script_path(),) if event_name == "SessionStart" else (stop_script_path(),)
+            ),
+        )
         removed_count += removed
         if kept:
             hooks_map[event_name] = kept

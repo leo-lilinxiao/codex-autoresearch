@@ -48,7 +48,7 @@ Before using `codex exec` in CI, configure Codex CLI authentication outside the 
 | Web search | available | disabled by default |
 | Parallel | user opt-in | disabled by default |
 | Lessons | read + write | read only (do not write in CI) |
-| JSON state | `autoresearch-results/state.json` | scratch-only under `/tmp`, removed by the exec workflow before exit |
+| JSON state | `autoresearch-results/state.json` | scratch-only under the platform temp directory, removed by the exec workflow before exit |
 | Session resume | full | disabled (fresh start; prior JSON/TSV renamed to `.prev`) |
 | Execution policy | chosen during launch | `danger_full_access` by default, `workspace_write` only when explicitly requested |
 
@@ -144,7 +144,7 @@ Exec mode always starts fresh:
 When using the bundled helper scripts in exec mode:
 Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`.
 
-- `python3 <skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root> --mode exec ...` defaults its JSON state to a deterministic scratch file under `/tmp/codex-autoresearch-exec/...`.
+- `python3 <skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root> --mode exec ...` defaults its JSON state to a deterministic scratch file under the platform temp directory (`codex-autoresearch-exec/...`).
 - In that default helper flow, do not manually rename old `autoresearch-results/results.tsv` or `autoresearch-results/state.json` first. `autoresearch_init_run.py` performs the fresh-start archival it owns.
 - The initialized `autoresearch-results/results.tsv` header includes `# mode: exec`, so `autoresearch_resume_check.py` can rediscover the matching scratch state without a manual `--state-path`.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...` and `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py ...` automatically reuse that scratch state when the workspace JSON state file is absent.

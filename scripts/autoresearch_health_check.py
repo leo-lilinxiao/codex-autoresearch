@@ -12,7 +12,6 @@ from autoresearch_helpers import (
     RepoTarget,
     build_repo_targets,
     format_repo_target_label,
-    command_is_executable,
     git_status_paths,
     has_git_repo,
     is_autoresearch_owned_artifact,
@@ -25,6 +24,7 @@ from autoresearch_helpers import (
     resolve_repo_relative,
     STATE_FILE_NAME,
 )
+from autoresearch_platform import command_is_executable
 from autoresearch_resume_check import evaluate_resume_state
 from autoresearch_workspace import resolve_workspace_root
 

@@ -5,10 +5,12 @@
 ## Prerequisites
 
 - Codex with skills enabled.
-- macOS or Linux.
+- macOS, Linux, or WSL2. Native Windows is supported on a best-effort basis; WSL2 remains the recommended Windows setup for long-running background runs.
 - Git for iterative modes, because the loop commits, verifies, and reverts experiments.
 - Python 3 for the bundled helper scripts.
 - A working `codex` CLI in `PATH` for managed background runs and `exec` mode.
+
+The command examples use `python3`, which is the common macOS/Linux spelling. On native Windows, use the Python launcher available in your environment, usually `python` or `py -3`.
 
 ## Install
 

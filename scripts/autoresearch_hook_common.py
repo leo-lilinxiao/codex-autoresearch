@@ -29,12 +29,15 @@ HELPER_ROOT_RELATIVE_CANDIDATES = (
     Path(".codex/skills/codex-autoresearch"),
 )
 HELPER_REQUIRED_FILES = (
+    "autoresearch_acceptance.py",
     "autoresearch_supervisor_status.py",
     "autoresearch_helpers.py",
     "autoresearch_artifacts.py",
     "autoresearch_core.py",
+    "autoresearch_platform.py",
     "autoresearch_paths.py",
     "autoresearch_repo_targets.py",
+    "autoresearch_workspace.py",
 )
 RESULTS_HEADER_PREFIX = "iteration\tcommit\tmetric\t"
 AUTORESEARCH_SKILL_MARKER = "$codex-autoresearch"

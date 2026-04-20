@@ -17,10 +17,85 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 import autoresearch_runtime_ops
 import autoresearch_launch_gate
+import autoresearch_platform
 
 
 class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     maxDiff = None
+
+    def test_runtime_process_group_helpers_do_not_require_posix_getpgid(self) -> None:
+        with (
+            mock.patch.object(autoresearch_platform.os, "getpgid", None, create=True),
+            mock.patch.object(autoresearch_platform.os, "getpid", return_value=5151),
+        ):
+            self.assertEqual(autoresearch_runtime_ops.runtime_process_group_id(4242), 4242)
+            self.assertEqual(autoresearch_runtime_ops.current_runtime_process_group_id(), 5151)
+
+    def test_runtime_popen_kwargs_use_windows_process_group_flag(self) -> None:
+        with (
+            mock.patch.object(autoresearch_platform, "is_windows", return_value=True),
+            mock.patch.object(
+                autoresearch_platform.subprocess,
+                "CREATE_NEW_PROCESS_GROUP",
+                0x00000200,
+                create=True,
+            ),
+        ):
+            self.assertEqual(
+                autoresearch_runtime_ops.runtime_popen_kwargs(),
+                {"creationflags": 0x00000200},
+            )
+
+    def test_runtime_windows_sigkill_uses_taskkill_tree(self) -> None:
+        with (
+            mock.patch.object(autoresearch_platform, "is_windows", return_value=True),
+            mock.patch.object(autoresearch_platform.os, "killpg", None, create=True),
+            mock.patch.object(autoresearch_platform.subprocess, "run") as run,
+        ):
+            autoresearch_runtime_ops.signal_runtime_process_group(
+                pid=4242,
+                pgid=4242,
+                sig=getattr(
+                    autoresearch_runtime_ops.signal,
+                    "SIGKILL",
+                    autoresearch_runtime_ops.signal.SIGTERM,
+                ),
+                force=True,
+            )
+
+        run.assert_called_once_with(
+            ["taskkill", "/PID", "4242", "/T", "/F"],
+            stdout=autoresearch_platform.subprocess.DEVNULL,
+            stderr=autoresearch_platform.subprocess.DEVNULL,
+            check=False,
+        )
+
+    def test_runtime_process_state_matches_windows_identity_without_ps(self) -> None:
+        with (
+            mock.patch.object(autoresearch_platform, "is_windows", return_value=True),
+            mock.patch.object(
+                autoresearch_platform,
+                "_windows_process_exit_code",
+                return_value=autoresearch_platform.STILL_ACTIVE_EXIT_CODE,
+            ),
+            mock.patch.object(
+                autoresearch_platform,
+                "_windows_process_started_at",
+                return_value="windows-filetime:123",
+            ),
+        ):
+            state = autoresearch_launch_gate.runtime_process_state(
+                {
+                    "pid": 4242,
+                    "pgid": 4242,
+                    "process_started_at": "windows-filetime:123",
+                    "process_command": autoresearch_platform.WINDOWS_COMMAND_UNAVAILABLE,
+                }
+            )
+
+        self.assertTrue(state["alive"])
+        self.assertTrue(state["matches"])
+        self.assertEqual(state["reason"], "running")
 
     def test_create_launch_manifest_requires_workspace_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -792,7 +867,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                     "wait_for_process_exit",
                     side_effect=[False, False],
                 ),
-                mock.patch.object(autoresearch_runtime_ops.os, "killpg") as killpg,
+                mock.patch.object(autoresearch_platform.os, "killpg", create=True) as killpg,
             ):
                 stopped = autoresearch_runtime_ops.stop_runtime(args)
 
@@ -803,7 +878,14 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 killpg.call_args_list,
                 [
                     mock.call(4242, autoresearch_runtime_ops.signal.SIGTERM),
-                    mock.call(4242, autoresearch_runtime_ops.signal.SIGKILL),
+                    mock.call(
+                        4242,
+                        getattr(
+                            autoresearch_runtime_ops.signal,
+                            "SIGKILL",
+                            autoresearch_runtime_ops.signal.SIGTERM,
+                        ),
+                    ),
                 ],
             )
             runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
@@ -1086,7 +1168,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                         "message": "Runtime pid 4242 is alive, but start time changed.",
                     },
                 ),
-                mock.patch.object(autoresearch_runtime_ops.os, "killpg") as killpg,
+                mock.patch.object(autoresearch_platform.os, "killpg", create=True) as killpg,
             ):
                 stopped = autoresearch_runtime_ops.stop_runtime(args)
 
