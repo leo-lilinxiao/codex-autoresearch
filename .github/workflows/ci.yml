@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - master
+  pull_request:
+
+jobs:
+  unit-and-structure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate skill structure
+        run: bash scripts/validate_skill_structure.sh
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -q
+
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: unit-and-structure
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run multi-repo smoke
+        run: bash scripts/run_skill_e2e.sh multi-repo-smoke --clean
+
+      - name: Run runtime smoke
+        run: bash scripts/run_skill_e2e.sh runtime-smoke --clean
