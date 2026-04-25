@@ -12,12 +12,31 @@ from pathlib import Path
 from autoresearch_helpers import (
     AutoresearchError,
     default_exec_state_path,
+    default_workspace_artifacts,
     improvement,
+    load_context_for_repo,
     log_summary,
     parse_results_log,
     read_launch_manifest,
     read_runtime_payload,
 )
+
+
+def resolve_workspace_context_for_repo(repo: Path, *, mode_name: str):
+    """Resolve the managed workspace context for invariant checks.
+
+    Real managed runs in git repos must persist a valid git-local pointer plus
+    canonical context. Lightweight fixture tests may still use non-git temp
+    directories and validate repo-local artifacts directly.
+    """
+    context = load_context_for_repo(repo)
+    if context is not None:
+        return context.workspace_root, context
+    if (repo / ".git").exists():
+        raise AutoresearchError(
+            f"{mode_name} invariants require a valid git-local pointer and canonical context for {repo}."
+        )
+    return repo, None
 
 
 BUNDLED_HELPER_RE = re.compile(
@@ -248,15 +267,20 @@ def validate_exec_completion_payload(last_message_path: Path) -> dict[str, objec
 
 
 def validate_exec(repo: Path, args: argparse.Namespace) -> None:
-    results_path = repo / "research-results.tsv"
-    prev_results_path = repo / "research-results.prev.tsv"
-    state_path = repo / "autoresearch-state.json"
-    prev_state_path = repo / "autoresearch-state.prev.json"
-    lessons_path = repo / "autoresearch-lessons.md"
-    scratch_state_path = default_exec_state_path(repo)
+    workspace_root, _ = resolve_workspace_context_for_repo(repo, mode_name="exec")
+    artifacts = default_workspace_artifacts(workspace_root)
+    results_path = artifacts.results_path
+    context_path = artifacts.context_path
+    prev_results_path = results_path.with_name("results.prev.tsv")
+    state_path = artifacts.state_path
+    prev_state_path = state_path.with_name("state.prev.json")
+    lessons_path = artifacts.lessons_path
+    scratch_state_path = default_exec_state_path(workspace_root)
 
     if not results_path.exists():
-        raise AutoresearchError("exec run did not produce research-results.tsv")
+        raise AutoresearchError("exec run did not produce autoresearch-results/results.tsv")
+    if not context_path.exists():
+        raise AutoresearchError("exec run did not persist autoresearch-results/context.json")
 
     parsed = parse_results_log(results_path)
     direction = parsed.metadata.get("metric_direction")
@@ -274,20 +298,20 @@ def validate_exec(repo: Path, args: argparse.Namespace) -> None:
             "exec fixture did not improve the retained metric over the baseline"
         )
     if args.expect_prev_results and not prev_results_path.exists():
-        raise AutoresearchError("exec run did not archive the prior research-results.tsv file")
+        raise AutoresearchError("exec run did not archive the prior results.tsv file")
     if args.expect_prev_state and not prev_state_path.exists():
-        raise AutoresearchError("exec run did not archive the prior autoresearch-state.json file")
+        raise AutoresearchError("exec run did not archive the prior state.json file")
     if state_path.exists():
-        raise AutoresearchError("exec run unexpectedly created autoresearch-state.json")
+        raise AutoresearchError("exec run unexpectedly created autoresearch-results/state.json")
     if scratch_state_path.exists():
         raise AutoresearchError(
             f"exec run left scratch JSON state behind: {scratch_state_path}"
         )
     if args.lessons_sha256:
         if not lessons_path.exists():
-            raise AutoresearchError("expected autoresearch-lessons.md to remain present")
+            raise AutoresearchError("expected autoresearch-results/lessons.md to remain present")
         if sha256_file(lessons_path) != args.lessons_sha256:
-            raise AutoresearchError("exec run modified autoresearch-lessons.md")
+            raise AutoresearchError("exec run modified autoresearch-results/lessons.md")
     if args.last_message_file:
         last_message_path = Path(args.last_message_file)
         if not last_message_path.exists():
@@ -304,25 +328,27 @@ def validate_exec(repo: Path, args: argparse.Namespace) -> None:
 
 
 def validate_interactive(repo: Path, args: argparse.Namespace) -> None:
-    results_path = repo / "research-results.tsv"
-    state_path = repo / "autoresearch-state.json"
-    lessons_path = repo / "autoresearch-lessons.md"
-    launch_path = repo / "autoresearch-launch.json"
-    runtime_path = repo / "autoresearch-runtime.json"
-    runtime_log_path = repo / "autoresearch-runtime.log"
+    workspace_root, context = resolve_workspace_context_for_repo(repo, mode_name="interactive")
+    artifacts = default_workspace_artifacts(workspace_root)
+    results_path = artifacts.results_path
+    state_path = artifacts.state_path
+    lessons_path = artifacts.lessons_path
+    launch_path = artifacts.launch_path
+    runtime_path = artifacts.runtime_path
+    runtime_log_path = artifacts.log_path
 
     if not results_path.exists():
-        raise AutoresearchError("interactive run did not produce research-results.tsv")
+        raise AutoresearchError("interactive run did not produce autoresearch-results/results.tsv")
     if not state_path.exists():
-        raise AutoresearchError("interactive run did not produce autoresearch-state.json")
+        raise AutoresearchError("interactive run did not produce autoresearch-results/state.json")
     if not lessons_path.exists():
-        raise AutoresearchError("interactive run did not produce autoresearch-lessons.md")
+        raise AutoresearchError("interactive run did not produce autoresearch-results/lessons.md")
     if launch_path.exists():
-        raise AutoresearchError("foreground interactive run unexpectedly created autoresearch-launch.json")
+        raise AutoresearchError("foreground interactive run unexpectedly created autoresearch-results/launch.json")
     if runtime_path.exists():
-        raise AutoresearchError("foreground interactive run unexpectedly created autoresearch-runtime.json")
+        raise AutoresearchError("foreground interactive run unexpectedly created autoresearch-results/runtime.json")
     if runtime_log_path.exists():
-        raise AutoresearchError("foreground interactive run unexpectedly created autoresearch-runtime.log")
+        raise AutoresearchError("foreground interactive run unexpectedly created autoresearch-results/runtime.log")
 
     parsed = parse_results_log(results_path)
     direction = parsed.metadata.get("metric_direction")
@@ -342,11 +368,12 @@ def validate_interactive(repo: Path, args: argparse.Namespace) -> None:
             "interactive fixture did not improve the retained metric over the baseline"
         )
     if not lessons_path.read_text(encoding="utf-8").strip():
-        raise AutoresearchError("interactive run left autoresearch-lessons.md empty")
+        raise AutoresearchError("interactive run left autoresearch-results/lessons.md empty")
 
+    verify_root = workspace_root if context is not None and context.verify_cwd == "workspace_root" else repo
     completed = subprocess.run(
         args.verify_cmd,
-        cwd=repo,
+        cwd=verify_root,
         shell=True,
         capture_output=True,
         text=True,
@@ -361,13 +388,15 @@ def validate_interactive(repo: Path, args: argparse.Namespace) -> None:
 
 
 def validate_runtime(repo: Path, args: argparse.Namespace) -> None:
-    launch_path = repo / "autoresearch-launch.json"
-    runtime_path = repo / "autoresearch-runtime.json"
+    workspace_root, _ = resolve_workspace_context_for_repo(repo, mode_name="runtime")
+    artifacts = default_workspace_artifacts(workspace_root)
+    launch_path = artifacts.launch_path
+    runtime_path = artifacts.runtime_path
 
     if not launch_path.exists():
-        raise AutoresearchError("runtime smoke did not produce autoresearch-launch.json")
+        raise AutoresearchError("runtime smoke did not produce autoresearch-results/launch.json")
     if not runtime_path.exists():
-        raise AutoresearchError("runtime smoke did not produce autoresearch-runtime.json")
+        raise AutoresearchError("runtime smoke did not produce autoresearch-results/runtime.json")
 
     launch = read_launch_manifest(launch_path)
     runtime = read_runtime_payload(runtime_path)

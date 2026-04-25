@@ -34,19 +34,19 @@ Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch),
 
 ## Quick Start
 
-```bash
-# Install
-git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
-cp -r codex-autoresearch your-project/.agents/skills/codex-autoresearch
+```text
+# Install in Codex (recommended)
+$skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Open Codex in your project and go:
+Restart Codex, open your project, and go:
 
 ```
 You:   $codex-autoresearch
        I want to get rid of all the `any` types in my TypeScript code
 
 Codex: I found 47 `any` occurrences across src/**/*.ts.
+       Results directory: ./autoresearch-results/
        Metric: `any` count (current: 47), direction: lower
        Verify: grep count + tsc --noEmit as guard
        Run mode: foreground or background?
@@ -58,7 +58,7 @@ Codex: Starting background run — baseline: 47. Iterating.
 
 Each improvement stacks. Each failure reverts. Everything is logged.
 
-See [INSTALL.md](docs/INSTALL.md) for more options. See [GUIDE.md](docs/GUIDE.md) for the full manual.
+See [INSTALL.md](docs/INSTALL.md) for manual copy, symlink, and user-scope options. See [GUIDE.md](docs/GUIDE.md) for the full manual.
 
 ## How It Works
 
@@ -115,6 +115,7 @@ You don't write config. Codex infers everything from your sentence and your repo
 | Guard | Suggests if regression risk exists | `npm test` |
 
 Before starting, Codex always shows what it found and asks you to confirm. Then you choose foreground or background and say "go."
+By default, the Results directory stays in the launch context: if you started Codex inside a git repo, that repo root is the default workspace root; if you started outside a git repo, the current launch directory is the default workspace root. Codex should not silently widen that to a parent directory unless you explicitly confirm a broader multi-repo workspace. The confirmation summary should always show the chosen Results directory before launch.
 
 ## When It Gets Stuck
 
@@ -131,7 +132,7 @@ One success resets all counters.
 
 ## Results Log
 
-Every iteration is recorded in `research-results.tsv`:
+Every iteration is recorded in the workspace Results directory at `autoresearch-results/results.tsv`:
 
 ```
 iteration  commit   metric  delta   status    description
@@ -141,7 +142,7 @@ iteration  commit   metric  delta   status    description
 3          d4e5f6g  38      -3      keep      type-narrow API response handlers
 ```
 
-Failed experiments revert from git but stay in the log. The log is the real audit trail.
+Failed experiments revert from git but stay in the log. The log is the real audit trail, while `autoresearch-results/state.json` is the resume snapshot.
 
 ## More Features
 
@@ -164,7 +165,7 @@ It's strongest when the goal and metric are clear — push coverage up, push err
 
 **How do I stop it?** Foreground: interrupt Codex. Background: `$codex-autoresearch` then ask to stop.
 
-**Can it resume after interruption?** Yes. It resumes from `autoresearch-state.json` automatically.
+**Can it resume after interruption?** Yes. It resumes from `autoresearch-results/state.json` automatically.
 
 **How do I use it in CI?** `Mode: exec` with `codex exec`. All config upfront, JSON output, exit codes 0/1/2.
 

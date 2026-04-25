@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
+    ARTIFACT_DIR_NAME,
     AutoresearchError,
     LESSONS_FILE_NAME,
     default_lessons_path,
@@ -536,7 +537,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     append = subparsers.add_parser("append")
-    append.add_argument("--lessons-path", default=str(default_lessons_path()))
+    append.add_argument("--lessons-path", default=str(default_lessons_path()), help=argparse.SUPPRESS)
     append.add_argument("--title", required=True)
     append.add_argument("--strategy", required=True)
     append.add_argument("--outcome", required=True, choices=LESSON_OUTCOMES)
@@ -546,7 +547,7 @@ def build_parser() -> argparse.ArgumentParser:
     append.add_argument("--timestamp")
 
     show = subparsers.add_parser("list")
-    show.add_argument("--lessons-path", default=str(default_lessons_path()))
+    show.add_argument("--lessons-path", default=str(default_lessons_path()), help=argparse.SUPPRESS)
     return parser
 
 
@@ -554,31 +555,21 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     if args.command == "append":
-        print(
-            json.dumps(
-                append_lesson(
-                    lessons_path=Path(args.lessons_path),
-                    title=args.title,
-                    strategy=args.strategy,
-                    outcome=args.outcome,
-                    insight=args.insight,
-                    context=args.context,
-                    iteration=args.iteration,
-                    timestamp=args.timestamp,
-                ),
-                indent=2,
-                sort_keys=True,
+        print_json(
+            append_lesson(
+                lessons_path=Path(args.lessons_path),
+                title=args.title,
+                strategy=args.strategy,
+                outcome=args.outcome,
+                insight=args.insight,
+                context=args.context,
+                iteration=args.iteration,
+                timestamp=args.timestamp,
             )
         )
         return 0
     if args.command == "list":
-        print(
-            json.dumps(
-                list_entries_with_recovery(Path(args.lessons_path)),
-                indent=2,
-                sort_keys=True,
-            )
-        )
+        print_json(list_entries_with_recovery(Path(args.lessons_path)))
         return 0
     raise AutoresearchError(f"Unsupported command: {args.command}")
 

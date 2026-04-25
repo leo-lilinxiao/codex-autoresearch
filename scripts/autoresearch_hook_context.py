@@ -1,17 +1,24 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-import tempfile
-from typing import Any
 
-HOOK_CONTEXT_VERSION = 1
-HOOK_CONTEXT_NAME = "autoresearch-hook-context.json"
+from autoresearch_workspace import (
+    CanonicalContext,
+    RepoPointer,
+    UNSET,
+    canonical_context_path,
+    load_context_for_repo,
+    load_repo_pointer,
+    persist_run_context,
+    update_run_context,
+    workspace_artifact_root,
+)
+
+HOOK_CONTEXT_VERSION = 2
+HOOK_CONTEXT_NAME = "context.json"
 SESSION_MODE_CHOICES = ("foreground", "background")
-UNSET = object()
 
 
 @dataclass(frozen=True)
@@ -24,100 +31,31 @@ class HookContextPointer:
     launch_path: Path | None
     runtime_path: Path | None
     updated_at: str | None
+    workspace_root: Path
+    artifact_root: Path
+    primary_repo: Path
 
 
 class HookContextError(Exception):
     pass
 
 
-def utc_now() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        delete=False,
-    ) as handle:
-        json.dump(payload, handle, indent=2)
-        handle.write("\n")
-        temp_path = Path(handle.name)
-    temp_path.replace(path)
-
-
-def find_repo_root(start: Path | None = None) -> Path:
-    current = Path(start or Path.cwd()).expanduser().resolve()
-    for candidate in (current, *current.parents):
-        if (candidate / ".git").exists():
-            return candidate
-    return current
-
-
-def default_hook_context_path(cwd: Path | None = None) -> Path:
-    return find_repo_root(cwd) / HOOK_CONTEXT_NAME
-
-
-def _normalize_repo(repo: Path | None) -> Path:
-    return find_repo_root(repo or Path.cwd()).resolve()
-
-
-def _path_within_repo(repo: Path, path: Path) -> bool:
-    try:
-        path.relative_to(repo)
-        return True
-    except ValueError:
-        return False
-
-
-def serialize_pointer_path(repo: Path, path: Path | None) -> str | None:
-    if path is None:
+def _pointer_from_context(context: CanonicalContext | None) -> HookContextPointer | None:
+    if context is None:
         return None
-    resolved = path.expanduser().resolve()
-    if _path_within_repo(repo, resolved):
-        return resolved.relative_to(repo).as_posix()
-    return str(resolved)
-
-
-def deserialize_pointer_path(repo: Path, raw: Any) -> Path | None:
-    if raw in (None, ""):
-        return None
-    if not isinstance(raw, str):
-        raise HookContextError(f"Invalid hook context path: {raw!r}")
-    candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        candidate = repo / candidate
-    return candidate.resolve()
-
-
-def pointer_payload(
-    *,
-    repo: Path,
-    active: bool,
-    session_mode: str | None,
-    results_path: Path | None,
-    state_path: Path | None,
-    launch_path: Path | None,
-    runtime_path: Path | None,
-    updated_at: str | None = None,
-) -> dict[str, Any]:
-    if session_mode is not None and session_mode not in SESSION_MODE_CHOICES:
-        raise HookContextError(f"Unsupported session mode for hook context: {session_mode}")
-    normalized_repo = _normalize_repo(repo)
-    return {
-        "version": HOOK_CONTEXT_VERSION,
-        "active": bool(active),
-        "session_mode": session_mode,
-        "results_path": serialize_pointer_path(normalized_repo, results_path),
-        "state_path": serialize_pointer_path(normalized_repo, state_path),
-        "launch_path": serialize_pointer_path(normalized_repo, launch_path),
-        "runtime_path": serialize_pointer_path(normalized_repo, runtime_path),
-        "updated_at": updated_at or utc_now(),
-    }
+    return HookContextPointer(
+        version=HOOK_CONTEXT_VERSION,
+        active=context.active,
+        session_mode=context.session_mode,
+        results_path=context.results_path,
+        state_path=context.state_path,
+        launch_path=context.launch_path,
+        runtime_path=context.runtime_path,
+        updated_at=context.updated_at,
+        workspace_root=context.workspace_root,
+        artifact_root=context.artifact_root,
+        primary_repo=context.primary_repo,
+    )
 
 
 def write_hook_context_pointer(
@@ -129,56 +67,31 @@ def write_hook_context_pointer(
     state_path: Path | None,
     launch_path: Path | None,
     runtime_path: Path | None,
-    updated_at: str | None = None,
+    workspace_root: Path,
+    primary_repo: Path,
+    repo_targets,
+    verify_cwd: str | None = None,
+    log_path: Path | None = None,
 ) -> Path:
-    normalized_repo = _normalize_repo(repo)
-    path = default_hook_context_path(normalized_repo)
-    payload = pointer_payload(
-        repo=normalized_repo,
+    if results_path is None or state_path is None:
+        raise HookContextError("results_path and state_path are required for canonical hook context.")
+    return persist_run_context(
+        workspace_root=workspace_root,
+        primary_repo=primary_repo,
+        repo_targets=repo_targets,
+        verify_cwd=verify_cwd,
         active=active,
         session_mode=session_mode,
         results_path=results_path,
         state_path=state_path,
         launch_path=launch_path,
         runtime_path=runtime_path,
-        updated_at=updated_at,
+        log_path=log_path,
     )
-    write_json_atomic(path, payload)
-    return path
 
 
 def load_hook_context_pointer(repo: Path | None) -> HookContextPointer | None:
-    normalized_repo = _normalize_repo(repo)
-    path = default_hook_context_path(normalized_repo)
-    if not path.exists():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    if payload.get("version") != HOOK_CONTEXT_VERSION:
-        return None
-    active = payload.get("active")
-    if not isinstance(active, bool):
-        return None
-    session_mode = payload.get("session_mode")
-    if session_mode is not None and session_mode not in SESSION_MODE_CHOICES:
-        return None
-    try:
-        return HookContextPointer(
-            version=HOOK_CONTEXT_VERSION,
-            active=active,
-            session_mode=session_mode,
-            results_path=deserialize_pointer_path(normalized_repo, payload.get("results_path")),
-            state_path=deserialize_pointer_path(normalized_repo, payload.get("state_path")),
-            launch_path=deserialize_pointer_path(normalized_repo, payload.get("launch_path")),
-            runtime_path=deserialize_pointer_path(normalized_repo, payload.get("runtime_path")),
-            updated_at=payload.get("updated_at") if isinstance(payload.get("updated_at"), str) else None,
-        )
-    except HookContextError:
-        return None
+    return _pointer_from_context(load_context_for_repo(repo))
 
 
 def update_hook_context_pointer(
@@ -190,35 +103,42 @@ def update_hook_context_pointer(
     state_path: Path | None | object = UNSET,
     launch_path: Path | None | object = UNSET,
     runtime_path: Path | None | object = UNSET,
+    log_path: Path | None | object = UNSET,
+    verify_cwd: str | None | object = UNSET,
+    workspace_root: Path | None | object = UNSET,
+    primary_repo: Path | None | object = UNSET,
+    repo_targets: object = UNSET,
 ) -> Path:
-    normalized_repo = _normalize_repo(repo)
-    existing = load_hook_context_pointer(normalized_repo)
-    resolved_active = existing.active if existing is not None else True
-    resolved_session_mode = existing.session_mode if existing is not None else None
-    resolved_results = existing.results_path if existing is not None else None
-    resolved_state = existing.state_path if existing is not None else None
-    resolved_launch = existing.launch_path if existing is not None else None
-    resolved_runtime = existing.runtime_path if existing is not None else None
-
-    if active is not UNSET:
-        resolved_active = bool(active)
-    if session_mode is not UNSET:
-        resolved_session_mode = session_mode
-    if results_path is not UNSET:
-        resolved_results = results_path
-    if state_path is not UNSET:
-        resolved_state = state_path
-    if launch_path is not UNSET:
-        resolved_launch = launch_path
-    if runtime_path is not UNSET:
-        resolved_runtime = runtime_path
-
-    return write_hook_context_pointer(
-        repo=normalized_repo,
-        active=resolved_active,
-        session_mode=resolved_session_mode,
-        results_path=resolved_results,
-        state_path=resolved_state,
-        launch_path=resolved_launch,
-        runtime_path=resolved_runtime,
+    return update_run_context(
+        repo=repo,
+        active=active,
+        session_mode=session_mode,
+        results_path=results_path,
+        state_path=state_path,
+        launch_path=launch_path,
+        runtime_path=runtime_path,
+        log_path=log_path,
+        verify_cwd=verify_cwd,
+        workspace_root=workspace_root,
+        primary_repo=primary_repo,
+        repo_targets=repo_targets,
     )
+
+
+__all__ = [
+    "CanonicalContext",
+    "HOOK_CONTEXT_NAME",
+    "HOOK_CONTEXT_VERSION",
+    "HookContextError",
+    "HookContextPointer",
+    "RepoPointer",
+    "SESSION_MODE_CHOICES",
+    "UNSET",
+    "canonical_context_path",
+    "load_context_for_repo",
+    "load_hook_context_pointer",
+    "load_repo_pointer",
+    "update_hook_context_pointer",
+    "workspace_artifact_root",
+    "write_hook_context_pointer",
+]

@@ -6,17 +6,17 @@ How to get results from codex-autoresearch. Covers installation, the two-phase i
 
 ## Installation
 
-Clone and copy into your project:
+Use the skill installer in Codex:
+
+```text
+$skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
+```
+
+Restart Codex after installation. Or clone and copy into your project:
 
 ```bash
 git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
 cp -r codex-autoresearch your-project/.agents/skills/codex-autoresearch
-```
-
-Or use the skill installer in Codex:
-
-```text
-$skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
 Verify: open Codex in the target repo, type `$`, confirm `codex-autoresearch` appears.
@@ -41,6 +41,7 @@ Codex: I found 47 `any` occurrences across src/**/*.ts.
 
        Confirmed:
        - Target: eliminate `any` types in src/**/*.ts
+       - Results directory: `./autoresearch-results/`
        - Metric: `any` count (current: 47), direction: lower
        - Verify: grep count, Guard: tsc --noEmit
 
@@ -79,7 +80,7 @@ Once execution begins, keep the runtime contract tiny:
 
 ### Required Session Hooks
 
-The interactive skill requires these user-level Codex session hooks and auto-installs them right after the initial repo scan when they are missing. This bootstrap happens before the first clarification question. If you want to preinstall them yourself:
+The interactive skill requires these user-level Codex session hooks and auto-installs or repairs them right after the initial repo scan whenever `autoresearch_hooks_ctl.py status` is not ready for future sessions. This bootstrap happens before the first clarification question. If you want to preinstall them yourself:
 
 ```bash
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
@@ -94,9 +95,9 @@ These hooks only attach to later Codex sessions that clearly look like `codex-au
 
 - If the skill just installed them in the current session, `background` can use them immediately.
 - The foreground session already open in front of you will **not** start using them mid-session. To get hooks there, reopen/resume the same thread in a new Codex session.
-- Managed `background` runs explicitly pass their configured artifact paths into those nested sessions, so custom `--results-path` / `--state-path` layouts continue to work there.
+- Managed `background` runs explicitly pass their workspace-owned Results directory into nested sessions.
 - In the CLI this reopen/resume path is often `codex resume`; in the app, reopen the same thread in a new session.
-- Future `foreground` sessions can also recover repo-local custom artifact paths through the repo's hook context pointer, but hooks still require an explicit autoresearch session signal before they attach.
+- Future `foreground` sessions can also recover the workspace-owned run context through the repo's git-local pointer, but hooks still require an explicit autoresearch session signal before they attach.
 
 ---
 
@@ -135,11 +136,11 @@ Revert uses the rollback strategy approved during setup. In a dedicated experime
 
 Run artifacts should be updated by the helper scripts rather than hand-editing TSV or JSON. Use the skill-bundle path, not the target repo's own `scripts/` directory. Here `<skill-root>` means the directory containing the loaded `SKILL.md`; in the common repo-local install this is `.agents/skills/codex-autoresearch`.
 
-- `python3 <skill-root>/scripts/autoresearch_init_run.py`
+- `python3 <skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root>`
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py`
-- `python3 <skill-root>/scripts/autoresearch_resume_check.py`
+- `python3 <skill-root>/scripts/autoresearch_resume_check.py --repo <primary_repo>`
 - `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py`
-- `python3 <skill-root>/scripts/autoresearch_supervisor_status.py`
+- `python3 <skill-root>/scripts/autoresearch_supervisor_status.py --repo <primary_repo>`
 
 ### Verify and Guard: two gates, two questions
 
@@ -447,7 +448,7 @@ You:   $codex-autoresearch
 
 ## Results Log
 
-Every iteration is recorded in `research-results.tsv`:
+Every iteration is recorded in `autoresearch-results/results.tsv`:
 
 ```
 iteration  commit   metric  delta   status    description
@@ -461,7 +462,7 @@ Progress summaries print every 5 iterations. Bounded runs print a final baseline
 
 The TSV file is the real audit trail -- not the git history (failed experiments are reverted from git but preserved in the log).
 
-`research-results.tsv`, `autoresearch-state.json`, `autoresearch-hook-context.json`, and `autoresearch-lessons.md` are treated as autoresearch-owned artifacts: they stay uncommitted and are not staged as experiment changes.
+The workspace-owned `autoresearch-results/` directory and git-local repo pointers are treated as autoresearch-owned artifacts: they stay uncommitted and are not staged as experiment changes.
 
 ---
 
@@ -480,13 +481,13 @@ If unrelated uncommitted changes exist:
 
 | Mode | What it produces |
 |------|------------------|
-| loop | `research-results.tsv`, `autoresearch-lessons.md`, `autoresearch-state.json`, `autoresearch-hook-context.json` |
+| loop | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json` |
 | plan | Config block printed inline (ready to paste) |
-| debug | `research-results.tsv`, `autoresearch-lessons.md`, `autoresearch-state.json`, `autoresearch-hook-context.json`, plus `debug/{YYMMDD}-{HHMM}-{slug}/` findings |
-| fix | `research-results.tsv`, `autoresearch-lessons.md`, `autoresearch-state.json`, `autoresearch-hook-context.json`, plus `fix/{YYMMDD}-{HHMM}-{slug}/` fix log |
-| security | `research-results.tsv`, `autoresearch-lessons.md`, `autoresearch-state.json`, `autoresearch-hook-context.json`, plus `security/{YYMMDD}-{HHMM}-{slug}/` audit report |
-| ship | `research-results.tsv`, `autoresearch-lessons.md`, `autoresearch-state.json`, `autoresearch-hook-context.json`, plus `ship/{YYMMDD}-{HHMM}-{slug}/` checklist and verification |
-| exec | `research-results.tsv`, JSON lines to stdout, exit code |
+| debug | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `debug/{YYMMDD}-{HHMM}-{slug}/` findings |
+| fix | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `fix/{YYMMDD}-{HHMM}-{slug}/` fix log |
+| security | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `security/{YYMMDD}-{HHMM}-{slug}/` audit report |
+| ship | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `ship/{YYMMDD}-{HHMM}-{slug}/` checklist and verification |
+| exec | `autoresearch-results/results.tsv`, inactive `autoresearch-results/context.json`, git-local pointer metadata, JSON lines to stdout, exit code |
 
 ---
 
@@ -512,7 +513,7 @@ If unrelated uncommitted changes exist:
 
 ## Cross-Run Learning
 
-Every iterating run except `exec` extracts structured lessons and persists them to `autoresearch-lessons.md` (alongside the results log, never committed). Future runs consult lessons to bias hypothesis generation. `exec` may read existing lessons, but it does not create or update them.
+Every iterating run except `exec` extracts structured lessons and persists them to `autoresearch-results/lessons.md` (alongside the results log, never committed). Future runs consult lessons to bias hypothesis generation. `exec` may read existing lessons, but it does not create or update them.
 
 How it works:
 - After every kept iteration: positive lesson (what worked and why)
@@ -557,10 +558,10 @@ Parallel mode is suggested during the wizard when the environment has enough res
 
 If you interrupt a run and come back later, Codex can resume from where you left off:
 
-- It first validates `autoresearch-state.json`, the primary recovery source, against the retained-state summary reconstructed from `research-results.tsv`.
-- `autoresearch-lessons.md` is still read as context, but it is not the primary resume source.
-- Foreground resume uses `research-results.tsv` plus `autoresearch-state.json`.
-- Direct detached-runtime resume still requires an existing `autoresearch-launch.json`.
+- It first validates `autoresearch-results/state.json`, the primary recovery source, against the retained-state summary reconstructed from `autoresearch-results/results.tsv`.
+- `autoresearch-results/lessons.md` is still read as context, but it is not the primary resume source.
+- Foreground resume uses `autoresearch-results/results.tsv` plus `autoresearch-results/state.json`.
+- Direct detached-runtime resume still requires an existing `autoresearch-results/launch.json`.
 - If state is consistent: resumes immediately, no wizard needed. Background resume additionally requires the launch manifest.
 - If state is partially consistent: runs a mini-wizard (1 round) to re-confirm.
 - If state is inconsistent, the launch manifest is missing, or the goal has changed: starts fresh and archives the prior persistent run-control artifacts.
@@ -585,19 +586,21 @@ The public human workflow now stays on a single entrypoint: `$codex-autoresearch
 2. Answer the confirmation questions.
 3. Choose **foreground** or **background**.
 4. Reply `go`.
-5. In **foreground**, Codex keeps the loop in the current session. `research-results.tsv`, `autoresearch-state.json`, the repo-local `autoresearch-hook-context.json`, and lessons are created.
-6. In **background**, Codex writes `autoresearch-launch.json` and starts the detached runtime controller automatically.
-   The two modes share the same loop protocol and repo/scope semantics, but they are mutually exclusive for a given repo/run. Do not keep both modes active against the same primary repo artifacts at once.
+5. In **foreground**, Codex keeps the loop in the current session. `autoresearch-results/results.tsv`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, and lessons are created.
+6. In **background**, Codex writes `autoresearch-results/launch.json` and starts the detached runtime controller automatically.
+   The two modes share the same loop protocol and repo/scope semantics, but they are mutually exclusive for a given workspace/run. Do not keep both modes active against the same Results directory at once.
 7. If you resume an existing interactive run in the other mode, continue through the same `$codex-autoresearch` entrypoint. The shared state must be synchronized to the chosen mode before continuing; scripted background `start` performs that sync automatically before it relaunches.
-8. Single-repo runs are still the default. In that case the declared scope applies only to the primary repo that owns the run-control artifacts.
-9. If the experiment spans multiple repos, either mode can declare companion repos with their own scopes. `research-results.tsv`, `autoresearch-state.json`, and `autoresearch-hook-context.json` stay anchored in the primary repo; background mode also keeps launch/runtime control files there.
+8. For a new interactive run, the default workspace root comes from the launch context. If you started Codex inside a git repo, that repo root is the default workspace root. If you started Codex outside a git repo, the current launch directory is the default workspace root.
+9. Single-repo runs are still the default. In that case the declared scope applies only to the primary repo, while run artifacts stay in that launch-context workspace under `./autoresearch-results/`.
+10. Codex should not silently widen the workspace root to a parent directory just because sibling repos, old `autoresearch-results/`, or a broader folder layout exist. If a wider shared workspace is truly intended, the confirmation summary should make that explicit and show the resulting Results directory before launch.
+11. If the experiment spans multiple repos, either mode can declare companion repos with their own scopes. Run artifacts stay under the chosen workspace-owned `autoresearch-results/` directory, while each managed repo stores a git-local pointer to that canonical context.
    Script-level entrypoints represent this with repeated `--companion-repo-scope PATH=SCOPE` flags.
-   The TSV `commit` column remains the primary repo commit; companion-repo commit provenance lives in `autoresearch-state.json`.
-10. Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
+   The TSV `commit` column remains the primary repo commit; companion-repo commit provenance lives in `autoresearch-results/state.json`.
+12. Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
    Background launch manifests carry an `execution_policy`; this skill now defaults to `danger_full_access`, so detached sessions run with `--dangerously-bypass-approvals-and-sandbox` unless you explicitly opt back into the sandboxed `workspace_write` path.
-11. Before each background detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
-12. If background `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
-13. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.
+13. Before each background detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
+14. If background `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
+15. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.
 
 Foreground keeps iterating in the current session until a terminal condition, blocker, or interruption. Background continues through fresh Codex sessions in the background until a terminal condition, blocker, or explicit stop request.
 
@@ -650,7 +653,7 @@ Non-interactive mode for automation pipelines. Differences from interactive mode
 
 Before using `codex exec` in CI, configure Codex CLI authentication in advance. In controlled automation environments, prefer `codex exec --dangerously-bypass-approvals-and-sandbox ...` so the verify command has the same full-access behavior as the managed runtime. For programmatic runs, API key authentication is the preferred option.
 
-When the bundled helper scripts drive `Mode: exec`, do not manually rename old repo-root artifacts first. `autoresearch_init_run.py --mode exec ...` already archives the default `research-results.tsv` and `autoresearch-state.json` files to `research-results.prev.tsv` and `autoresearch-state.prev.json` before it initializes the fresh run. Keep `autoresearch_exec_state.py --cleanup` as the final serial helper step, after the last `autoresearch_record_iteration.py` / `autoresearch_select_parallel_batch.py` call.
+When the bundled helper scripts drive `Mode: exec`, do not manually rename old artifacts first. Let `autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root> --mode exec ...` perform its fresh-start archival, and keep `autoresearch_exec_state.py --cleanup` as the final serial helper step after the last `autoresearch_record_iteration.py` / `autoresearch_select_parallel_batch.py` call.
 
 See `references/exec-workflow.md` for full details and CI integration examples.
 

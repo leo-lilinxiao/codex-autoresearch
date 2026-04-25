@@ -16,10 +16,41 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import autoresearch_runtime_ops
+import autoresearch_launch_gate
 
 
 class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     maxDiff = None
+
+    def test_create_launch_manifest_requires_workspace_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.init_git_repo(Path(tmp) / "repo")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "autoresearch_runtime_ctl.py"),
+                    "create-launch",
+                    "--repo",
+                    str(repo),
+                    "--original-goal",
+                    "Reduce failures",
+                    "--goal",
+                    "Reduce failures",
+                    "--scope",
+                    "src/**/*.py",
+                    "--metric-name",
+                    "failure count",
+                    "--direction",
+                    "lower",
+                    "--verify",
+                    "python3 -c pass",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("the following arguments are required: --workspace-root", completed.stderr)
 
     def test_create_launch_manifest_persists_required_stop_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -53,6 +84,50 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 ["real-backend", "production-path"],
             )
 
+    def test_create_launch_manifest_preserves_utf8_text_in_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            completed = self.run_script_completed(
+                "autoresearch_runtime_ctl.py",
+                "create-launch",
+                "--repo",
+                str(tmpdir),
+                "--workspace-root",
+                str(tmpdir),
+                "--original-goal",
+                "我需要交付一个支持中文描述的 TodoList",
+                "--prompt-text",
+                "请从零搭建一个支持中文内容的 TodoList 项目。",
+                "--mode",
+                "loop",
+                "--goal",
+                "从零交付支持中文内容的 TodoList",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "delivery_score",
+                "--direction",
+                "higher",
+                "--verify",
+                "python3 -c pass",
+                "--note",
+                "默认技术栈：React + Go Gin",
+            )
+            completed.check_returncode()
+            created = json.loads(completed.stdout)
+
+            manifest_path = Path(str(created["launch_path"]))
+            manifest_text = manifest_path.read_text(encoding="utf-8")
+
+            self.assertIn("我需要交付一个支持中文描述的 TodoList", completed.stdout)
+            self.assertIn("从零交付支持中文内容的 TodoList", completed.stdout)
+            self.assertNotIn("\\u6211", completed.stdout)
+            self.assertNotIn("\\u4ece", completed.stdout)
+            self.assertIn("我需要交付一个支持中文描述的 TodoList", manifest_text)
+            self.assertIn("默认技术栈：React + Go Gin", manifest_text)
+            self.assertNotIn("\\u6211", manifest_text)
+            self.assertNotIn("\\u9ed8", manifest_text)
+
     def test_runtime_launch_command_atomically_creates_manifest_and_starts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
@@ -61,8 +136,8 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
 
             launched = self.launch_runtime(tmpdir, fake_codex_path=fake_codex_path)
             self.assertEqual(launched["status"], "running")
-            self.assertTrue((tmpdir / "autoresearch-launch.json").exists())
-            self.assertTrue((tmpdir / "autoresearch-runtime.json").exists())
+            self.assertTrue(self.managed_launch_path(tmpdir).exists())
+            self.assertTrue(self.managed_runtime_path(tmpdir).exists())
 
             running = self.wait_for_runtime_status(tmpdir, {"running"})
             self.assertEqual(running["status"], "running")
@@ -81,11 +156,12 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             fake_codex_path = tmpdir / "fake-codex"
             self.write_sleeping_fake_codex(fake_codex_path)
 
-            old_results = tmpdir / "research-results.tsv"
-            old_state = tmpdir / "autoresearch-state.json"
-            old_launch = tmpdir / "autoresearch-launch.json"
-            old_runtime = tmpdir / "autoresearch-runtime.json"
-            old_runtime_log = tmpdir / "autoresearch-runtime.log"
+            old_results = tmpdir / "autoresearch-results/results.tsv"
+            old_state = tmpdir / "autoresearch-results/state.json"
+            old_launch = tmpdir / "autoresearch-results/launch.json"
+            old_runtime = tmpdir / "autoresearch-results/runtime.json"
+            old_runtime_log = tmpdir / "autoresearch-results/runtime.log"
+            old_results.parent.mkdir(parents=True, exist_ok=True)
 
             old_results.write_text(
                 "iteration\tcommit\tmetric\tdelta\tguard\tstatus\tdescription\n"
@@ -173,10 +249,10 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                         "version": 1,
                         "active": True,
                         "session_mode": "foreground",
-                        "results_path": "research-results.tsv",
-                        "state_path": "autoresearch-state.json",
-                        "launch_path": "autoresearch-launch.json",
-                        "runtime_path": "autoresearch-runtime.json",
+                        "results_path": "autoresearch-results/results.tsv",
+                        "state_path": "autoresearch-results/state.json",
+                        "launch_path": "autoresearch-results/launch.json",
+                        "runtime_path": "autoresearch-results/runtime.json",
                         "updated_at": "2026-03-21T00:00:00Z",
                     },
                     indent=2,
@@ -197,22 +273,22 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 sorted(str(Path(path).resolve()) for path in launched["archived_paths"]),
                 sorted(
                     [
-                        str((tmpdir / "research-results.prev.tsv").resolve()),
-                        str((tmpdir / "autoresearch-state.prev.json").resolve()),
-                        str((tmpdir / "autoresearch-launch.prev.json").resolve()),
-                        str((tmpdir / "autoresearch-runtime.prev.json").resolve()),
-                        str((tmpdir / "autoresearch-runtime.prev.log").resolve()),
+                        str((tmpdir / "autoresearch-results/results.prev.tsv").resolve()),
+                        str((tmpdir / "autoresearch-results/state.prev.json").resolve()),
+                        str((tmpdir / "autoresearch-results/launch.prev.json").resolve()),
+                        str((tmpdir / "autoresearch-results/runtime.prev.json").resolve()),
+                        str((tmpdir / "autoresearch-results/runtime.prev.log").resolve()),
                         str((tmpdir / "autoresearch-hook-context.prev.json").resolve()),
                     ]
                 ),
             )
-            self.assertTrue((tmpdir / "research-results.prev.tsv").exists())
-            self.assertTrue((tmpdir / "autoresearch-state.prev.json").exists())
-            self.assertTrue((tmpdir / "autoresearch-launch.prev.json").exists())
-            self.assertTrue((tmpdir / "autoresearch-runtime.prev.json").exists())
-            self.assertTrue((tmpdir / "autoresearch-runtime.prev.log").exists())
+            self.assertTrue((tmpdir / "autoresearch-results/results.prev.tsv").exists())
+            self.assertTrue((tmpdir / "autoresearch-results/state.prev.json").exists())
+            self.assertTrue((tmpdir / "autoresearch-results/launch.prev.json").exists())
+            self.assertTrue((tmpdir / "autoresearch-results/runtime.prev.json").exists())
+            self.assertTrue((tmpdir / "autoresearch-results/runtime.prev.log").exists())
             self.assertTrue((tmpdir / "autoresearch-hook-context.prev.json").exists())
-            manifest = json.loads((tmpdir / "autoresearch-launch.json").read_text(encoding="utf-8"))
+            manifest = json.loads(self.managed_launch_path(tmpdir).read_text(encoding="utf-8"))
             self.assertEqual(manifest["original_goal"], "New goal")
             self.assertEqual(manifest["config"]["session_mode"], "background")
 
@@ -224,35 +300,17 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(stopped["status"], "stopped")
 
-    def test_runtime_launch_writes_background_hook_context_for_custom_paths(self) -> None:
+    def test_runtime_launch_writes_background_hook_context_for_workspace_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             fake_codex_path = tmpdir / "fake-codex"
             self.write_sleeping_fake_codex(fake_codex_path)
-
-            artifacts = tmpdir / "artifacts"
-            artifacts.mkdir(parents=True)
-            custom_results = artifacts / "custom-results.tsv"
-            custom_state = artifacts / "custom-state.json"
-            custom_launch = artifacts / "custom-launch.json"
-            custom_runtime = artifacts / "custom-runtime.json"
-            custom_log = artifacts / "custom-runtime.log"
 
             launched = self.run_script(
                 "autoresearch_runtime_ctl.py",
                 "launch",
                 "--repo",
                 str(tmpdir),
-                "--launch-path",
-                str(custom_launch),
-                "--results-path",
-                str(custom_results),
-                "--state-path",
-                str(custom_state),
-                "--runtime-path",
-                str(custom_runtime),
-                "--log-path",
-                str(custom_log),
                 "--original-goal",
                 "Reduce failures in this repo",
                 "--mode",
@@ -276,25 +334,23 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(launched["status"], "running")
 
-            pointer = json.loads((tmpdir / "autoresearch-hook-context.json").read_text(encoding="utf-8"))
-            self.assertTrue(pointer["active"])
-            self.assertEqual(pointer["session_mode"], "background")
-            self.assertEqual(pointer["results_path"], "artifacts/custom-results.tsv")
-            self.assertEqual(pointer["state_path"], "artifacts/custom-state.json")
-            self.assertEqual(pointer["launch_path"], "artifacts/custom-launch.json")
-            self.assertEqual(pointer["runtime_path"], "artifacts/custom-runtime.json")
+            context = json.loads(self.managed_context_path(tmpdir).read_text(encoding="utf-8"))
+            self.assertTrue(context["active"])
+            self.assertEqual(context["session_mode"], "background")
+            self.assertEqual(Path(context["results_path"]).resolve(), self.managed_results_path(tmpdir).resolve())
+            self.assertEqual(Path(context["state_path"]).resolve(), self.managed_state_path(tmpdir).resolve())
+            self.assertEqual(Path(context["launch_path"]).resolve(), self.managed_launch_path(tmpdir).resolve())
+            self.assertEqual(Path(context["runtime_path"]).resolve(), self.managed_runtime_path(tmpdir).resolve())
 
             stopped = self.run_script(
                 "autoresearch_runtime_ctl.py",
                 "stop",
                 "--repo",
                 str(tmpdir),
-                "--runtime-path",
-                str(custom_runtime),
             )
             self.assertEqual(stopped["status"], "stopped")
-            pointer = json.loads((tmpdir / "autoresearch-hook-context.json").read_text(encoding="utf-8"))
-            self.assertFalse(pointer["active"])
+            context = json.loads(self.managed_context_path(tmpdir).read_text(encoding="utf-8"))
+            self.assertFalse(context["active"])
 
     def test_runtime_start_syncs_existing_foreground_state_to_background(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -305,9 +361,9 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
-                str(tmpdir / "research-results.tsv"),
+                str(self.managed_results_path(tmpdir)),
                 "--state-path",
-                str(tmpdir / "autoresearch-state.json"),
+                str(self.managed_state_path(tmpdir)),
                 "--mode",
                 "loop",
                 "--session-mode",
@@ -338,7 +394,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(launched["status"], "running")
 
-            state = json.loads((tmpdir / "autoresearch-state.json").read_text(encoding="utf-8"))
+            state = json.loads(self.managed_state_path(tmpdir).read_text(encoding="utf-8"))
             self.assertEqual(state["config"]["session_mode"], "background")
             self.assertEqual(state["config"]["execution_policy"], "danger_full_access")
 
@@ -369,9 +425,9 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
-                str(primary / "research-results.tsv"),
+                str(self.managed_results_path(primary)),
                 "--state-path",
-                str(primary / "autoresearch-state.json"),
+                str(self.managed_state_path(primary)),
                 "--mode",
                 "loop",
                 "--session-mode",
@@ -426,11 +482,11 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(switched["session_mode"], "foreground")
 
-            state = json.loads((primary / "autoresearch-state.json").read_text(encoding="utf-8"))
+            state = json.loads(self.managed_state_path(primary).read_text(encoding="utf-8"))
             self.assertEqual(state["config"]["session_mode"], "foreground")
             self.assertNotIn("execution_policy", state["config"])
-            self.assertTrue((primary / "autoresearch-launch.json").exists())
-            self.assertTrue((primary / "autoresearch-runtime.json").exists())
+            self.assertTrue(self.managed_launch_path(primary).exists())
+            self.assertTrue(self.managed_runtime_path(primary).exists())
 
             restarted = self.run_script(
                 "autoresearch_runtime_ctl.py",
@@ -442,7 +498,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(restarted["status"], "running")
 
-            state = json.loads((primary / "autoresearch-state.json").read_text(encoding="utf-8"))
+            state = json.loads(self.managed_state_path(primary).read_text(encoding="utf-8"))
             self.assertEqual(state["config"]["session_mode"], "background")
             self.assertEqual(state["config"]["execution_policy"], "danger_full_access")
 
@@ -465,22 +521,23 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             fake_codex_path = tool_dir / "fake-codex"
             self.write_sleeping_fake_codex(fake_codex_path)
 
-            (repo / "research-results.tsv").write_text(
+            (repo / "autoresearch-results").mkdir(parents=True, exist_ok=True)
+            (repo / "autoresearch-results/results.tsv").write_text(
                 "iteration\tcommit\tmetric\tdelta\tguard\tstatus\tdescription\n"
                 "0\tabc1234\t10\t0\t-\tbaseline\told baseline\n",
                 encoding="utf-8",
             )
-            (repo / "autoresearch-state.json").write_text("{}\n", encoding="utf-8")
-            (repo / "autoresearch-launch.json").write_text("{}\n", encoding="utf-8")
-            (repo / "autoresearch-runtime.json").write_text(
+            (repo / "autoresearch-results/state.json").write_text("{}\n", encoding="utf-8")
+            (repo / "autoresearch-results/launch.json").write_text("{}\n", encoding="utf-8")
+            (repo / "autoresearch-results/runtime.json").write_text(
                 json.dumps(
                     {
                         "version": 1,
                         "repo": str(repo),
-                        "launch_path": str(repo / "autoresearch-launch.json"),
-                        "results_path": str(repo / "research-results.tsv"),
-                        "state_path": str(repo / "autoresearch-state.json"),
-                        "log_path": str(repo / "autoresearch-runtime.log"),
+                        "launch_path": str(repo / "autoresearch-results/launch.json"),
+                        "results_path": str(repo / "autoresearch-results/results.tsv"),
+                        "state_path": str(repo / "autoresearch-results/state.json"),
+                        "log_path": str(repo / "autoresearch-results/runtime.log"),
                         "status": "terminal",
                         "terminal_reason": "completed",
                         "pid": 12345,
@@ -508,10 +565,10 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 fresh_start=True,
             )
             self.assertEqual(launched["status"], "running")
-            self.assertTrue((repo / "research-results.prev.tsv").exists())
-            self.assertTrue((repo / "autoresearch-state.prev.json").exists())
-            self.assertTrue((repo / "autoresearch-launch.prev.json").exists())
-            self.assertTrue((repo / "autoresearch-runtime.prev.json").exists())
+            self.assertTrue((repo / "autoresearch-results/results.prev.tsv").exists())
+            self.assertTrue((repo / "autoresearch-results/state.prev.json").exists())
+            self.assertTrue((repo / "autoresearch-results/launch.prev.json").exists())
+            self.assertTrue((repo / "autoresearch-results/runtime.prev.json").exists())
 
             stopped = self.run_script(
                 "autoresearch_runtime_ctl.py",
@@ -529,20 +586,21 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
 
             sleeper = subprocess.Popen(["sleep", "30"])
             try:
-                (tmpdir / "autoresearch-launch.json").write_text(
+                (tmpdir / "autoresearch-results").mkdir(parents=True, exist_ok=True)
+                (tmpdir / "autoresearch-results/launch.json").write_text(
                     json.dumps({"status": "stale manifest"}, indent=2) + "\n",
                     encoding="utf-8",
                 )
-                runtime_path = tmpdir / "autoresearch-runtime.json"
+                runtime_path = tmpdir / "autoresearch-results/runtime.json"
                 runtime_path.write_text(
                     json.dumps(
                         {
                             "version": 1,
                             "repo": str(tmpdir),
-                            "launch_path": str(tmpdir / "autoresearch-launch.json"),
-                            "results_path": str(tmpdir / "research-results.tsv"),
-                            "state_path": str(tmpdir / "autoresearch-state.json"),
-                            "log_path": str(tmpdir / "autoresearch-runtime.log"),
+                            "launch_path": str(tmpdir / "autoresearch-results/launch.json"),
+                            "results_path": str(tmpdir / "autoresearch-results/results.tsv"),
+                            "state_path": str(tmpdir / "autoresearch-results/state.json"),
+                            "log_path": str(tmpdir / "autoresearch-results/runtime.log"),
                             "status": "running",
                             "terminal_reason": "none",
                             "pid": sleeper.pid,
@@ -587,9 +645,9 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                     str(fake_codex_path),
                 )
                 self.assertNotEqual(completed.returncode, 0)
-                self.assertIn("already running", completed.stderr)
+                self.assertIn("missing process_started_at", completed.stderr)
                 self.assertTrue(runtime_path.exists())
-                self.assertFalse((tmpdir / "autoresearch-runtime.prev.json").exists())
+                self.assertFalse((tmpdir / "autoresearch-results/runtime.prev.json").exists())
             finally:
                 sleeper.terminate()
                 sleeper.wait()
@@ -600,7 +658,8 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             fake_codex_path = tmpdir / "fake-codex"
             self.write_sleeping_fake_codex(fake_codex_path)
 
-            runtime_path = tmpdir / "autoresearch-runtime.json"
+            runtime_path = tmpdir / "autoresearch-results/runtime.json"
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
             runtime_path.write_text("{bad json", encoding="utf-8")
 
             completed = self.run_script_completed(
@@ -631,12 +690,13 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("Invalid JSON", completed.stderr)
             self.assertTrue(runtime_path.exists())
-            self.assertFalse((tmpdir / "autoresearch-runtime.prev.json").exists())
+            self.assertFalse((tmpdir / "autoresearch-results/runtime.prev.json").exists())
 
     def test_runtime_status_reports_invalid_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            runtime_path = tmpdir / "autoresearch-runtime.json"
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
             runtime_path.write_text("{bad json", encoding="utf-8")
 
             status = self.run_script(
@@ -644,6 +704,14 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 "status",
                 "--repo",
                 str(tmpdir),
+                "--results-path",
+                str(self.managed_results_path(tmpdir)),
+                "--state-path",
+                str(self.managed_state_path(tmpdir)),
+                "--launch-path",
+                str(self.managed_launch_path(tmpdir)),
+                "--runtime-path",
+                str(runtime_path),
             )
             self.assertEqual(status["status"], "needs_human")
             self.assertEqual(status["reason"], "invalid_runtime_state")
@@ -653,7 +721,8 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     def test_runtime_stop_reports_invalid_runtime_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            runtime_path = tmpdir / "autoresearch-runtime.json"
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
             runtime_path.write_text("{bad json", encoding="utf-8")
 
             stopped = self.run_script(
@@ -661,6 +730,8 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 "stop",
                 "--repo",
                 str(tmpdir),
+                "--runtime-path",
+                str(runtime_path),
             )
             self.assertEqual(stopped["status"], "needs_human")
             self.assertEqual(stopped["reason"], "invalid_runtime_state")
@@ -670,16 +741,17 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     def test_runtime_stop_marks_needs_human_when_runner_survives_sigkill(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            runtime_path = tmpdir / "autoresearch-runtime.json"
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
             runtime_path.write_text(
                 json.dumps(
                     {
                         "version": 1,
                         "repo": str(tmpdir),
-                        "launch_path": str(tmpdir / "autoresearch-launch.json"),
-                        "results_path": str(tmpdir / "research-results.tsv"),
-                        "state_path": str(tmpdir / "autoresearch-state.json"),
-                        "log_path": str(tmpdir / "autoresearch-runtime.log"),
+                        "launch_path": str(self.managed_launch_path(tmpdir)),
+                        "results_path": str(self.managed_results_path(tmpdir)),
+                        "state_path": str(self.managed_state_path(tmpdir)),
+                        "log_path": str(self.managed_runtime_log_path(tmpdir)),
                         "status": "running",
                         "terminal_reason": "none",
                         "pid": 4242,
@@ -701,11 +773,20 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
 
             args = argparse.Namespace(
                 repo=str(tmpdir),
-                runtime_path=None,
+                runtime_path=str(runtime_path),
                 grace_seconds=0.0,
             )
             with (
-                mock.patch.object(autoresearch_runtime_ops, "pid_is_alive", return_value=True),
+                mock.patch.object(
+                    autoresearch_runtime_ops,
+                    "runtime_process_state",
+                    return_value={
+                        "alive": True,
+                        "matches": True,
+                        "reason": "running",
+                        "message": "",
+                    },
+                ),
                 mock.patch.object(
                     autoresearch_runtime_ops,
                     "wait_for_process_exit",
@@ -733,16 +814,17 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     def test_runtime_status_reports_stop_failed_even_if_pid_still_alive(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            runtime_path = tmpdir / "autoresearch-runtime.json"
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
             runtime_path.write_text(
                 json.dumps(
                     {
                         "version": 1,
                         "repo": str(tmpdir),
-                        "launch_path": str(tmpdir / "autoresearch-launch.json"),
-                        "results_path": str(tmpdir / "research-results.tsv"),
-                        "state_path": str(tmpdir / "autoresearch-state.json"),
-                        "log_path": str(tmpdir / "autoresearch-runtime.log"),
+                        "launch_path": str(self.managed_launch_path(tmpdir)),
+                        "results_path": str(self.managed_results_path(tmpdir)),
+                        "state_path": str(self.managed_state_path(tmpdir)),
+                        "log_path": str(self.managed_runtime_log_path(tmpdir)),
                         "status": "stopped",
                         "terminal_reason": "user_stopped",
                         "pid": 4242,
@@ -763,12 +845,21 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 encoding="utf-8",
             )
 
-            with mock.patch.object(autoresearch_runtime_ops, "pid_is_alive", return_value=True):
+            with mock.patch.object(
+                autoresearch_runtime_ops,
+                "runtime_process_state",
+                return_value={
+                    "alive": True,
+                    "matches": True,
+                    "reason": "running",
+                    "message": "",
+                },
+            ):
                 status = autoresearch_runtime_ops.runtime_summary(
                     repo=tmpdir,
-                    results_path=tmpdir / "research-results.tsv",
-                    state_path_arg=None,
-                    launch_path=tmpdir / "autoresearch-launch.json",
+                    results_path=self.managed_results_path(tmpdir),
+                    state_path_arg=str(self.managed_state_path(tmpdir)),
+                    launch_path=self.managed_launch_path(tmpdir),
                     runtime_path=runtime_path,
                 )
 
@@ -776,6 +867,293 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             self.assertEqual(status["reason"], "stop_failed")
             self.assertTrue(status["runtime_running"])
             self.assertIn("remained alive after SIGKILL", status["error"])
+
+    def test_runtime_status_reports_identity_mismatch_for_live_reused_pid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
+            runtime_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "repo": str(tmpdir),
+                        "launch_path": str(self.managed_launch_path(tmpdir)),
+                        "results_path": str(self.managed_results_path(tmpdir)),
+                        "state_path": str(self.managed_state_path(tmpdir)),
+                        "log_path": str(self.managed_runtime_log_path(tmpdir)),
+                        "status": "running",
+                        "terminal_reason": "none",
+                        "pid": 4242,
+                        "pgid": 4242,
+                        "command": [sys.executable, "runner.py"],
+                        "process_started_at": "Mon Apr 14 10:00:00 2026",
+                        "process_command": f"{sys.executable} runner.py",
+                        "requested_stop_at": None,
+                        "last_decision": "",
+                        "last_reason": "",
+                        "last_seen_iteration": None,
+                        "last_seen_status": "",
+                        "created_at": "2026-03-21T00:00:00Z",
+                        "updated_at": "2026-03-21T00:00:00Z",
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                autoresearch_runtime_ops,
+                "runtime_process_state",
+                return_value={
+                    "alive": True,
+                    "matches": False,
+                    "reason": "identity_mismatch",
+                    "message": "Runtime pid 4242 is alive, but start time changed.",
+                },
+            ):
+                status = autoresearch_runtime_ops.runtime_summary(
+                    repo=tmpdir,
+                    results_path=self.managed_results_path(tmpdir),
+                    state_path_arg=str(self.managed_state_path(tmpdir)),
+                    launch_path=self.managed_launch_path(tmpdir),
+                    runtime_path=runtime_path,
+                )
+
+            self.assertEqual(status["status"], "needs_human")
+            self.assertEqual(status["reason"], "runtime_identity_mismatch")
+            self.assertTrue(status["runtime_running"])
+            self.assertIn("start time changed", status["error"])
+
+    def test_runtime_status_preserves_terminal_reason_after_needs_human(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
+            runtime_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "repo": str(tmpdir),
+                        "launch_path": str(self.managed_launch_path(tmpdir)),
+                        "results_path": str(self.managed_results_path(tmpdir)),
+                        "state_path": str(self.managed_state_path(tmpdir)),
+                        "log_path": str(self.managed_runtime_log_path(tmpdir)),
+                        "status": "needs_human",
+                        "terminal_reason": "blocked",
+                        "pid": 4242,
+                        "pgid": 4242,
+                        "command": [sys.executable, "runner.py"],
+                        "process_started_at": "Mon Apr 14 10:00:00 2026",
+                        "process_command": f"{sys.executable} runner.py",
+                        "requested_stop_at": None,
+                        "last_decision": "needs_human",
+                        "last_reason": "blocked",
+                        "last_seen_iteration": 1,
+                        "last_seen_status": "blocked",
+                        "created_at": "2026-03-21T00:00:00Z",
+                        "updated_at": "2026-03-21T00:00:00Z",
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                autoresearch_runtime_ops,
+                "runtime_process_state",
+                return_value={
+                    "alive": True,
+                    "matches": False,
+                    "reason": "identity_mismatch",
+                    "message": "Runtime pid 4242 is alive, but start time changed.",
+                },
+            ):
+                status = autoresearch_runtime_ops.runtime_summary(
+                    repo=tmpdir,
+                    results_path=self.managed_results_path(tmpdir),
+                    state_path_arg=str(self.managed_state_path(tmpdir)),
+                    launch_path=self.managed_launch_path(tmpdir),
+                    runtime_path=runtime_path,
+                )
+
+            self.assertEqual(status["status"], "needs_human")
+            self.assertEqual(status["reason"], "blocked")
+            self.assertNotIn("error", status)
+            self.assertNotIn("runtime_running", status)
+
+    def test_runtime_process_state_treats_pid_exit_during_identity_probe_as_not_running(self) -> None:
+        with (
+            mock.patch.object(
+                autoresearch_launch_gate,
+                "pid_is_alive",
+                side_effect=[True, False],
+            ),
+            mock.patch.object(
+                autoresearch_launch_gate,
+                "inspect_process_identity",
+                return_value=None,
+            ),
+        ):
+            state = autoresearch_launch_gate.runtime_process_state({"pid": 4242, "pgid": 4242})
+
+        self.assertFalse(state["alive"])
+        self.assertFalse(state["matches"])
+        self.assertEqual(state["reason"], "not_running")
+        self.assertIn("not running", state["message"])
+
+    def test_runtime_process_state_rejects_missing_identity_snapshot(self) -> None:
+        with (
+            mock.patch.object(
+                autoresearch_launch_gate,
+                "pid_is_alive",
+                return_value=True,
+            ),
+            mock.patch.object(
+                autoresearch_launch_gate,
+                "inspect_process_identity",
+                return_value={
+                    "pid": 4242,
+                    "pgid": 4242,
+                    "started_at": "Mon Apr 14 10:00:00 2026",
+                    "command": "/real/python -c import time; time.sleep(30) arg with spaces",
+                },
+            ),
+        ):
+            state = autoresearch_launch_gate.runtime_process_state(
+                {
+                    "pid": 4242,
+                    "pgid": 4242,
+                    "command": ["/symlink/python", "-c", "import time; time.sleep(30)", "arg with spaces"],
+                }
+            )
+
+        self.assertTrue(state["alive"])
+        self.assertFalse(state["matches"])
+        self.assertEqual(state["reason"], "runtime_identity_unverifiable")
+        self.assertIn("process_started_at", state["message"])
+
+    def test_runtime_stop_refuses_to_signal_when_live_pid_identity_mismatches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
+            runtime_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "repo": str(tmpdir),
+                        "launch_path": str(self.managed_launch_path(tmpdir)),
+                        "results_path": str(self.managed_results_path(tmpdir)),
+                        "state_path": str(self.managed_state_path(tmpdir)),
+                        "log_path": str(self.managed_runtime_log_path(tmpdir)),
+                        "status": "running",
+                        "terminal_reason": "none",
+                        "pid": 4242,
+                        "pgid": 4242,
+                        "command": [sys.executable, "runner.py"],
+                        "process_started_at": "Mon Apr 14 10:00:00 2026",
+                        "process_command": f"{sys.executable} runner.py",
+                        "requested_stop_at": None,
+                        "last_decision": "",
+                        "last_reason": "",
+                        "last_seen_iteration": None,
+                        "last_seen_status": "",
+                        "created_at": "2026-03-21T00:00:00Z",
+                        "updated_at": "2026-03-21T00:00:00Z",
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            args = argparse.Namespace(
+                repo=str(tmpdir),
+                runtime_path=str(runtime_path),
+                grace_seconds=0.0,
+            )
+            with (
+                mock.patch.object(
+                    autoresearch_runtime_ops,
+                    "runtime_process_state",
+                    return_value={
+                        "alive": True,
+                        "matches": False,
+                        "reason": "identity_mismatch",
+                        "message": "Runtime pid 4242 is alive, but start time changed.",
+                    },
+                ),
+                mock.patch.object(autoresearch_runtime_ops.os, "killpg") as killpg,
+            ):
+                stopped = autoresearch_runtime_ops.stop_runtime(args)
+
+            self.assertEqual(stopped["status"], "needs_human")
+            self.assertEqual(stopped["reason"], "runtime_identity_mismatch")
+            self.assertIn("start time changed", stopped["error"])
+            killpg.assert_not_called()
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            self.assertEqual(runtime["status"], "needs_human")
+            self.assertEqual(runtime["terminal_reason"], "runtime_identity_mismatch")
+
+    def test_launch_gate_reports_identity_mismatch_for_live_reused_pid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            runtime_path = self.managed_runtime_path(tmpdir)
+            runtime_path.parent.mkdir(parents=True, exist_ok=True)
+            runtime_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "repo": str(tmpdir),
+                        "launch_path": str(self.managed_launch_path(tmpdir)),
+                        "results_path": str(self.managed_results_path(tmpdir)),
+                        "state_path": str(self.managed_state_path(tmpdir)),
+                        "log_path": str(self.managed_runtime_log_path(tmpdir)),
+                        "status": "running",
+                        "terminal_reason": "none",
+                        "pid": 4242,
+                        "pgid": 4242,
+                        "command": [sys.executable, "runner.py"],
+                        "process_started_at": "Mon Apr 14 10:00:00 2026",
+                        "process_command": f"{sys.executable} runner.py",
+                        "requested_stop_at": None,
+                        "last_decision": "",
+                        "last_reason": "",
+                        "last_seen_iteration": None,
+                        "last_seen_status": "",
+                        "created_at": "2026-03-21T00:00:00Z",
+                        "updated_at": "2026-03-21T00:00:00Z",
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(
+                autoresearch_launch_gate,
+                "runtime_process_state",
+                return_value={
+                    "alive": True,
+                    "matches": False,
+                    "reason": "identity_mismatch",
+                    "message": "Runtime pid 4242 is alive, but start time changed.",
+                },
+            ):
+                gate = autoresearch_launch_gate.evaluate_launch_context(
+                    results_path=self.managed_results_path(tmpdir),
+                    state_path_arg=None,
+                    launch_path=self.managed_launch_path(tmpdir),
+                    runtime_path=runtime_path,
+                )
+
+            self.assertEqual(gate["decision"], "needs_human")
+            self.assertEqual(gate["reason"], "runtime_identity_mismatch")
+            self.assertTrue(gate["runtime_running"])
+            self.assertTrue(any("start time changed" in reason for reason in gate["reasons"]))
 
     def test_runtime_launch_blocks_when_codex_bin_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -807,7 +1185,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("Codex executable is not available", completed.stderr)
-            self.assertFalse((tmpdir / "autoresearch-runtime.json").exists())
+            self.assertFalse(self.managed_runtime_path(tmpdir).exists())
 
     def test_runtime_launch_blocks_on_out_of_scope_companion_repo_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -852,7 +1230,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("Runtime preflight failed", completed.stderr)
             self.assertIn("notes.txt", completed.stderr)
-            self.assertFalse((primary / "autoresearch-runtime.json").exists())
+            self.assertFalse(self.managed_runtime_path(primary).exists())
 
     def test_runtime_run_marks_needs_human_when_codex_exec_is_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -872,7 +1250,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 "1",
             )
             self.assertNotEqual(completed.returncode, 0)
-            runtime = json.loads((tmpdir / "autoresearch-runtime.json").read_text(encoding="utf-8"))
+            runtime = json.loads(self.managed_runtime_path(tmpdir).read_text(encoding="utf-8"))
             self.assertEqual(runtime["status"], "needs_human")
             self.assertEqual(runtime["terminal_reason"], "codex_exec_unavailable")
             self.assertIn("Codex executable is not available", runtime["last_error"])
@@ -890,10 +1268,10 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     def test_runtime_stop_appends_summary_lesson_when_state_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = self.managed_results_path(tmpdir)
+            state_path = self.managed_state_path(tmpdir)
             fake_codex_path = tmpdir / "fake-codex"
-            lessons_path = tmpdir / "autoresearch-lessons.md"
+            lessons_path = self.managed_lessons_path(tmpdir)
 
             self.create_launch_manifest(tmpdir)
             self.write_sleeping_fake_codex(fake_codex_path)
@@ -1015,10 +1393,12 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     def test_runtime_controller_relaunches_and_then_stops_for_blocked_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = self.managed_results_path(tmpdir)
+            state_path = self.managed_state_path(tmpdir)
             fake_codex_path = tmpdir / "fake-codex"
-            counter_path = tmpdir / ".fake-codex-count"
+            counter_path = self.artifact_root(tmpdir) / ".fake-codex-count"
+            results_rel = "autoresearch-results/results.tsv"
+            state_rel = "autoresearch-results/state.json"
 
             self.create_launch_manifest(tmpdir)
             self.write_fake_codex(
@@ -1041,10 +1421,10 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                     f'init_script="{SCRIPTS_DIR / "autoresearch_init_run.py"}"',
                     f'record_script="{SCRIPTS_DIR / "autoresearch_record_iteration.py"}"',
                     'if [[ "$count" -eq 1 ]]; then',
-                    '  "$python_bin" "$init_script" --results-path research-results.tsv --state-path autoresearch-state.json --mode loop --session-mode background --goal "Reduce failures" --scope "src/**/*.py" --metric-name "failure count" --direction lower --verify "pytest -q" --baseline-metric 10 --baseline-commit a1b2c3d --baseline-description "baseline failures"',
-                    '  "$python_bin" "$record_script" --results-path research-results.tsv --state-path autoresearch-state.json --status pivot --description "close this branch and continue with a new strategy"',
+                    f'  "$python_bin" "$init_script" --repo "$repo" --workspace-root "$repo" --results-path {results_rel} --state-path {state_rel} --mode loop --session-mode background --goal "Reduce failures" --scope "src/**/*.py" --metric-name "failure count" --direction lower --verify "pytest -q" --baseline-metric 10 --baseline-commit a1b2c3d --baseline-description "baseline failures"',
+                    f'  "$python_bin" "$record_script" --results-path {results_rel} --state-path {state_rel} --status pivot --description "close this branch and continue with a new strategy"',
                     "else",
-                    '  "$python_bin" "$record_script" --results-path research-results.tsv --state-path autoresearch-state.json --status blocked --description "external dependency vanished"',
+                    f'  "$python_bin" "$record_script" --results-path {results_rel} --state-path {state_rel} --status blocked --description "external dependency vanished"',
                     "fi",
                 ],
             )
@@ -1076,7 +1456,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             self.assertEqual(state["supervisor"]["terminal_reason"], "blocked")
             self.assertEqual(state["supervisor"]["restart_count"], 2)
 
-            runtime = json.loads((tmpdir / "autoresearch-runtime.json").read_text(encoding="utf-8"))
+            runtime = json.loads(self.managed_runtime_path(tmpdir).read_text(encoding="utf-8"))
             self.assertEqual(runtime["status"], "needs_human")
             self.assertEqual(runtime["terminal_reason"], "blocked")
             self.assertTrue(results_path.exists())
@@ -1085,11 +1465,13 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
     def test_runtime_controller_uses_codex_exec_with_prompt_on_stdin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = self.managed_results_path(tmpdir)
+            state_path = self.managed_state_path(tmpdir)
             fake_codex_path = tmpdir / "fake-codex"
             prompt_path = tmpdir / ".runtime-prompt.txt"
             args_path = tmpdir / ".codex-args.txt"
+            results_rel = "autoresearch-results/results.tsv"
+            state_rel = "autoresearch-results/state.json"
 
             self.create_launch_manifest(
                 tmpdir,
@@ -1125,10 +1507,10 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                     f'python_bin="{sys.executable}"',
                     f'init_script="{SCRIPTS_DIR / "autoresearch_init_run.py"}"',
                     f'record_script="{SCRIPTS_DIR / "autoresearch_record_iteration.py"}"',
-                    'if [[ ! -f "research-results.tsv" ]]; then',
-                    '  "$python_bin" "$init_script" --results-path research-results.tsv --state-path autoresearch-state.json --mode loop --session-mode background --goal "Reduce failures" --scope "src/**/*.py" --metric-name "failure count" --direction lower --verify "pytest -q" --baseline-metric 10 --baseline-commit a1b2c3d --baseline-description "baseline failures"',
+                    f'if [[ ! -f "{results_rel}" ]]; then',
+                    f'  "$python_bin" "$init_script" --repo "$repo" --workspace-root "$repo" --results-path {results_rel} --state-path {state_rel} --mode loop --session-mode background --goal "Reduce failures" --scope "src/**/*.py" --metric-name "failure count" --direction lower --verify "pytest -q" --baseline-metric 10 --baseline-commit a1b2c3d --baseline-description "baseline failures"',
                     "fi",
-                    '  "$python_bin" "$record_script" --results-path research-results.tsv --state-path autoresearch-state.json --status blocked --description "validation complete"',
+                    f'  "$python_bin" "$record_script" --results-path {results_rel} --state-path {state_rel} --status blocked --description "validation complete"',
                 ],
             )
 
@@ -1181,10 +1563,10 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                     f'python_bin="{sys.executable}"',
                     f'init_script="{SCRIPTS_DIR / "autoresearch_init_run.py"}"',
                     f'record_script="{SCRIPTS_DIR / "autoresearch_record_iteration.py"}"',
-                    'if [[ ! -f "research-results.tsv" ]]; then',
-                    '  "$python_bin" "$init_script" --results-path research-results.tsv --state-path autoresearch-state.json --mode loop --session-mode background --goal "Reduce failures" --scope "src/**/*.py" --metric-name "failure count" --direction lower --verify "pytest -q" --execution-policy workspace_write --baseline-metric 10 --baseline-commit a1b2c3d --baseline-description "baseline failures"',
+                    'if [[ ! -f "autoresearch-results/results.tsv" ]]; then',
+                    '  "$python_bin" "$init_script" --repo "$(pwd)" --workspace-root "$(pwd)" --results-path autoresearch-results/results.tsv --state-path autoresearch-results/state.json --mode loop --session-mode background --goal "Reduce failures" --scope "src/**/*.py" --metric-name "failure count" --direction lower --verify "pytest -q" --execution-policy workspace_write --baseline-metric 10 --baseline-commit a1b2c3d --baseline-description "baseline failures"',
                     "fi",
-                    '  "$python_bin" "$record_script" --results-path research-results.tsv --state-path autoresearch-state.json --status blocked --description "validation complete"',
+                    '  "$python_bin" "$record_script" --results-path autoresearch-results/results.tsv --state-path autoresearch-results/state.json --status blocked --description "validation complete"',
                 ],
             )
 
@@ -1209,7 +1591,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
             fake_codex_path = tmpdir / "fake-codex"
-            counter_path = tmpdir / ".fake-codex-count"
+            counter_path = self.artifact_root(tmpdir) / ".fake-codex-count"
 
             self.create_launch_manifest(tmpdir)
             self.write_fake_codex(

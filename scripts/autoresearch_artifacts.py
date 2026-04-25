@@ -9,6 +9,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from autoresearch_acceptance import normalize_criteria_config
 from autoresearch_core import (
     HEADER,
     MAIN_STATUSES,
@@ -88,7 +89,7 @@ def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=2, sort_keys=True)
+            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
             f.write("\n")
             f.flush()
             os.fsync(f.fileno())
@@ -398,10 +399,16 @@ def config_from_results_metadata(metadata: dict[str, str]) -> dict[str, Any]:
         config["direction"] = direction
 
     field_map = {
+        "workspace_root": "workspace_root",
+        "artifact_root": "artifact_root",
+        "primary_repo": "primary_repo",
         "goal": "goal",
         "scope": "scope",
         "metric": "metric",
         "verify": "verify",
+        "verify_cwd": "verify_cwd",
+        "verify_format": "verify_format",
+        "primary_metric_key": "primary_metric_key",
         "guard": "guard",
         "parallel": "parallel_mode",
         "web_search": "web_search",
@@ -415,32 +422,11 @@ def config_from_results_metadata(metadata: dict[str, str]) -> dict[str, Any]:
             config[config_key] = value
 
     repos_json = metadata.get("repos_json")
-    if repos_json:
-        try:
-            repos = json.loads(repos_json)
-        except json.JSONDecodeError:
-            repos = None
-        if isinstance(repos, list):
-            normalized_repos: list[dict[str, str]] = []
-            for entry in repos:
-                if not isinstance(entry, dict):
-                    normalized_repos = []
-                    break
-                path = entry.get("path")
-                scope = entry.get("scope")
-                role = entry.get("role")
-                if not all(isinstance(value, str) and value.strip() for value in (path, scope, role)):
-                    normalized_repos = []
-                    break
-                normalized_repos.append(
-                    {
-                        "path": path.strip(),
-                        "scope": scope.strip(),
-                        "role": role.strip(),
-                    }
-                )
-            if normalized_repos:
-                config["repos"] = normalized_repos
+    if repos_json is not None:
+        config["repos"] = parse_results_metadata_repos(
+            repos_json,
+            metadata_key="repos_json",
+        )
 
     iterations_text = metadata.get("iterations")
     if iterations_text is not None and iterations_text.strip():
@@ -457,7 +443,93 @@ def config_from_results_metadata(metadata: dict[str, str]) -> dict[str, Any]:
     if required_keep_labels:
         config["required_keep_labels"] = required_keep_labels
 
+    acceptance_json = metadata.get("acceptance_criteria_json")
+    if acceptance_json:
+        config["acceptance_criteria"] = parse_results_metadata_criteria(
+            acceptance_json,
+            metadata_key="acceptance_criteria_json",
+            field_name="acceptance_criteria",
+        )
+
+    required_keep_json = metadata.get("required_keep_criteria_json")
+    if required_keep_json:
+        config["required_keep_criteria"] = parse_results_metadata_criteria(
+            required_keep_json,
+            metadata_key="required_keep_criteria_json",
+            field_name="required_keep_criteria",
+        )
+
     return config
+
+
+def parse_results_metadata_criteria(
+    raw: str,
+    *,
+    metadata_key: str,
+    field_name: str,
+) -> list[dict[str, Any]]:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AutoresearchError(f"Malformed {metadata_key} in results metadata: {exc}") from exc
+    try:
+        return normalize_criteria_config(parsed, field_name=field_name)
+    except AutoresearchError as exc:
+        raise AutoresearchError(f"Malformed {metadata_key} in results metadata: {exc}") from exc
+
+
+def parse_results_metadata_repos(
+    raw: str,
+    *,
+    metadata_key: str,
+) -> list[dict[str, str]]:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AutoresearchError(f"Malformed {metadata_key} in results metadata: {exc}") from exc
+    if not isinstance(parsed, list) or not parsed:
+        raise AutoresearchError(
+            f"Malformed {metadata_key} in results metadata: expected a non-empty JSON list."
+        )
+
+    normalized: list[dict[str, str]] = []
+    primary_count = 0
+    for index, entry in enumerate(parsed):
+        if not isinstance(entry, dict):
+            raise AutoresearchError(
+                f"Malformed {metadata_key} in results metadata: entry {index} must be an object."
+            )
+        path = entry.get("path")
+        scope = entry.get("scope")
+        role = entry.get("role")
+        if not isinstance(path, str) or not path.strip():
+            raise AutoresearchError(
+                f"Malformed {metadata_key} in results metadata: entry {index}.path must be a non-empty string."
+            )
+        if not isinstance(scope, str) or not scope.strip():
+            raise AutoresearchError(
+                f"Malformed {metadata_key} in results metadata: entry {index}.scope must be a non-empty string."
+            )
+        if role not in {"primary", "companion"}:
+            raise AutoresearchError(
+                "Malformed "
+                f"{metadata_key} in results metadata: entry {index}.role must be 'primary' or 'companion'."
+            )
+        if role == "primary":
+            primary_count += 1
+        normalized.append(
+            {
+                "path": path.strip(),
+                "scope": scope.strip(),
+                "role": role,
+            }
+        )
+
+    if primary_count != 1:
+        raise AutoresearchError(
+            f"Malformed {metadata_key} in results metadata: expected exactly one primary repo."
+        )
+    return normalized
 
 
 def build_state_payload(
@@ -496,6 +568,20 @@ def build_state_payload(
         },
         "updated_at": utc_now(),
     }
+    current_metrics = summary.get("current_metrics")
+    if isinstance(current_metrics, dict) and current_metrics:
+        payload["state"]["current_metrics"] = deepcopy(current_metrics)
+    last_trial_metrics = summary.get("last_trial_metrics")
+    if isinstance(last_trial_metrics, dict) and last_trial_metrics:
+        payload["state"]["last_trial_metrics"] = deepcopy(last_trial_metrics)
+    for field_name in (
+        "current_acceptance",
+        "last_trial_acceptance",
+        "current_required_keep_satisfied",
+        "last_trial_required_keep_satisfied",
+    ):
+        if field_name in summary:
+            payload["state"][field_name] = bool(summary[field_name])
     last_repo_commits = summary.get("last_repo_commits")
     if isinstance(last_repo_commits, dict) and last_repo_commits:
         payload["state"]["last_repo_commits"] = deepcopy(last_repo_commits)
@@ -575,6 +661,8 @@ def build_runtime_payload(
     pgid: int | None = None,
     terminal_reason: str = "none",
     command: list[str] | None = None,
+    process_started_at: str | None = None,
+    process_command: str | None = None,
     requested_stop_at: str | None = None,
     last_decision: str | None = None,
     last_reason: str | None = None,
@@ -594,6 +682,8 @@ def build_runtime_payload(
         "pid": pid,
         "pgid": pgid,
         "command": list(command or []),
+        "process_started_at": process_started_at,
+        "process_command": process_command or "",
         "requested_stop_at": requested_stop_at,
         "last_decision": last_decision or "",
         "last_reason": last_reason or "",

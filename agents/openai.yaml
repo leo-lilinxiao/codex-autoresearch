@@ -2,7 +2,7 @@ interface:
   display_name: "Codex Autoresearch"
   short_description: "Single-entry autonomous experimentation with foreground or background runs"
   brand_color: "#2563EB"
-  default_prompt: "Use $codex-autoresearch as the single human entrypoint: infer a goal, metric, scope, verify/guard commands, and any structural keep or stop labels this repo needs, run at least one repo-grounded clarification round, then launch either a foreground or background run. For clearly long-running interactive runs, check the optional hook status before launch and offer installation only with explicit user approval. After launch, baseline once and record every completed experiment before starting the next one. Reuse the same skill for status, stop, or resume requests."
+  default_prompt: "Use $codex-autoresearch as the single human entrypoint: infer a goal, metric, scope, verify/guard commands, and any structural keep or stop labels this repo needs, run at least one repo-grounded clarification round, then launch either a foreground or background run. For clearly long-running interactive runs, check the hook status early and automatically install or repair the managed hooks whenever `autoresearch_hooks_ctl.py status` is not ready for future sessions. After launch, baseline once and record every completed experiment before starting the next one. Reuse the same skill for status, stop, or resume requests."
 
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

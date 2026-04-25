@@ -2,25 +2,38 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
-    default_launch_manifest_path,
-    default_runtime_state_path,
+    LAUNCH_MANIFEST_NAME,
     read_launch_manifest,
     read_runtime_payload,
+    require_context_for_repo,
+    resolve_context_workspace_root,
     resolve_repo_path,
     resolve_repo_relative,
-    resolve_repo_managed_path,
+    RUNTIME_STATE_NAME,
+    STATE_FILE_NAME,
 )
 from autoresearch_resume_check import evaluate_resume_state
+from autoresearch_workspace import default_workspace_artifacts, resolve_workspace_root
 
 
-DEFAULT_RESULTS_PATH = "research-results.tsv"
+def pid_is_zombie(pid: int) -> bool:
+    completed = subprocess.run(
+        ["ps", "-p", str(pid), "-o", "stat="],
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return False
+    state = completed.stdout.strip().upper()
+    return state.startswith("Z")
 
 
 def pid_is_alive(pid: int | None) -> bool:
@@ -32,7 +45,154 @@ def pid_is_alive(pid: int | None) -> bool:
         return True
     except ProcessLookupError:
         return False
+    if pid_is_zombie(pid):
+        return False
     return True
+
+
+def _ps_field(pid: int, field: str) -> str | None:
+    completed = subprocess.run(
+        ["ps", "-p", str(pid), "-o", f"{field}="],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if completed.returncode != 0:
+        return None
+    value = completed.stdout.strip()
+    return value or None
+
+
+def inspect_process_identity(pid: int | None) -> dict[str, object] | None:
+    if pid is None or pid <= 0 or not pid_is_alive(pid):
+        return None
+    pgid_text = _ps_field(pid, "pgid")
+    started_at = _ps_field(pid, "lstart")
+    command = _ps_field(pid, "command")
+    if pgid_text is None or started_at is None or command is None:
+        return None
+    try:
+        pgid = int(pgid_text)
+    except ValueError:
+        return None
+    return {
+        "pid": pid,
+        "pgid": pgid,
+        "started_at": started_at,
+        "command": command,
+    }
+
+
+def normalize_command_text(value: str | None) -> str:
+    return " ".join(str(value or "").split())
+
+
+def expected_runtime_command_text(runtime_payload: dict[str, Any]) -> str:
+    stored = runtime_payload.get("process_command")
+    if isinstance(stored, str) and stored.strip():
+        return normalize_command_text(stored)
+    return ""
+
+
+def runtime_identity_missing(runtime_payload: dict[str, Any]) -> str | None:
+    started_at = runtime_payload.get("process_started_at")
+    if not isinstance(started_at, str) or not started_at.strip():
+        return "process_started_at"
+    command = runtime_payload.get("process_command")
+    if not isinstance(command, str) or not command.strip():
+        return "process_command"
+    return None
+
+
+def runtime_process_state(runtime_payload: dict[str, Any]) -> dict[str, object]:
+    pid = runtime_payload.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
+        return {
+            "alive": False,
+            "matches": False,
+            "reason": "missing_pid",
+            "message": "Runtime state is missing a valid pid.",
+        }
+    if not pid_is_alive(pid):
+        return {
+            "alive": False,
+            "matches": False,
+            "reason": "not_running",
+            "message": f"Runtime process {pid} is not running.",
+        }
+
+    current = inspect_process_identity(pid)
+    if current is None:
+        if not pid_is_alive(pid):
+            return {
+                "alive": False,
+                "matches": False,
+                "reason": "not_running",
+                "message": f"Runtime process {pid} is not running.",
+            }
+        return {
+            "alive": True,
+            "matches": False,
+            "reason": "inspection_failed",
+            "message": f"Could not verify runtime process identity for pid {pid}.",
+        }
+
+    missing_identity_field = runtime_identity_missing(runtime_payload)
+    if missing_identity_field is not None:
+        return {
+            "alive": True,
+            "matches": False,
+            "reason": "runtime_identity_unverifiable",
+            "message": (
+                f"Runtime pid {pid} is alive, but runtime.json is missing "
+                f"{missing_identity_field}; stop it manually or start fresh."
+            ),
+        }
+
+    expected_started_at = runtime_payload.get("process_started_at")
+    if isinstance(expected_started_at, str) and expected_started_at.strip():
+        if current["started_at"] != expected_started_at:
+            return {
+                "alive": True,
+                "matches": False,
+                "reason": "identity_mismatch",
+                "message": (
+                    f"Runtime pid {pid} is alive, but start time changed "
+                    f"({expected_started_at} != {current['started_at']})."
+                ),
+            }
+
+    expected_command = expected_runtime_command_text(runtime_payload)
+    if expected_command and normalize_command_text(str(current["command"])) != expected_command:
+        return {
+            "alive": True,
+            "matches": False,
+            "reason": "identity_mismatch",
+            "message": (
+                f"Runtime pid {pid} is alive, but command no longer matches "
+                "the recorded runtime process."
+            ),
+        }
+
+    expected_pgid = runtime_payload.get("pgid")
+    if isinstance(expected_pgid, int) and expected_pgid > 0 and current["pgid"] != expected_pgid:
+        return {
+            "alive": True,
+            "matches": False,
+            "reason": "identity_mismatch",
+            "message": (
+                f"Runtime pid {pid} is alive, but process group changed "
+                f"({expected_pgid} != {current['pgid']})."
+            ),
+        }
+
+    return {
+        "alive": True,
+        "matches": True,
+        "reason": "running",
+        "message": "",
+        "current": current,
+    }
 
 
 def evaluate_launch_context(
@@ -41,12 +201,14 @@ def evaluate_launch_context(
     state_path_arg: str | None,
     launch_path: Path,
     runtime_path: Path,
+    default_state_path: Path | None = None,
     ignore_running_runtime: bool = False,
 ) -> dict[str, Any]:
     reasons: list[str] = []
     resume = evaluate_resume_state(
         results_path=results_path,
         state_path_arg=state_path_arg,
+        default_state_path=default_state_path,
         write_repaired_state=False,
     )
     state_path = Path(str(resume["state_path"]))
@@ -71,10 +233,34 @@ def evaluate_launch_context(
             runtime_error = str(exc)
             reasons.append(runtime_error)
 
+    runtime_state = runtime_process_state(runtime_payload) if runtime_payload is not None else None
+    if (
+        runtime_payload is not None
+        and runtime_state is not None
+        and bool(runtime_state["alive"])
+        and not bool(runtime_state["matches"])
+    ):
+        reasons.append(str(runtime_state["message"]))
+        return {
+            "decision": "needs_human",
+            "reason": "runtime_identity_mismatch",
+            "resume_strategy": "none",
+            "results_path": str(results_path),
+            "state_path": str(state_path),
+            "launch_path": str(launch_path),
+            "runtime_path": str(runtime_path),
+            "launch_manifest_present": launch_manifest is not None,
+            "runtime_present": True,
+            "runtime_running": True,
+            "reasons": reasons,
+        }
+
     if (
         not ignore_running_runtime
         and runtime_payload is not None
-        and pid_is_alive(runtime_payload.get("pid"))
+        and runtime_state is not None
+        and bool(runtime_state["alive"])
+        and bool(runtime_state["matches"])
     ):
         reasons.append("An autoresearch runtime is already active for this repo.")
         return {
@@ -167,7 +353,7 @@ def evaluate_launch_context(
         reasons.extend(str(reason) for reason in resume["reasons"])
         if launch_manifest is None:
             reasons.append(
-                "Runs that predate autoresearch-launch.json are not resumable under the managed runtime. Start fresh through the interactive launch flow."
+                "Runs that predate launch.json are not resumable under the managed runtime. Start fresh through the interactive launch flow."
             )
             return {
                 "decision": "needs_human",
@@ -264,50 +450,72 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo",
-        help="Primary repo root. Recommended user-facing entrypoint; defaults managed paths under this repo.",
+        required=True,
+        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
     )
+    parser.add_argument("--workspace-root")
     parser.add_argument(
         "--results-path",
-        help=(
-            "Results log path. Overrides the repo-derived default when provided. "
-            f"Defaults to {DEFAULT_RESULTS_PATH} in --repo or the current directory."
-        ),
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--state-path")
-    parser.add_argument("--launch-path")
-    parser.add_argument("--runtime-path")
+    parser.add_argument("--state-path", help=argparse.SUPPRESS)
+    parser.add_argument("--launch-path", help=argparse.SUPPRESS)
+    parser.add_argument("--runtime-path", help=argparse.SUPPRESS)
     return parser
 
 
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    repo: Path | None = None
-    if args.repo is not None:
-        repo = resolve_repo_path(args.repo)
-        results_path = resolve_repo_relative(repo, args.results_path, repo / DEFAULT_RESULTS_PATH)
-        launch_path = resolve_repo_relative(repo, args.launch_path, default_launch_manifest_path(repo))
-        runtime_path = resolve_repo_relative(repo, args.runtime_path, default_runtime_state_path(repo))
-    else:
-        results_path = Path(args.results_path or DEFAULT_RESULTS_PATH)
-        launch_path = resolve_repo_managed_path(
+    repo = resolve_repo_path(args.repo)
+    if args.results_path is not None:
+        workspace_root = (
+            resolve_workspace_root(repo, args.workspace_root)
+            if args.workspace_root is not None
+            else Path.cwd().resolve()
+        )
+        results_path = resolve_repo_relative(workspace_root, args.results_path, Path(args.results_path))
+        artifact_root = results_path.parent
+        state_default = artifact_root / STATE_FILE_NAME
+        launch_path = resolve_repo_relative(
+            workspace_root,
             args.launch_path,
-            results_path=results_path,
-            default_name="autoresearch-launch.json",
+            artifact_root / LAUNCH_MANIFEST_NAME,
         )
-        runtime_path = resolve_repo_managed_path(
+        runtime_path = resolve_repo_relative(
+            workspace_root,
             args.runtime_path,
-            results_path=results_path,
-            default_name="autoresearch-runtime.json",
+            artifact_root / RUNTIME_STATE_NAME,
         )
+    else:
+        context = require_context_for_repo(repo)
+        workspace_root = resolve_context_workspace_root(
+            repo=repo,
+            context=context,
+            raw_workspace_root=args.workspace_root,
+        )
+        defaults = default_workspace_artifacts(context.workspace_root)
+        state_default = context.state_path
+        launch_path = resolve_repo_relative(
+            workspace_root,
+            args.launch_path,
+            context.launch_path or defaults.launch_path,
+        )
+        runtime_path = resolve_repo_relative(
+            workspace_root,
+            args.runtime_path,
+            context.runtime_path or defaults.runtime_path,
+        )
+        results_path = context.results_path
     decision = evaluate_launch_context(
         results_path=results_path,
         state_path_arg=args.state_path,
+        default_state_path=state_default,
         launch_path=launch_path,
         runtime_path=runtime_path,
         ignore_running_runtime=False,
     )
-    print(json.dumps(decision, indent=2, sort_keys=True))
+    print_json(decision)
     return 0
 
 

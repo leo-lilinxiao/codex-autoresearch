@@ -47,9 +47,11 @@ def skipped_commit_gate(
 def evaluate_repo_preflight(
     *,
     repo: Path,
+    workspace_root: Path | None,
     results_path: Path,
     state_path_arg: str | None,
     verify_command: str,
+    verify_cwd: str,
     scope_text: str | None,
     commit_phase: str,
     min_free_mb: int = 500,
@@ -60,9 +62,11 @@ def evaluate_repo_preflight(
     health = (
         run_health_check(
             repo=repo,
+            workspace_root=workspace_root,
             results_path=results_path,
             state_path_arg=state_path_arg,
             verify_command=verify_command,
+            verify_cwd=verify_cwd,
             scope_text=scope_text,
             min_free_mb=min_free_mb,
         )
@@ -108,9 +112,11 @@ def evaluate_repo_preflight(
 def evaluate_managed_repos_preflight(
     *,
     primary_repo: Path,
+    workspace_root: Path | None,
     results_path: Path,
     state_path_arg: str | None,
     verify_command: str,
+    verify_cwd: str,
     commit_phase: str,
     repo_targets: list[RepoTarget],
     min_free_mb: int = 500,
@@ -129,9 +135,11 @@ def evaluate_managed_repos_preflight(
     health = (
         run_health_check(
             repo=primary_repo,
+            workspace_root=workspace_root,
             results_path=results_path,
             state_path_arg=state_path_arg,
             verify_command=verify_command,
+            verify_cwd=verify_cwd,
             scope_text=primary_target.scope,
             min_free_mb=min_free_mb,
             companion_targets=[target for target in repo_targets if target.role != "primary"],

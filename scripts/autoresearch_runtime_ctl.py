@@ -2,25 +2,27 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
-    default_launch_manifest_path,
-    default_runtime_state_path,
 )
 from autoresearch_runtime_common import (
     DEFAULT_HEALTH_MIN_FREE_MB,
     DEFAULT_RESULTS_PATH,
     DEFAULT_EXECUTION_POLICY,
+    DEFAULT_VERIFY_CWD,
     EXECUTION_POLICY_CHOICES,
+    VERIFY_CWD_CHOICES,
+    VERIFY_FORMAT_CHOICES,
     resolve_repo_path,
-    resolve_repo_relative,
 )
 from autoresearch_runtime_ops import (
     create_launch_manifest,
     launch_and_start_runtime,
+    resolve_explicit_runtime_paths,
+    resolve_runtime_paths,
     run_runtime,
     runtime_summary,
     start_runtime,
@@ -29,8 +31,9 @@ from autoresearch_runtime_ops import (
 
 
 def add_manifest_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--repo")
-    parser.add_argument("--launch-path")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--workspace-root", required=True)
+    parser.add_argument("--launch-path", help=argparse.SUPPRESS)
     parser.add_argument("--original-goal", required=True)
     parser.add_argument("--prompt-text")
     parser.add_argument("--mode", default="loop")
@@ -45,6 +48,11 @@ def add_manifest_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--metric-name", required=True)
     parser.add_argument("--direction", required=True, choices=["lower", "higher"])
     parser.add_argument("--verify", required=True)
+    parser.add_argument("--verify-cwd", choices=VERIFY_CWD_CHOICES, default=DEFAULT_VERIFY_CWD)
+    parser.add_argument("--verify-format", choices=VERIFY_FORMAT_CHOICES, default="scalar")
+    parser.add_argument("--primary-metric-key")
+    parser.add_argument("--acceptance-criteria")
+    parser.add_argument("--required-keep-criteria")
     parser.add_argument("--guard")
     parser.add_argument(
         "--execution-policy",
@@ -84,10 +92,10 @@ def add_manifest_args(parser: argparse.ArgumentParser) -> None:
 
 
 def add_runtime_start_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--results-path", default=DEFAULT_RESULTS_PATH)
-    parser.add_argument("--state-path")
-    parser.add_argument("--runtime-path")
-    parser.add_argument("--log-path")
+    parser.add_argument("--results-path", default=DEFAULT_RESULTS_PATH, help=argparse.SUPPRESS)
+    parser.add_argument("--state-path", help=argparse.SUPPRESS)
+    parser.add_argument("--runtime-path", help=argparse.SUPPRESS)
+    parser.add_argument("--log-path", help=argparse.SUPPRESS)
     parser.add_argument("--sleep-seconds", type=int, default=5)
     parser.add_argument("--max-stagnation", type=int, default=3)
     parser.add_argument("--min-free-mb", type=int, default=DEFAULT_HEALTH_MIN_FREE_MB)
@@ -117,25 +125,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     start = subparsers.add_parser("start", help="Start the detached autoresearch runtime.")
-    start.add_argument("--repo")
-    start.add_argument("--launch-path")
+    start.add_argument("--repo", required=True)
+    start.add_argument("--workspace-root")
+    start.add_argument("--launch-path", help=argparse.SUPPRESS)
     add_runtime_start_args(start)
 
     run = subparsers.add_parser("run", help="Internal loop used by the detached runtime.")
-    run.add_argument("--repo")
-    run.add_argument("--launch-path")
+    run.add_argument("--repo", required=True)
+    run.add_argument("--workspace-root")
+    run.add_argument("--launch-path", help=argparse.SUPPRESS)
     add_runtime_start_args(run)
 
     status = subparsers.add_parser("status", help="Inspect the current runtime status.")
-    status.add_argument("--repo")
-    status.add_argument("--launch-path")
-    status.add_argument("--results-path", default=DEFAULT_RESULTS_PATH)
-    status.add_argument("--state-path")
-    status.add_argument("--runtime-path")
+    status.add_argument("--repo", required=True)
+    status.add_argument("--workspace-root")
+    status.add_argument("--launch-path", help=argparse.SUPPRESS)
+    status.add_argument("--results-path", default=DEFAULT_RESULTS_PATH, help=argparse.SUPPRESS)
+    status.add_argument("--state-path", help=argparse.SUPPRESS)
+    status.add_argument("--runtime-path", help=argparse.SUPPRESS)
 
     stop = subparsers.add_parser("stop", help="Stop the detached runtime.")
-    stop.add_argument("--repo")
-    stop.add_argument("--runtime-path")
+    stop.add_argument("--repo", required=True)
+    stop.add_argument("--workspace-root")
+    stop.add_argument("--runtime-path", help=argparse.SUPPRESS)
     stop.add_argument("--grace-seconds", type=float, default=5.0)
 
     return parser
@@ -147,37 +159,51 @@ def main() -> int:
     runner_path = Path(__file__).resolve()
 
     if args.command == "create-launch":
-        print(json.dumps(create_launch_manifest(args), indent=2, sort_keys=True))
+        print_json(create_launch_manifest(args))
         return 0
     if args.command == "launch":
-        print(json.dumps(launch_and_start_runtime(args, runner_path=runner_path), indent=2, sort_keys=True))
+        print_json(launch_and_start_runtime(args, runner_path=runner_path))
         return 0
     if args.command == "start":
-        print(json.dumps(start_runtime(args, runner_path=runner_path), indent=2, sort_keys=True))
+        print_json(start_runtime(args, runner_path=runner_path))
         return 0
     if args.command == "run":
         return run_runtime(args)
     if args.command == "status":
         repo = resolve_repo_path(args.repo)
-        results_path = resolve_repo_relative(repo, args.results_path, repo / DEFAULT_RESULTS_PATH)
-        launch_path = resolve_repo_relative(repo, args.launch_path, default_launch_manifest_path(repo))
-        runtime_path = resolve_repo_relative(repo, args.runtime_path, default_runtime_state_path(repo))
-        print(
-            json.dumps(
-                runtime_summary(
-                    repo=repo,
-                    results_path=results_path,
-                    state_path_arg=args.state_path,
-                    launch_path=launch_path,
-                    runtime_path=runtime_path,
-                ),
-                indent=2,
-                sort_keys=True,
+        has_explicit_artifact_paths = (
+            args.results_path != DEFAULT_RESULTS_PATH
+            or args.state_path is not None
+            or args.launch_path is not None
+            or args.runtime_path is not None
+        )
+        path_resolver = resolve_explicit_runtime_paths if has_explicit_artifact_paths else resolve_runtime_paths
+        resolver_kwargs = {
+            "repo": repo,
+            "workspace_root_arg": args.workspace_root,
+            "results_path_arg": args.results_path,
+            "state_path_arg": args.state_path,
+            "launch_path_arg": args.launch_path,
+            "runtime_path_arg": args.runtime_path,
+            "log_path_arg": None,
+        }
+        if has_explicit_artifact_paths:
+            paths = path_resolver(**resolver_kwargs)
+        else:
+            paths = path_resolver(**resolver_kwargs, require_context=True)
+        print_json(
+            runtime_summary(
+                repo=repo,
+                results_path=Path(paths["results_path"]),
+                state_path_arg=str(paths["state_path"]),
+                default_state_path=Path(paths["state_path"]),
+                launch_path=Path(paths["launch_path"]),
+                runtime_path=Path(paths["runtime_path"]),
             )
         )
         return 0
     if args.command == "stop":
-        print(json.dumps(stop_runtime(args), indent=2, sort_keys=True))
+        print_json(stop_runtime(args))
         return 0
     raise AutoresearchError(f"Unsupported command: {args.command}")
 

@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     build_state_payload,
@@ -14,14 +14,17 @@ from autoresearch_helpers import (
     parse_log_metadata,
     parse_results_log,
     read_state_payload,
+    require_context_for_repo,
+    resolve_context_workspace_root,
     resolve_repo_path,
     resolve_repo_relative,
     resolve_state_path_for_log,
+    STATE_FILE_NAME,
     write_json_atomic,
 )
+from autoresearch_workspace import resolve_workspace_root
 
 
-DEFAULT_RESULTS_PATH = "research-results.tsv"
 REQUIRED_RESUME_CONFIG_FIELDS = ("goal", "scope", "metric", "direction", "verify")
 
 
@@ -47,26 +50,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo",
-        help="Primary repo root. Recommended user-facing entrypoint for resume inspection.",
+        required=True,
+        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
     )
+    parser.add_argument("--workspace-root")
     parser.add_argument(
         "--results-path",
-        help=(
-            "Results log path. Overrides the repo-derived default when provided. "
-            f"Defaults to {DEFAULT_RESULTS_PATH} in --repo or the current directory."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--state-path",
-        help=(
-            "State JSON path. Defaults to autoresearch-state.json, except logs tagged "
-            "with '# mode: exec' default to the deterministic exec scratch state."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--write-repaired-state",
         action="store_true",
-        help="If TSV recovery is possible, rewrite autoresearch-state.json from the reconstructed TSV state.",
+        help="If TSV recovery is possible, rewrite state.json from the reconstructed TSV state.",
     )
     return parser
 
@@ -92,10 +91,9 @@ def evaluate_resume_state(
     *,
     results_path: Path,
     state_path_arg: str | None,
+    default_state_path: Path | None = None,
     write_repaired_state: bool = False,
 ) -> dict[str, object]:
-    repo_hint = results_path.parent if results_path.is_absolute() else None
-
     results_exists = results_path.exists()
     parsed = None
     reconstructed = None
@@ -114,7 +112,13 @@ def evaluate_resume_state(
             tsv_error = str(exc)
             metadata = parse_log_metadata(results_path)
 
-    state_path = resolve_state_path_for_log(state_path_arg, parsed or metadata, cwd=repo_hint)
+    state_path = resolve_state_path_for_log(
+        state_path_arg,
+        parsed or metadata,
+        cwd=Path.cwd(),
+        default_path=default_state_path,
+        results_path=results_path,
+    )
     state_exists = state_path.exists()
 
     state_payload = None
@@ -221,18 +225,32 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.repo is not None:
-        repo = resolve_repo_path(args.repo)
-        results_path = resolve_repo_relative(repo, args.results_path, repo / DEFAULT_RESULTS_PATH)
+    repo = resolve_repo_path(args.repo)
+    if args.results_path is not None:
+        workspace_root = (
+            resolve_workspace_root(repo, args.workspace_root)
+            if args.workspace_root is not None
+            else Path.cwd().resolve()
+        )
+        results_path = resolve_repo_relative(workspace_root, args.results_path, Path(args.results_path))
+        state_default = results_path.parent / STATE_FILE_NAME
     else:
-        results_path = Path(args.results_path or DEFAULT_RESULTS_PATH)
+        context = require_context_for_repo(repo)
+        workspace_root = resolve_context_workspace_root(
+            repo=repo,
+            context=context,
+            raw_workspace_root=args.workspace_root,
+        )
+        results_path = context.results_path
+        state_default = context.state_path
     output = evaluate_resume_state(
         results_path=results_path,
         state_path_arg=args.state_path,
+        default_state_path=state_default,
         write_repaired_state=args.write_repaired_state,
     )
 
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print_json(output)
     return 0
 
 

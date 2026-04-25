@@ -5,9 +5,11 @@ import argparse
 import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_decision import apply_status_transition
 from autoresearch_helpers import (
     AutoresearchError,
+    acceptance_state,
     append_description_suffix,
     append_rows,
     evaluate_required_label_gate,
@@ -21,25 +23,24 @@ from autoresearch_helpers import (
     repo_commit_map_for_targets,
     repo_targets_from_config,
     require_consistent_state,
+    retention_is_preferred,
     resolve_state_path_for_log,
-    results_repo_root,
+    serialize_metrics,
     write_json_atomic,
 )
 from autoresearch_lessons import append_iteration_lesson, lessons_path_from_results
 from autoresearch_preflight import evaluate_managed_repos_preflight
+from autoresearch_runtime_common import DEFAULT_RESULTS_PATH
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Select the best parallel worker result, append worker/main TSV rows, and update state once."
     )
-    parser.add_argument("--results-path", default="research-results.tsv")
+    parser.add_argument("--results-path", default=DEFAULT_RESULTS_PATH, help=argparse.SUPPRESS)
     parser.add_argument(
         "--state-path",
-        help=(
-            "State JSON path. Defaults to autoresearch-state.json, except logs tagged "
-            "with '# mode: exec' default to the deterministic exec scratch state."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--batch-file",
@@ -71,26 +72,85 @@ def diff_rank(item: dict[str, object]) -> int:
     return 10**9
 
 
+def acceptance_rank(item: dict[str, object]) -> int:
+    acceptance = item.get("acceptance_state")
+    if isinstance(acceptance, dict) and acceptance.get("acceptance_satisfied"):
+        return 0
+    return 1
+
+
+def metric_sort_value(metric: object, direction: str):
+    value = parse_decimal(metric, "metric sort value")
+    return value if direction == "lower" else -value
+
+
+def select_best_candidate(
+    candidates: list[dict[str, object]],
+    direction: str,
+) -> dict[str, object] | None:
+    if not candidates:
+        return None
+    return min(
+        candidates,
+        key=lambda item: (
+            acceptance_rank(item),
+            metric_sort_value(item["metric_decimal"], direction),
+            diff_rank(item),
+            str(item["worker_id"]),
+        ),
+    )
+
+
+def select_best_completed_record(
+    worker_records: list[dict[str, object]],
+    direction: str,
+) -> dict[str, object] | None:
+    completed_records = [
+        record for record in worker_records if str(record["status"]) in {"candidate", "discard"}
+    ]
+    if not completed_records:
+        return None
+    return min(
+        completed_records,
+        key=lambda record: (
+            acceptance_rank(record),
+            metric_sort_value(record["metric"], direction),
+            str(record["guard"]) != "pass",
+            diff_rank(record),
+            str(record["worker_id"]),
+        ),
+    )
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
     results_path = Path(args.results_path)
-    repo_hint = results_path.parent if results_path.is_absolute() else None
     parsed = parse_results_log(results_path)
-    state_path = resolve_state_path_for_log(args.state_path, parsed, cwd=repo_hint)
+    state_path = resolve_state_path_for_log(
+        args.state_path,
+        parsed,
+        cwd=Path.cwd(),
+        results_path=results_path,
+    )
     _, payload, reconstructed, direction = require_consistent_state(
         results_path,
         state_path,
         parsed=parsed,
     )
     config = dict(payload.get("config", {}))
-    repo = results_repo_root(results_path)
+    primary_repo_config = config.get("primary_repo")
+    if not isinstance(primary_repo_config, str) or not primary_repo_config.strip():
+        raise AutoresearchError("State config.primary_repo is required.")
+    repo = Path(primary_repo_config).expanduser().resolve()
     preflight = evaluate_managed_repos_preflight(
         primary_repo=repo,
+        workspace_root=Path(str(config.get("workspace_root") or repo)),
         results_path=results_path,
         state_path_arg=args.state_path,
         verify_command=str(config.get("verify", "")),
+        verify_cwd=str(config.get("verify_cwd") or "workspace_root"),
         commit_phase="prebatch",
         repo_targets=repo_targets_from_config(repo, config),
         include_health=True,
@@ -105,6 +165,11 @@ def main() -> int:
 
     next_iteration = reconstructed["iteration"] + 1
     current_metric = reconstructed["current_metric"]
+    current_acceptance_state = acceptance_state(
+        config=config,
+        metric=current_metric,
+        metrics=payload["state"].get("current_metrics"),
+    )
     required_keep_labels = config.get("required_keep_labels", [])
     candidates: list[dict[str, object]] = []
     worker_records: list[dict[str, object]] = []
@@ -135,6 +200,18 @@ def main() -> int:
             if "metric" not in item:
                 raise AutoresearchError(f"Worker {worker_id!r} is missing metric.")
             metric = parse_decimal(item["metric"], f"worker {worker_id} metric")
+            if config.get("verify_format") == "metrics_json":
+                if "metrics" not in item:
+                    raise AutoresearchError(
+                        f"Worker {worker_id!r} is missing metrics for verify_format=metrics_json."
+                    )
+                if not isinstance(item.get("metrics"), dict):
+                    raise AutoresearchError(f"Worker {worker_id!r} metrics must be a JSON object.")
+            acceptance = acceptance_state(
+                config=config,
+                metric=metric,
+                metrics=item.get("metrics"),
+            )
             improved = guard == "pass" and improvement(metric, current_metric, direction)
             if improved:
                 _, labels, missing_keep_labels = evaluate_required_label_gate(
@@ -147,14 +224,35 @@ def main() -> int:
                         description,
                         format_keep_gate_miss_suffix(missing_keep_labels),
                     )
+                elif not acceptance["required_keep_satisfied"]:
+                    row_status = "discard"
+                    description = append_description_suffix(
+                        description,
+                        "[KEEP-CRITERIA miss] " + "; ".join(acceptance["required_keep_failures"]),
+                    )
+                elif not retention_is_preferred(
+                    direction=direction,
+                    current_metric=current_metric,
+                    current_acceptance=bool(current_acceptance_state["acceptance_satisfied"]),
+                    trial_metric=metric,
+                    trial_acceptance=bool(acceptance["acceptance_satisfied"]),
+                ):
+                    row_status = "discard"
+                    description = append_description_suffix(
+                        description,
+                        "[ACCEPTANCE preference] retained result already satisfies final acceptance.",
+                    )
                 else:
                     row_status = "candidate"
                     item["metric_decimal"] = metric
                     item["normalized_labels"] = labels
                     item["normalized_description"] = description
+                    item["acceptance_state"] = acceptance
                     candidates.append(item)
             else:
                 row_status = "discard"
+        else:
+            acceptance = None
 
         worker_records.append(
             {
@@ -167,56 +265,14 @@ def main() -> int:
                 "description": description,
                 "status": row_status,
                 "diff_size": item.get("diff_size"),
+                "acceptance_state": acceptance,
             }
         )
 
-    winner = None
-    if candidates:
-        if direction == "lower":
-            winner = sorted(
-                candidates,
-                key=lambda item: (
-                    item["metric_decimal"],
-                    diff_rank(item),
-                    str(item["worker_id"]),
-                ),
-            )[0]
-        else:
-            winner = sorted(
-                candidates,
-                key=lambda item: (
-                    -item["metric_decimal"],
-                    diff_rank(item),
-                    str(item["worker_id"]),
-                ),
-            )[0]
-
-    best_completed_record = None
-    if winner is None:
-        completed_records = [
-            record for record in worker_records if str(record["status"]) in {"candidate", "discard"}
-        ]
-        if completed_records:
-            if direction == "lower":
-                best_completed_record = sorted(
-                    completed_records,
-                    key=lambda record: (
-                        record["metric"],
-                        str(record["guard"]) != "pass",
-                        diff_rank(record),
-                        str(record["worker_id"]),
-                    ),
-                )[0]
-            else:
-                best_completed_record = sorted(
-                    completed_records,
-                    key=lambda record: (
-                        -record["metric"],
-                        str(record["guard"]) != "pass",
-                        diff_rank(record),
-                        str(record["worker_id"]),
-                    ),
-                )[0]
+    winner = select_best_candidate(candidates, direction)
+    best_completed_record = (
+        select_best_completed_record(worker_records, direction) if winner is None else None
+    )
 
     main_status = "discard"
     main_commit = "-"
@@ -224,6 +280,7 @@ def main() -> int:
     main_guard = "-"
     main_description = "[PARALLEL batch] no worker improved the retained metric"
     last_trial_commit = "-"
+    main_acceptance_state = current_acceptance_state
 
     if winner is not None:
         winner_metric = parse_decimal(winner["metric_decimal"], "winner metric")
@@ -241,6 +298,7 @@ def main() -> int:
             f"{winner.get('normalized_description', winner['description'])}"
         )
         main_labels = winner.get("normalized_labels", winner.get("labels", []))
+        main_acceptance_state = winner["acceptance_state"]
         last_trial_commit = winner_commit
         last_trial_repo_commits = repo_commit_map_for_targets(
             repo_targets=repo_targets,
@@ -262,6 +320,8 @@ def main() -> int:
             f"{best_completed_record['description']}"
         )
         main_labels = best_completed_record.get("labels", [])
+        if isinstance(best_completed_record.get("acceptance_state"), dict):
+            main_acceptance_state = best_completed_record["acceptance_state"]
         last_trial_commit = main_commit
         last_trial_repo_commits = repo_commit_map_for_targets(
             repo_targets=repo_targets,
@@ -321,6 +381,24 @@ def main() -> int:
         next_iteration=next_iteration,
         repo_commit_map=last_trial_repo_commits,
         labels=main_labels,
+        trial_metrics=serialize_metrics(main_acceptance_state["metrics"]),
+        retained_metrics=(
+            serialize_metrics(main_acceptance_state["metrics"])
+            if main_status in {"keep", "drift"}
+            else serialize_metrics(current_acceptance_state["metrics"])
+        ),
+        trial_acceptance=bool(main_acceptance_state["acceptance_satisfied"]),
+        retained_acceptance=(
+            bool(main_acceptance_state["acceptance_satisfied"])
+            if main_status in {"keep", "drift"}
+            else bool(current_acceptance_state["acceptance_satisfied"])
+        ),
+        trial_required_keep_satisfied=bool(main_acceptance_state["required_keep_satisfied"]),
+        retained_required_keep_satisfied=(
+            bool(main_acceptance_state["required_keep_satisfied"])
+            if main_status in {"keep", "drift"}
+            else bool(current_acceptance_state["required_keep_satisfied"])
+        ),
     )
     write_json_atomic(state_path, final_payload)
     append_iteration_lesson(
@@ -331,20 +409,19 @@ def main() -> int:
         iteration=next_iteration,
     )
 
-    print(
-        json.dumps(
-            {
-                "iteration": next_iteration,
-                "selected_worker": None if winner is None else winner["worker_id"],
-                "status": main_status,
-                "retained_metric": final_payload["state"]["current_metric"],
-                "retained_labels": final_payload["state"].get("current_labels", []),
-                "batch_file": str(args.batch_file),
-                "message": f"Parallel batch recorded at iteration {next_iteration}.",
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    print_json(
+        {
+            "iteration": next_iteration,
+            "selected_worker": None if winner is None else winner["worker_id"],
+            "status": main_status,
+            "retained_metric": final_payload["state"]["current_metric"],
+            "retained_acceptance": final_payload["state"].get("current_acceptance"),
+            "retained_labels": final_payload["state"].get("current_labels", []),
+            "trial_metric": final_payload["state"]["last_trial_metric"],
+            "trial_acceptance": final_payload["state"].get("last_trial_acceptance"),
+            "batch_file": str(args.batch_file),
+            "message": f"Parallel batch recorded at iteration {next_iteration}.",
+        }
     )
     return 0
 

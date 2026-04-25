@@ -8,8 +8,10 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
+    acceptance_state,
     compare_summary_to_state,
     decimal_to_json_number,
     evaluate_required_label_gate,
@@ -17,16 +19,19 @@ from autoresearch_helpers import (
     parse_decimal,
     parse_results_log,
     read_state_payload,
+    require_context_for_repo,
+    resolve_context_workspace_root,
     resolve_repo_path,
     resolve_repo_relative,
     resolve_state_path_for_log,
+    STATE_FILE_NAME,
     utc_now,
     write_json_atomic,
     log_summary,
 )
+from autoresearch_workspace import resolve_workspace_root
 
 
-DEFAULT_RESULTS_PATH = "research-results.tsv"
 RELAUNCH = "relaunch"
 STOP = "stop"
 NEEDS_HUMAN = "needs_human"
@@ -53,21 +58,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo",
-        help="Primary repo root. Preferred entrypoint when inspecting supervisor state.",
+        required=True,
+        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
     )
+    parser.add_argument("--workspace-root")
     parser.add_argument(
         "--results-path",
-        help=(
-            "Results log path. Overrides the repo-derived default when provided. "
-            f"Defaults to {DEFAULT_RESULTS_PATH} in --repo or the current directory."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--state-path",
-        help=(
-            "State JSON path. Defaults to autoresearch-state.json, except logs tagged "
-            "with '# mode: exec' default to the deterministic exec scratch state."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument(
         "--max-stagnation",
@@ -83,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--write-state",
         action="store_true",
-        help="Persist the computed supervisor metadata back into autoresearch-state.json.",
+        help="Persist the computed supervisor metadata back into state.json.",
     )
     return parser
 
@@ -149,6 +150,31 @@ def parse_stop_condition_rule(
         else "current metric >= {target}"
     )
     patterns: list[tuple[str, str, str]] = [
+        (
+            rf"(?:current\s+)?metric\s*(?:==|=)\s*({NUMBER_PATTERN})",
+            "==",
+            "current metric == {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*(?:<=|=<)\s*({NUMBER_PATTERN})",
+            "<=",
+            "current metric <= {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*(?:>=|=>)\s*({NUMBER_PATTERN})",
+            ">=",
+            "current metric >= {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*<\s*({NUMBER_PATTERN})",
+            "<",
+            "current metric < {target}",
+        ),
+        (
+            rf"(?:current\s+)?metric\s*>\s*({NUMBER_PATTERN})",
+            ">",
+            "current metric > {target}",
+        ),
         (rf"(?:<=|=<)\s*({NUMBER_PATTERN})", "<=", "current metric <= {target}"),
         (rf"(?:>=|=>)\s*({NUMBER_PATTERN})", ">=", "current metric >= {target}"),
         (rf"(?<![<>])<\s*({NUMBER_PATTERN})", "<", "current metric < {target}"),
@@ -194,23 +220,70 @@ def parse_stop_condition_rule(
     return None
 
 
+def stop_condition_status(config: dict[str, Any], current_metric: Decimal) -> dict[str, Any]:
+    direction = config.get("direction")
+    stop_condition = config.get("stop_condition")
+    if not stop_condition:
+        return {"configured": False, "satisfied": False, "description": ""}
+    rule = parse_stop_condition_rule(str(stop_condition), direction)
+    if rule is None:
+        return {
+            "configured": True,
+            "satisfied": False,
+            "description": f"unparsed stop condition: {stop_condition}",
+        }
+    operator, target, description = rule
+    return {
+        "configured": True,
+        "satisfied": compare_metric(current_metric, target, operator),
+        "description": description,
+    }
+
+
 def stop_condition_gate_gap_reason(
     payload: dict[str, Any],
     current_metric: Decimal,
     retained_labels: list[str],
+    retained_metrics: Any,
 ) -> str | None:
     config = payload.get("config", {})
-    direction = config.get("direction")
-    stop_condition = config.get("stop_condition")
-    if not stop_condition:
-        return None
+    acceptance_configured = config.get("acceptance_criteria") not in (None, [], {})
+    stop_status = stop_condition_status(config, current_metric)
+    acceptance = None
+    if acceptance_configured:
+        acceptance = acceptance_state(
+            config=config,
+            metric=current_metric,
+            metrics=retained_metrics,
+        )
 
-    rule = parse_stop_condition_rule(str(stop_condition), direction)
-    if rule is None:
-        return None
-
-    operator, target, description = rule
-    if not compare_metric(current_metric, target, operator):
+    if (
+        acceptance_configured
+        and bool(stop_status["configured"])
+        and bool(stop_status["satisfied"])
+        and acceptance is not None
+        and not acceptance["acceptance_satisfied"]
+    ):
+        return (
+            f"Configured stop condition is satisfied ({stop_status['description']}), "
+            "but retained result does not satisfy acceptance criteria: "
+            + "; ".join(acceptance["acceptance_failures"])
+        )
+    if (
+        acceptance_configured
+        and acceptance is not None
+        and acceptance["acceptance_satisfied"]
+        and bool(stop_status["configured"])
+        and not bool(stop_status["satisfied"])
+    ):
+        return (
+            "Retained result satisfies acceptance criteria, but configured stop condition "
+            f"is not yet satisfied ({stop_status['description']})."
+        )
+    if not (
+        (acceptance_configured and acceptance is not None and acceptance["acceptance_satisfied"])
+        or (bool(stop_status["configured"]) and bool(stop_status["satisfied"]))
+    ):
         return None
 
     required_labels, retained_labels, missing = evaluate_required_label_gate(
@@ -222,49 +295,67 @@ def stop_condition_gate_gap_reason(
     if not missing:
         return None
     retained_text = ", ".join(retained_labels) if retained_labels else "<none>"
+    gate_description = (
+        str(stop_status["description"])
+        if bool(stop_status["configured"])
+        else "acceptance criteria are satisfied"
+    )
     return (
-        f"Numeric stop condition is satisfied ({description}), but retained labels "
+        f"Stop gate is otherwise satisfied ({gate_description}), but retained labels "
         f"[{retained_text}] do not cover required stop labels {required_labels}; "
         f"missing {missing}."
     )
 
 
 def goal_reached_reason(
-    payload: dict[str, Any], current_metric: Decimal, retained_labels: list[str]
+    payload: dict[str, Any],
+    current_metric: Decimal,
+    retained_labels: list[str],
+    retained_metrics: Any,
 ) -> str | None:
     config = payload.get("config", {})
     direction = config.get("direction")
-    if payload.get("mode") == "fix":
-        if direction == "lower" and current_metric == 0:
-            return "Fix mode reached zero remaining errors."
-
-    stop_condition = config.get("stop_condition")
-    if not stop_condition:
+    acceptance_configured = config.get("acceptance_criteria") not in (None, [], {})
+    stop_status = stop_condition_status(config, current_metric)
+    acceptance = None
+    if acceptance_configured:
+        acceptance = acceptance_state(
+            config=config,
+            metric=current_metric,
+            metrics=retained_metrics,
+        )
+        if not acceptance["acceptance_satisfied"]:
+            return None
+    if stop_status["configured"] and not stop_status["satisfied"]:
         return None
-
-    rule = parse_stop_condition_rule(str(stop_condition), direction)
-    if rule is None:
-        return None
-
-    operator, target, description = rule
-    if compare_metric(current_metric, target, operator):
+    if acceptance_configured or stop_status["configured"]:
         required_labels, retained_labels, missing = evaluate_required_label_gate(
             config.get("required_stop_labels", []),
             retained_labels,
         )
-        if required_labels:
-            if missing:
-                return None
+        if missing:
+            return None
+        label_text = " and required stop labels" if required_labels else ""
+        if acceptance_configured and stop_status["configured"]:
             return (
-                f"Configured stop condition is satisfied ({description}) and retained labels "
-                f"{required_labels} are present."
+                "Retained result satisfies acceptance criteria, configured stop condition "
+                f"({stop_status['description']}){label_text}."
             )
-        return f"Configured stop condition is satisfied ({description})."
+        if acceptance_configured:
+            return f"Retained result satisfies acceptance criteria{label_text}."
+        return f"Configured stop condition is satisfied ({stop_status['description']}){label_text}."
+
+    if payload.get("mode") == "fix":
+        if direction == "lower" and current_metric == 0:
+            return "Fix mode reached zero remaining errors."
     return None
 
 
 def determine_base_decision(
-    payload: dict[str, Any], current_metric: object, retained_labels: list[str]
+    payload: dict[str, Any],
+    current_metric: object,
+    retained_labels: list[str],
+    retained_metrics: Any,
 ) -> tuple[str, str, str, list[str]]:
     reasons: list[str] = []
     mode = payload.get("mode")
@@ -279,11 +370,16 @@ def determine_base_decision(
         reasons.append("Exec mode is one-shot and should not be relaunched automatically.")
         return STOP, "exec_mode_completed", "exec_complete", reasons
 
-    goal_reason = goal_reached_reason(payload, current_metric, retained_labels)
+    goal_reason = goal_reached_reason(payload, current_metric, retained_labels, retained_metrics)
     if goal_reason is not None:
         reasons.append(goal_reason)
         return STOP, "goal_reached", "terminal", reasons
-    gate_gap_reason = stop_condition_gate_gap_reason(payload, current_metric, retained_labels)
+    gate_gap_reason = stop_condition_gate_gap_reason(
+        payload,
+        current_metric,
+        retained_labels,
+        retained_metrics,
+    )
     if gate_gap_reason is not None:
         reasons.append(gate_gap_reason)
 
@@ -317,12 +413,24 @@ def evaluate_supervisor_status(
     max_stagnation: int,
     after_run: bool,
     write_state: bool,
+    default_state_path: Path | None = None,
 ) -> dict[str, Any]:
-    repo_hint = results_path.parent if results_path.is_absolute() else None
-    fallback_state_path = resolve_state_path_for_log(state_path_arg, None, cwd=repo_hint)
+    fallback_state_path = resolve_state_path_for_log(
+        state_path_arg,
+        None,
+        cwd=Path.cwd(),
+        default_path=default_state_path,
+        results_path=results_path,
+    )
     try:
         parsed = parse_results_log(results_path)
-        state_path = resolve_state_path_for_log(state_path_arg, parsed, cwd=repo_hint)
+        state_path = resolve_state_path_for_log(
+            state_path_arg,
+            parsed,
+            cwd=Path.cwd(),
+            default_path=default_state_path,
+            results_path=results_path,
+        )
         payload = read_state_payload(state_path)
     except AutoresearchError as exc:
         message = str(exc)
@@ -334,7 +442,7 @@ def evaluate_supervisor_status(
                 "decision": RELAUNCH,
                 "reason": "missing_artifacts",
                 "reasons": [
-                    "Codex exited before initializing research-results.tsv / autoresearch-state.json."
+                    "Codex exited before initializing autoresearch-results/results.tsv / autoresearch-results/state.json."
                 ],
                 "results_path": str(results_path),
                 "state_path": str(fallback_state_path),
@@ -386,9 +494,10 @@ def evaluate_supervisor_status(
     else:
         decision, reason, exit_kind, reasons = determine_base_decision(
             payload,
-            reconstructed["current_metric"],
-            reconstructed.get("current_labels", []),
-        )
+        reconstructed["current_metric"],
+        reconstructed.get("current_labels", []),
+        payload.get("state", {}).get("current_metrics"),
+    )
 
     if decision == RELAUNCH and stagnation_count >= max_stagnation:
         decision = NEEDS_HUMAN
@@ -443,20 +552,34 @@ def main() -> int:
     if args.max_stagnation < 1:
         raise SystemExit("error: --max-stagnation must be at least 1")
 
-    if args.repo is not None:
-        repo = resolve_repo_path(args.repo)
-        results_path = resolve_repo_relative(repo, args.results_path, repo / DEFAULT_RESULTS_PATH)
+    repo = resolve_repo_path(args.repo)
+    if args.results_path is not None:
+        workspace_root = (
+            resolve_workspace_root(repo, args.workspace_root)
+            if args.workspace_root is not None
+            else Path.cwd().resolve()
+        )
+        results_path = resolve_repo_relative(workspace_root, args.results_path, Path(args.results_path))
+        state_default = results_path.parent / STATE_FILE_NAME
     else:
-        results_path = Path(args.results_path or DEFAULT_RESULTS_PATH)
+        context = require_context_for_repo(repo)
+        workspace_root = resolve_context_workspace_root(
+            repo=repo,
+            context=context,
+            raw_workspace_root=args.workspace_root,
+        )
+        results_path = context.results_path
+        state_default = context.state_path
 
     output = evaluate_supervisor_status(
         results_path=results_path,
         state_path_arg=args.state_path,
+        default_state_path=state_default,
         max_stagnation=args.max_stagnation,
         after_run=args.after_run,
         write_state=args.write_state,
     )
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print_json(output)
     return 0
 
 

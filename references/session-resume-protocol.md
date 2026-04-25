@@ -2,9 +2,31 @@
 
 Detect and recover from interrupted runs. Resume from the last consistent retained state instead of guessing from stale artifacts.
 
+## Workspace-Owned Control Plane
+
+The only supported normal artifact layout is workspace-owned:
+
+```text
+<workspace_root>/autoresearch-results/results.tsv
+<workspace_root>/autoresearch-results/state.json
+<workspace_root>/autoresearch-results/launch.json
+<workspace_root>/autoresearch-results/runtime.json
+<workspace_root>/autoresearch-results/runtime.log
+<workspace_root>/autoresearch-results/lessons.md
+<workspace_root>/autoresearch-results/context.json
+```
+
+Each managed git repo also stores a git-local pointer at:
+
+```bash
+git rev-parse --git-path codex-autoresearch/pointer.json
+```
+
+Hooks, status, stop, and resume resolve context in this order: current repo pointer, canonical `autoresearch-results/context.json`, then fail with a clear error. Do not walk upward from cwd looking for guessed contexts, and do not infer repo identity from a results path.
+
 ## JSON State File
 
-The primary recovery source is `autoresearch-state.json`, an atomic-write snapshot updated after each main iteration. Schema:
+The primary recovery source is `autoresearch-results/state.json`, an atomic-write snapshot updated after each main iteration. Schema:
 
 ```json
 {
@@ -13,6 +35,9 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
   "mode": "loop",
   "config": {
     "session_mode": "foreground",
+    "workspace_root": "/path/to/workspace",
+    "artifact_root": "/path/to/workspace/autoresearch-results",
+    "primary_repo": "/path/to/primary-repo",
     "goal": "<goal text>",
     "scope": "<glob pattern>",
     "repos": [
@@ -22,6 +47,13 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
     "metric": "<metric name>",
     "direction": "lower | higher",
     "verify": "<verify command>",
+    "verify_cwd": "workspace_root | primary_repo",
+    "verify_format": "scalar | metrics_json",
+    "primary_metric_key": "<metric key>",
+    "acceptance_criteria": [
+      {"metric_key": "coverage", "operator": ">=", "target": 0.9}
+    ],
+    "required_keep_criteria": [],
     "guard": "<guard command or null>"
   },
   "state": {
@@ -65,13 +97,13 @@ The primary recovery source is `autoresearch-state.json`, an atomic-write snapsh
 }
 ```
 
-Write protocol: write to a uniquely named temporary file in the same directory, fsync, then rename to `autoresearch-state.json` (atomic). Never commit this file to git.
+Write protocol: write to a uniquely named temporary file in the same directory, fsync, then rename to `state.json` (atomic). Never commit the Results directory.
 
-`config.session_mode` is the authoritative interactive-mode marker. It distinguishes foreground runs from background managed runs. Foreground runs resume from `research-results.tsv` plus `autoresearch-state.json` alone. Background runs still require a confirmed `autoresearch-launch.json` in addition to results/state.
+`config.session_mode` is the authoritative interactive-mode marker. It distinguishes foreground runs from background managed runs. Foreground runs resume from `results.tsv` plus `state.json`. Background runs also require a confirmed `launch.json` in the same Results directory.
 
-If an existing interactive run switches from foreground to background or back again, synchronize `autoresearch-state.json` to the chosen mode before continuing. The human-facing skill flow should do this internally when it resumes in the other mode; scripted background `autoresearch_runtime_ctl.py start` performs the same sync automatically before it relaunches nested Codex sessions, and the bundled `autoresearch_set_session_mode.py` helper remains an internal/scripted recovery escape hatch rather than a normal operator step.
+If an existing interactive run switches from foreground to background or back again, synchronize `state.json` to the chosen mode before continuing. The human-facing skill flow should do this internally when it resumes in the other mode; scripted background `autoresearch_runtime_ctl.py start` performs the same sync automatically before it relaunches nested Codex sessions, and the bundled `autoresearch_set_session_mode.py` helper remains an internal/scripted recovery escape hatch rather than a normal operator step.
 
-`config.repos` is optional for older single-repo states. When present, it is the authoritative managed-repo list: one primary repo plus any companion repos, each with its own scope. `config.scope` remains the primary repo's scope for backward-compatible callers.
+`config.workspace_root`, `config.artifact_root`, `config.primary_repo`, `config.repos`, and `config.verify_cwd` are required for new runs. `config.repos` is the authoritative managed-repo list: one primary repo plus any companion repos, each with its own scope. `config.scope` remains the primary repo's scope for compact prompts.
 
 `state.last_repo_commits` and `state.last_trial_repo_commits` are optional multi-repo provenance maps keyed by repo path. They complement the TSV's single `commit` column, which continues to record only the primary repo commit. These maps are preserved when valid JSON state exists, but they are not reconstructed from the TSV alone and therefore are not part of the hard TSV/JSON consistency contract.
 
@@ -85,9 +117,9 @@ At the start of every invocation, check for prior run artifacts in this order:
 
 | Priority | Signal | File / Command | Weight |
 |----------|--------|---------------|--------|
-| 1 | **JSON state** | `autoresearch-state.json` exists and is valid JSON with `version` field | **primary** |
-| 2 | Results log | `research-results.tsv` exists and has a baseline row | strong |
-| 3 | Lessons file | `autoresearch-lessons.md` exists | moderate |
+| 1 | **JSON state** | `autoresearch-results/state.json` exists and is valid JSON with `version` field | **primary** |
+| 2 | Results log | `autoresearch-results/results.tsv` exists and has a baseline row | strong |
+| 3 | Lessons file | `autoresearch-results/lessons.md` exists | moderate |
 | 4 | Git history | Recent commits with `experiment:` prefix | moderate |
 | 5 | Output dirs | `debug/`, `fix/`, `security/`, `ship/` directories with timestamped subdirectories | weak |
 
@@ -119,7 +151,7 @@ The helper's decision is the single control-plane source for:
 
 Do not reimplement a second TSV/JSON reconciliation path in those scripts.
 
-Use `--write-repaired-state` when TSV recovery is valid and you want to rewrite `autoresearch-state.json` before resuming.
+Use `--write-repaired-state` when TSV recovery is valid and you want to rewrite `state.json` before resuming.
 
 ## Recovery Priority Matrix
 
@@ -139,13 +171,13 @@ When the helper reports `full_resume`:
    ```
    Resuming from iteration {state.iteration}, retained metric: {state.current_metric}, best metric: {state.best_metric}.
    {state.keeps} kept, {state.discards} discarded, {state.crashes} crashed so far.
-   Source: autoresearch-state.json (validated against TSV main rows)
+   Source: autoresearch-results/state.json (validated against TSV main rows)
    ```
 3. Skip the wizard entirely.
 4. Read the lessons file if present.
 5. Let the runtime preflight confirm that the configured verify command still resolves before continuing.
 6. If the current metric drifted, log a `drift` row and continue from the recalibrated state.
-7. Background managed-runtime resume requires an existing `autoresearch-launch.json`. Foreground resume does not. Runs that predate that manifest are no longer resumable under the detached runtime; switch to a fresh background launch instead of synthesizing compatibility artifacts.
+7. Background managed-runtime resume requires an existing `autoresearch-results/launch.json`. Foreground resume does not. Legacy repo-root artifacts are not restored into the new schema; switch to a fresh background launch instead of synthesizing compatibility artifacts.
 
 ### Priority 2: Mini-Wizard
 
@@ -158,13 +190,13 @@ When JSON exists but the helper reports `mini_wizard`:
    - resume from JSON state, or
    - start fresh and archive old artifacts.
 3. If resuming, use JSON `config` as the authoritative config and re-confirm it in a single block.
-4. If starting fresh, archive prior persistent run-control artifacts with `.prev` suffixes and proceed with the full wizard. In the managed-runtime path, this should happen through `autoresearch_runtime_ctl.py launch --fresh-start ...`.
+4. If starting fresh, archive prior persistent run-control artifacts with `.prev` suffixes and proceed with the full wizard. In the managed-runtime path, this should happen through `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root> --fresh-start ...`.
 
 ### Priority 3: TSV Fallback
 
 When JSON is missing or unusable but the helper reports `tsv_fallback`:
 
-1. Reconstruct retained state from integer main rows in `research-results.tsv`.
+1. Reconstruct retained state from integer main rows in `autoresearch-results/results.tsv`.
 2. If the user wants to resume, prefer:
    ```bash
    python3 <skill-root>/scripts/autoresearch_resume_check.py --repo /path/to/repo --write-repaired-state
@@ -178,22 +210,28 @@ When JSON is missing or unusable but the helper reports `tsv_fallback`:
 When the helper reports `fresh_start`:
 
 1. Proceed with the normal wizard flow.
-2. Rename prior persistent run-control artifacts to `.prev` variants if they exist. In the managed-runtime path, this archival is performed by `autoresearch_runtime_ctl.py launch --fresh-start ...`. This includes `research-results.tsv`, `autoresearch-state.json`, `autoresearch-hook-context.json`, `autoresearch-launch.json`, `autoresearch-runtime.json`, and `autoresearch-runtime.log`.
-3. Keep `autoresearch-lessons.md` unless it is clearly corrupt.
+2. Rename prior persistent run-control artifacts in `autoresearch-results/` to `.prev` variants if they exist. In the managed-runtime path, this archival is performed by `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root> --fresh-start ...`.
+3. Keep `autoresearch-results/lessons.md` unless it is clearly corrupt.
+
+Legacy repo-root artifacts such as `research-results.tsv`, `autoresearch-state.json`, `autoresearch-launch.json`, `autoresearch-runtime.json`, and `autoresearch-runtime.log` do not participate in recovery. If they are detected, return:
+
+```text
+Found legacy repo-root autoresearch artifacts. This version uses workspace-owned autoresearch-results/. Start a fresh run or move/archive the old artifacts.
+```
 
 ## Edge Cases
 
 ### Corrupt JSON
 
-If `autoresearch-state.json` exists but is not valid JSON, treat it as unusable. Rename to `.bak` if you need to preserve it, then rely on TSV fallback or fresh start.
+If `autoresearch-results/state.json` exists but is not valid JSON, treat it as unusable. Rename to `.bak` if you need to preserve it, then rely on TSV fallback or fresh start.
 
 ### Corrupt Results Log
 
-If `research-results.tsv` is missing a baseline row, has a broken header, or contains unparsable metric cells, treat it as corrupt and start fresh.
+If `autoresearch-results/results.tsv` is missing a baseline row, has a broken header, or contains unparsable metric cells, treat it as corrupt and start fresh.
 
 ### Different Goal
 
-If the recovered config clearly belongs to a different goal than the current request, start fresh and archive the old run-control artifacts to `.prev` through `autoresearch_runtime_ctl.py launch --fresh-start ...`.
+If the recovered config clearly belongs to a different goal than the current request, start fresh and archive the old run-control artifacts to `.prev` through `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root> --fresh-start ...`.
 
 
 ## Integration Points
@@ -202,4 +240,4 @@ If the recovered config clearly belongs to a different goal than the current req
 - **results-logging.md:** Main integer rows define retained state; worker rows are audit detail only.
 - **interaction-wizard.md:** Mini-wizard uses helper mismatch reasons instead of raw row counts.
 - **health-check-protocol.md:** Deep integrity checks use the resume helper, not row-count heuristics.
-- **exec-workflow.md:** Exec mode skips session resume, archives the configured results log plus repo-root state artifacts, and requires the workflow to clean up its scratch JSON state before exit.
+- **exec-workflow.md:** Exec mode skips session resume, uses scratch JSON state, and requires the workflow to clean up scratch state before exit.

@@ -18,11 +18,12 @@ Modes:
   skill  Run the automated gate for behavior-changing work:
          - validate skill structure
          - helper/invariant unit tests
+         - workspace-owned multi-repo helper smoke test
          - detached runtime launch/status/stop smoke test
          - real codex exec smoke test
 
 Notes:
-  - Interactive wizard wording / ask-before-act quality still requires a manual foreground smoke run:
+  - Interactive wizard quality requires a MANUAL foreground smoke run (not automated):
       bash scripts/run_skill_e2e.sh interactive-smoke
   - The launch/status/stop control-plane handoff is covered automatically by:
       bash scripts/run_skill_e2e.sh runtime-smoke --clean
@@ -37,6 +38,7 @@ run_docs_gate() {
 run_skill_gate() {
   run_docs_gate
   python3 -m unittest discover -s "$ROOT/tests" -q
+  bash "$ROOT/scripts/run_skill_e2e.sh" multi-repo-smoke --clean
   bash "$ROOT/scripts/run_skill_e2e.sh" runtime-smoke --clean
   bash "$ROOT/scripts/run_skill_e2e.sh" exec-smoke --clean
 }

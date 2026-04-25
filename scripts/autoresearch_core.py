@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -22,12 +23,17 @@ HEADER = [
 ]
 SESSION_MODE_CHOICES = ("foreground", "background")
 EXEC_SCRATCH_ROOT = Path("/tmp/codex-autoresearch-exec")
-LAUNCH_MANIFEST_NAME = "autoresearch-launch.json"
-RUNTIME_STATE_NAME = "autoresearch-runtime.json"
-RUNTIME_LOG_NAME = "autoresearch-runtime.log"
-LESSONS_FILE_NAME = "autoresearch-lessons.md"
-HOOK_CONTEXT_NAME = "autoresearch-hook-context.json"
-AUTORESEARCH_OWNED_BASENAMES = {
+ARTIFACT_DIR_NAME = "autoresearch-results"
+RESULTS_FILE_NAME = "results.tsv"
+STATE_FILE_NAME = "state.json"
+LAUNCH_MANIFEST_NAME = "launch.json"
+RUNTIME_STATE_NAME = "runtime.json"
+RUNTIME_LOG_NAME = "runtime.log"
+LESSONS_FILE_NAME = "lessons.md"
+HOOK_CONTEXT_NAME = "context.json"
+POINTER_DIR_NAME = "codex-autoresearch"
+POINTER_FILE_NAME = "pointer.json"
+LEGACY_AUTORESEARCH_OWNED_BASENAMES = {
     "research-results.tsv",
     "autoresearch-state.json",
     "autoresearch-launch.json",
@@ -35,6 +41,17 @@ AUTORESEARCH_OWNED_BASENAMES = {
     "autoresearch-runtime.log",
     "autoresearch-lessons.md",
     "autoresearch-hook-context.json",
+}
+AUTORESEARCH_OWNED_BASENAMES = {
+    ARTIFACT_DIR_NAME,
+    RESULTS_FILE_NAME,
+    STATE_FILE_NAME,
+    LAUNCH_MANIFEST_NAME,
+    RUNTIME_STATE_NAME,
+    RUNTIME_LOG_NAME,
+    LESSONS_FILE_NAME,
+    HOOK_CONTEXT_NAME,
+    *LEGACY_AUTORESEARCH_OWNED_BASENAMES,
 }
 
 MAIN_LABEL_RE = re.compile(r"^(0|[1-9]\d*)$")
@@ -150,6 +167,41 @@ def decimal_to_json_number(value: Decimal) -> int | float:
     if value == value.to_integral_value():
         return int(value)
     return float(value)
+
+
+def json_dumps(
+    payload: Any,
+    *,
+    indent: int | None = None,
+    sort_keys: bool = False,
+    separators: tuple[str, str] | None = None,
+) -> str:
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        indent=indent,
+        sort_keys=sort_keys,
+        separators=separators,
+    )
+
+
+def print_json(
+    payload: Any,
+    *,
+    indent: int | None = 2,
+    sort_keys: bool = True,
+    separators: tuple[str, str] | None = None,
+    end: str = "\n",
+) -> None:
+    print(
+        json_dumps(
+            payload,
+            indent=indent,
+            sort_keys=sort_keys,
+            separators=separators,
+        ),
+        end=end,
+    )
 
 
 def utc_now() -> str:

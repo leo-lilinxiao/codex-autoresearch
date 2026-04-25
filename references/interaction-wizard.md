@@ -23,7 +23,7 @@ When this file mentions `<skill-root>`, it means the directory containing the lo
 9. The user should never see raw field names (Goal, Scope, Metric, Direction, Verify, Guard). Translate everything into natural conversation.
 10. After the user approves the summary, follow the chosen run mode directly from the same skill entrypoint. Foreground stays in the current session; background persists the confirmed launch manifest and starts the runtime controller. Do not tell the user to switch to a different wrapper command.
 11. End the confirmation summary with a short runtime checklist that reinforces execution order: baseline first, then initialize artifacts, and always log a completed experiment before starting the next one.
-12. For every new interactive foreground/background run, immediately after the initial repo scan check `python3 <skill-root>/scripts/autoresearch_hooks_ctl.py status`. If hooks are missing, install them automatically before clarification continues. Do not turn this into a separate approval step. If hooks were just installed in the current session, keep one short mode-shaping note ready: `background` can use them immediately, while the current `foreground` session would need a new Codex session / reopened thread to pick them up.
+12. For every new interactive foreground/background run, immediately after the initial repo scan check `python3 <skill-root>/scripts/autoresearch_hooks_ctl.py status`. If the status is not ready for future sessions, automatically install or repair the managed hooks before clarification continues. Do not turn this into a separate approval step. If hooks were just installed in the current session, keep one short mode-shaping note ready: `background` can use them immediately, while the current `foreground` session would need a new Codex session / reopened thread to pick them up.
 
 ## Clarification Protocol
 
@@ -31,7 +31,7 @@ When this file mentions `<skill-root>`, it means the directory containing the lo
 
 Read the repo to understand what exists -- source files, training scripts, config files, test suites, build systems, CI configs, etc. Check manifest files (`package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, etc.) to understand the stack before asking about it.
 
-Immediately after this scan, check `autoresearch_hooks_ctl.py status` for every new interactive run. If hooks are missing, install them automatically before asking the next clarification question.
+Immediately after this scan, check `autoresearch_hooks_ctl.py status` for every new interactive run. If the status is not ready for future sessions, automatically install or repair the managed hooks before asking the next clarification question.
 
 ### Step 2: Guided Questions (MANDATORY -- at least 1 round)
 
@@ -52,7 +52,11 @@ Rules:
 - If the user's answer introduces new ambiguity, ask about that specifically.
 - If the goal is still unclear after 3 rounds, propose the most reasonable interpretation and let the user approve or edit.
 - If the user says the experiment spans multiple repos, identify one **primary repo** for run-control artifacts and list any additional **companion repos** separately, each with its own scope.
+- Default the `workspace_root` candidate from the launch context. If Codex was started inside a git repo, use that repo root as the default candidate. If Codex was started outside a git repo, use the current launch directory as the default candidate.
+- Do not silently widen `workspace_root` to a parent directory just because nearby sibling repos, old `autoresearch-results/`, or a broader filesystem layout exist. Only widen to a broader shared workspace when the user explicitly confirms that intent.
 - Do not replace the structured summary with a single-line "foreground or background?" prompt. The user should see what you inferred from the repo before they are asked to approve launch.
+- If the chosen `workspace_root` is outside the launch context or outside the primary repo, call that out explicitly in the confirmation summary and show the resulting `Results directory`.
+- When the user explicitly describes multiple goals or says they cannot prioritize into a single metric, suggest `verify_format=metrics_json` with a primary metric for the TSV plus acceptance criteria on the others. If the repo scan reveals a verify script that outputs structured multi-metric data, mention it as an option but let the user decide whether they want multi-metric tracking or just a single primary metric. Do not proactively suggest multi-metric when the user's goal is clearly single-metric.
 
 ### Step 3: Confirm (Structured Format)
 
@@ -63,9 +67,11 @@ Before launching, present a structured confirmation summary. The user should be 
 ```
 **Confirmed**
 - Target: eliminate `any` types in src/**/*.ts
+- Results directory: `./autoresearch-results/`
 - Metric: `any` occurrence count (current: 47), direction: lower
 - Verify: `grep -r ":\s*any" src/ --include="*.ts" | wc -l`
 - Guard: `tsc --noEmit` must still pass
+- Also keeping: hard_conflicts == 0, oversized_rooms <= 100 *(only when multi-metric)*
 
 **Need to confirm**
 - Run until all gone, or cap at N iterations?
@@ -92,6 +98,8 @@ Before launching, present a structured confirmation summary. The user should be 
 8. Only show "Required keep labels" and/or "Required stop labels" when the goal truly has structural success requirements beyond the numeric target.
 9. Keep the runtime checklist short. It exists to reinforce execution order, not to restate the whole protocol.
 10. Only show the optional hooks note when hooks were just installed in the current session and the mode choice would otherwise be misleading.
+11. When the run tracks multiple metrics, show the additional thresholds in plain language (e.g., "Also keeping: hard_conflicts == 0") rather than exposing internal field names. Omit this line entirely for single-metric runs.
+12. Always show the `Results directory`. If it is the default `./autoresearch-results/` under the launch context, the relative form is fine. If it lives outside the launch context or outside the primary repo, show the absolute path and make that widening explicit before launch.
 
 The user replies "go", "start", "launch", or corrects something. No field names, no YAML, no structured input required.
 
@@ -103,22 +111,22 @@ When the user replies with launch approval (`go`, `start`, `launch`, or an equiv
 2. By handoff time, hooks should already have been checked and auto-installed immediately after the initial repo scan.
    - If hooks were just installed in the current session, surface the short mode-shaping note **before** the user chooses `foreground` or `background`: `background` can use them immediately, while the current `foreground` session would need a new Codex session / reopened thread to pick them up.
 3. If the user chose **foreground**, keep the loop in the current Codex session:
-   - initialize `research-results.tsv` and `autoresearch-state.json`
-   - do not create `autoresearch-launch.json`, `autoresearch-runtime.json`, or `autoresearch-runtime.log`
+   - initialize `autoresearch-results/results.tsv`, `autoresearch-results/state.json`, and `autoresearch-results/context.json`
+   - do not create `autoresearch-results/launch.json`, `autoresearch-results/runtime.json`, or `autoresearch-results/runtime.log`
    - keep the runtime checklist active: baseline first, then log every completed experiment before the next one starts
    - if hooks were just installed in this current session, remind the user once that this specific foreground session will not pick them up mid-session; reopening/resuming the same thread in a new session is the path if they want hooks there
    - report that the foreground run has started in the current session
-4. If the user chose **background**, persist the confirmed config to `autoresearch-launch.json`, start the detached runtime controller, and report where the runtime/log artifacts live.
+4. If the user chose **background**, persist the confirmed config to `autoresearch-results/launch.json`, start the detached runtime controller, and report the Results directory. The wizard supplies the confirmed `--workspace-root <workspace_root>` internally; users should not have to type it.
    - the nested background session must receive the same runtime checklist, especially the "log before the next experiment" rule
 5. Do not ask the user to rerun a shell wrapper command just to continue overnight.
 
 If the chosen path is **Fresh start** after recovery analysis, the handoff should be:
 
 ```bash
-python3 <skill-root>/scripts/autoresearch_runtime_ctl.py launch --fresh-start ...
+python3 <skill-root>/scripts/autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root> --fresh-start ...
 ```
 
-This archives prior persistent run-control artifacts to `.prev` before the new background run begins, including `research-results.tsv`, `autoresearch-state.json`, `autoresearch-hook-context.json`, `autoresearch-launch.json`, `autoresearch-runtime.json`, and `autoresearch-runtime.log`.
+This archives prior persistent run-control artifacts inside `autoresearch-results/` to `.prev` before the new background run begins. Legacy repo-root artifacts are not recovered into the new schema; the user must choose fresh start or move/archive them.
 
 ## Optional Question Appendix
 
@@ -129,6 +137,7 @@ Use this appendix only when you need help choosing the shortest useful question 
 - "I see both `src/models/` and `src/api/` -- should I optimize the model layer only, or the full src?"
 - "There are 3 training scripts here (`train_gpt2.py`, `train_llama.py`, `train_vit.py`) -- which one?"
 - "Should I only modify test files, or can I also refactor the source code to make it more testable?"
+- "I can keep the Results directory in `./autoresearch-results/` for this current launch context, or widen to a shared parent workspace if this run truly spans multiple repos. Which do you want?"
 
 ### Metric & Target
 
@@ -137,6 +146,7 @@ Use this appendix only when you need help choosing the shortest useful question 
 - "I see MFU is logged in the training output. Are we targeting a specific number, or just higher-is-better?"
 - "The verify command currently measures response time. Should I track p50, p95, or p99?"
 - "If I hit the target with the wrong mechanism or path, should I keep going? I can require structured keep labels so only the right mechanism can enter retained state, and structured stop labels so the run only stops when the retained keep matches the mechanism you care about."
+- "You mentioned several goals. Should I pick one as the primary metric and set hard thresholds on the others, or would you prefer a single combined score?"
 
 ### Verification & Guard
 
@@ -201,6 +211,10 @@ The wizard internally maps the conversation to these fields (the user never sees
 - Iterations (optional) -- asked only if user wants bounded run
 - Required keep labels (optional) -- ask only when only a specific mechanism, path, backend, or root-cause signal should be allowed into retained state
 - Required stop labels (optional) -- ask only when the run should stop on a specific mechanism, path, backend, or root-cause signal in addition to the metric target
+- Verify format (optional) -- default `scalar`; use `metrics_json` when the goal involves multiple metrics and the verify command outputs a JSON object as its final line
+- Primary metric key (optional) -- which key in the metrics JSON to track in the TSV; defaults to the metric name
+- Acceptance criteria (optional) -- list of `{metric_key, operator, target}` thresholds that the retained result must satisfy before the run can stop; only configure when the goal has multi-metric success requirements
+- Required keep criteria (optional) -- list of `{metric_key, operator, target}` hard gates that every retained result must satisfy to enter `keep` state (e.g., `hard_conflicts == 0`); use when some metrics must never regress regardless of primary metric improvement
 - Rollback (optional) -- ask only if destructive rollback may be needed for unattended execution; otherwise default to non-destructive revert
 - Parallel (optional) -- ask if environment supports it (CPU >= 4, RAM >= 8GB)
 - Web search (optional) -- ask if user wants web search when stuck
@@ -271,7 +285,7 @@ If validation fails, tell the user in plain language what went wrong and suggest
 
 ## Mini-Wizard (Session Resume)
 
-When `session-resume-protocol.md` detects a prior run with a valid `autoresearch-state.json` but inconsistent TSV (Recovery Priority 2), the full wizard is replaced by a single-round mini-wizard:
+When `session-resume-protocol.md` detects a prior run with a valid `autoresearch-results/state.json` but inconsistent TSV (Recovery Priority 2), the full wizard is replaced by a single-round mini-wizard:
 
 1. Show what was detected:
    - Prior run tag, iteration count, best metric, and last status from the JSON state.
@@ -281,9 +295,9 @@ When `session-resume-protocol.md` detects a prior run with a valid `autoresearch
    - **Fresh start:** archive old artifacts with `.prev` suffixes and proceed with the full wizard.
 3. If the user chooses to resume, present a condensed confirmation summary (same format as Step 3 above but sourced from JSON `config` instead of repo scanning).
 4. The user replies "go" and the loop starts immediately in the chosen run mode:
-   - foreground resume continues directly from `research-results.tsv` + `autoresearch-state.json`
-   - background resume launches through `autoresearch_runtime_ctl.py launch ...`
-   - fresh-start background handoff uses `autoresearch_runtime_ctl.py launch --fresh-start ...`
+   - foreground resume continues directly from `autoresearch-results/results.tsv` + `autoresearch-results/state.json`
+   - background resume launches through `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root> ...`
+   - fresh-start background handoff uses `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root> --fresh-start ...`
    No further rounds.
 
 The mini-wizard respects the same two-phase boundary: all questions happen before launch.

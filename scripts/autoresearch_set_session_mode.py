@@ -2,54 +2,51 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
-from autoresearch_core import SESSION_MODE_CHOICES
+from autoresearch_core import SESSION_MODE_CHOICES, print_json
 from autoresearch_hook_context import update_hook_context_pointer
 from autoresearch_helpers import (
+    ARTIFACT_DIR_NAME,
+    RESULTS_FILE_NAME,
     AutoresearchError,
-    default_runtime_state_path,
-    parse_results_log,
-    results_repo_root,
+    default_workspace_artifacts,
+    require_context_for_repo,
+    resolve_context_workspace_root,
     resolve_repo_path,
     resolve_repo_relative,
-    resolve_state_path_for_log,
+    resolve_state_path,
     sync_state_session_mode,
 )
-from autoresearch_launch_gate import pid_is_alive
+from autoresearch_launch_gate import runtime_process_state
 from autoresearch_runtime_common import (
     DEFAULT_EXECUTION_POLICY,
     EXECUTION_POLICY_CHOICES,
     load_runtime_with_error,
 )
+from autoresearch_workspace import resolve_workspace_root
 
 
-DEFAULT_RESULTS_PATH = "research-results.tsv"
+DEFAULT_RESULTS_PATH = f"{ARTIFACT_DIR_NAME}/{RESULTS_FILE_NAME}"
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Synchronize autoresearch-state.json with the active interactive session mode."
+        description="Synchronize autoresearch-results/state.json with the active interactive session mode."
     )
     parser.add_argument(
         "--repo",
         help="Primary repo root. Preferred entrypoint when syncing interactive session mode.",
     )
+    parser.add_argument("--workspace-root")
     parser.add_argument(
         "--results-path",
-        help=(
-            "Results log path. Overrides the repo-derived default when provided. "
-            f"Defaults to {DEFAULT_RESULTS_PATH} in --repo or the current directory."
-        ),
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--state-path")
+    parser.add_argument("--state-path", help=argparse.SUPPRESS)
     parser.add_argument(
         "--runtime-path",
-        help=(
-            "Runtime control JSON path. Defaults to autoresearch-runtime.json in the "
-            "primary repo rooted at --results-path."
-        ),
+        help=argparse.SUPPRESS,
     )
     parser.add_argument("--session-mode", required=True, choices=SESSION_MODE_CHOICES)
     parser.add_argument(
@@ -65,28 +62,42 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.repo is not None:
-        repo = resolve_repo_path(args.repo)
-        results_path = resolve_repo_relative(repo, args.results_path, repo / DEFAULT_RESULTS_PATH)
+    if args.repo is None:
+        raise AutoresearchError("--repo is required; run context is resolved from explicit repo metadata.")
+    repo = resolve_repo_path(args.repo)
+    context = require_context_for_repo(repo)
+    workspace_root = resolve_context_workspace_root(
+        repo=repo,
+        context=context,
+        raw_workspace_root=args.workspace_root,
+    )
+    defaults = default_workspace_artifacts(context.workspace_root)
+    results_default = context.results_path
+    results_path = resolve_repo_relative(workspace_root, args.results_path, results_default)
+    runtime_default = (
+        context.runtime_path if context.runtime_path is not None else defaults.runtime_path
+    )
+    if args.state_path is not None:
+        state_path = resolve_state_path(args.state_path, cwd=workspace_root)
     else:
-        results_path = Path(args.results_path or DEFAULT_RESULTS_PATH)
-        repo = results_repo_root(results_path)
-    repo_hint = results_path.parent if results_path.is_absolute() else repo
-    parsed = parse_results_log(results_path) if results_path.exists() else None
-    state_path = resolve_state_path_for_log(args.state_path, parsed, cwd=repo_hint)
+        state_path = context.state_path
     runtime_path = resolve_repo_relative(
-        repo,
+        workspace_root,
         args.runtime_path,
-        default_runtime_state_path(repo),
+        runtime_default,
     )
     runtime, runtime_error = load_runtime_with_error(runtime_path)
     if runtime_error is not None:
         raise AutoresearchError(runtime_error)
-    if runtime is not None and pid_is_alive(runtime.get("pid")):
-        raise AutoresearchError(
-            "Cannot switch interactive session mode while a background runtime is still active. "
-            "Stop the detached runtime first."
-        )
+    if runtime is not None:
+        runtime_state = runtime_process_state(runtime)
+        if bool(runtime_state["alive"]) and bool(runtime_state["matches"]):
+            raise AutoresearchError(
+                "Cannot switch interactive session mode while a background runtime is still active. "
+                "Stop the detached runtime first."
+            )
+        if bool(runtime_state["alive"]) and not bool(runtime_state["matches"]):
+            raise AutoresearchError(str(runtime_state["message"]))
 
     updated = sync_state_session_mode(
         state_path,
@@ -102,18 +113,14 @@ def main() -> int:
         runtime_path=runtime_path.resolve(),
     )
 
-    print(
-        json.dumps(
-            {
-                "results_path": str(results_path),
-                "state_path": str(state_path),
-                "runtime_path": str(runtime_path),
-                "session_mode": updated.get("config", {}).get("session_mode", ""),
-                "execution_policy": updated.get("config", {}).get("execution_policy", ""),
-            },
-            indent=2,
-            sort_keys=True,
-        )
+    print_json(
+        {
+            "results_path": str(results_path),
+            "state_path": str(state_path),
+            "runtime_path": str(runtime_path),
+            "session_mode": updated.get("config", {}).get("session_mode", ""),
+            "execution_policy": updated.get("config", {}).get("execution_policy", ""),
+        }
     )
     return 0
 

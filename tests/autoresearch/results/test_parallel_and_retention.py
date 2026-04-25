@@ -17,9 +17,9 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
     def test_parallel_batch_uses_best_discarded_attempt_when_nothing_keeps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
-            batch_path = tmpdir / "batch.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            batch_path = self.artifact_root(tmpdir) / "batch.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -93,9 +93,9 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
     def test_parallel_batch_keep_requires_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
-            batch_path = tmpdir / "batch.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            batch_path = self.artifact_root(tmpdir) / "batch.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -153,10 +153,10 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
     def test_parallel_batch_keep_preserves_supervisor_and_appends_lesson(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
-            batch_path = tmpdir / "batch.json"
-            lessons_path = tmpdir / "autoresearch-lessons.md"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            batch_path = self.artifact_root(tmpdir) / "batch.json"
+            lessons_path = tmpdir / "autoresearch-results/lessons.md"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -240,8 +240,8 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
             companion = root / "companion"
             primary.mkdir()
             companion.mkdir()
-            results_path = primary / "research-results.tsv"
-            state_path = primary / "autoresearch-state.json"
+            results_path = primary / "autoresearch-results/results.tsv"
+            state_path = primary / "autoresearch-results/state.json"
             batch_path = root / "batch.json"
 
             self.run_script(
@@ -320,9 +320,9 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
             repo = tmpdir / "repo"
             repo.mkdir()
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
-            batch_path = tmpdir / "batch.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
+            batch_path = self.artifact_root(repo) / "batch.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -385,8 +385,8 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
     def test_drift_and_later_keep_preserve_historical_best_metric(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -469,8 +469,8 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
     def test_record_iteration_preserves_existing_supervisor_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -540,8 +540,8 @@ class AutoresearchParallelRetentionTest(AutoresearchScriptsTestBase):
     def test_blocked_iteration_preserves_retained_metric_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",

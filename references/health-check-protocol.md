@@ -4,7 +4,7 @@ Self-monitoring system that validates environment and run integrity at managed-r
 
 The executable companions are:
 
-- `python3 <skill-root>/scripts/autoresearch_health_check.py`
+- `python3 <skill-root>/scripts/autoresearch_health_check.py --repo <primary_repo>`
 - `python3 <skill-root>/scripts/autoresearch_commit_gate.py`
 
 `autoresearch_health_check.py` is the canonical lightweight integrity checker. It must:
@@ -48,7 +48,7 @@ Run at iterations 10, 20, 30, etc. only when the workflow or runtime explicitly 
 
 ## Helper Output Contract
 
-`autoresearch_health_check.py` does not mutate `research-results.tsv`, retry verify commands, or escalate warnings over time. The standalone helper returns structured JSON:
+`autoresearch_health_check.py` does not mutate `autoresearch-results/results.tsv`, retry verify commands, or escalate warnings over time. The standalone helper returns structured JSON:
 
 ```json
 {

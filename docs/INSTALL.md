@@ -1,6 +1,14 @@
 # Installation
 
-`codex-autoresearch` is a Markdown-first Codex skill package with bundled helper scripts. No build step, no runtime dependencies.
+`codex-autoresearch` is a Markdown-first Codex skill package with bundled helper scripts. No build step, no third-party runtime dependencies.
+
+## Prerequisites
+
+- Codex with skills enabled.
+- macOS or Linux.
+- Git for iterative modes, because the loop commits, verifies, and reverts experiments.
+- Python 3 for the bundled helper scripts.
+- A working `codex` CLI in `PATH` for managed background runs and `exec` mode.
 
 ## Install
 
@@ -71,7 +79,7 @@ Expected behavior:
 
 ## Required Session Hooks
 
-The interactive skill requires these user-level Codex session hooks and auto-installs them right after the initial repo scan when they are missing. This bootstrap happens before the first clarification question. If you want to preinstall or inspect them manually:
+The interactive skill requires these user-level Codex session hooks and auto-installs or repairs them right after the initial repo scan whenever `autoresearch_hooks_ctl.py status` is not ready for future sessions. This bootstrap happens before the first clarification question. If you want to preinstall or inspect them manually:
 
 ```bash
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
@@ -94,8 +102,8 @@ Important:
 - Hooks only attach to later Codex sessions that clearly look like `codex-autoresearch` work. They do not retroactively change the currently open foreground session, and unrelated Codex conversations in the same repo are left alone.
 - If the skill just installed them in the current session, `background` can use them immediately.
 - The currently open foreground session will not use them mid-session. To get hooks there, reopen/resume the same thread in a new Codex session. In the CLI this is often `codex resume`; in the app, reopen the same thread in a new session.
-- Managed `background` runs explicitly pass their configured artifact paths into those nested sessions, so custom `--results-path` / `--state-path` layouts continue to work there.
-- Future `foreground` sessions can also recover repo-local custom artifact paths through the repo's hook context pointer, but hooks still require an explicit autoresearch session signal before they attach.
+- Managed `background` runs explicitly pass the workspace-owned Results directory into nested sessions.
+- Future `foreground` sessions can also recover the run context through the repo's git-local pointer, but hooks still require an explicit autoresearch session signal before they attach.
 
 ## Updating
 

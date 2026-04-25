@@ -7,17 +7,20 @@ from pathlib import Path
 from autoresearch_helpers import (
     AutoresearchError,
     format_repo_target_label,
+    LAUNCH_MANIFEST_NAME,
     repo_targets_from_config,
     read_launch_manifest,
+    require_context_for_repo,
+    resolve_context_workspace_root,
     resolve_repo_path,
     resolve_repo_relative,
-    results_repo_root,
-    resolve_repo_managed_path,
+    RUNTIME_STATE_NAME,
+    STATE_FILE_NAME,
 )
 from autoresearch_launch_gate import evaluate_launch_context
+from autoresearch_workspace import default_workspace_artifacts, resolve_workspace_root
 
 
-DEFAULT_RESULTS_PATH = "research-results.tsv"
 RUNTIME_CHECKLIST = (
     "Baseline first, then initialize fresh artifacts if they do not exist yet.",
     "Record every completed experiment before starting the next one.",
@@ -25,10 +28,15 @@ RUNTIME_CHECKLIST = (
     "Let helper logic own keep/stop gating and retained-state semantics.",
 )
 OPTIONAL_CONFIG_FIELDS = (
+    ("verify_cwd", "Verify cwd"),
+    ("verify_format", "Verify format"),
+    ("primary_metric_key", "Primary metric key"),
     ("execution_policy", "Execution policy"),
     ("guard", "Guard"),
     ("iterations", "Iterations"),
     ("stop_condition", "Stop condition"),
+    ("acceptance_criteria", "Acceptance criteria"),
+    ("required_keep_criteria", "Required keep criteria"),
     ("required_keep_labels", "Required keep labels"),
     ("required_stop_labels", "Required stop labels"),
     ("rollback_policy", "Rollback policy"),
@@ -48,7 +56,10 @@ def build_runtime_prompt(
     decision = launch_context["decision"]
     strategy = launch_context["resume_strategy"]
     config = launch_manifest["config"]
-    primary_repo = results_repo_root(results_path)
+    primary_repo_config = config.get("primary_repo")
+    if not isinstance(primary_repo_config, str) or not primary_repo_config.strip():
+        raise AutoresearchError("Launch config.primary_repo is required.")
+    primary_repo = Path(primary_repo_config).expanduser().resolve()
     repo_targets = repo_targets_from_config(primary_repo, config)
     lines = [
         "$codex-autoresearch",
@@ -91,7 +102,7 @@ def build_runtime_prompt(
             "- Do not ask the user for launch confirmation again.",
             "- If results/state artifacts exist, resume from them.",
             "- If they do not exist yet, initialize a fresh run from the launch manifest.",
-            "- When initializing fresh artifacts for this managed run, call autoresearch_init_run.py with --session-mode background.",
+            "- When initializing fresh artifacts for this managed run, call autoresearch_init_run.py with --repo <primary_repo>, --workspace-root <workspace_root>, and --session-mode background.",
             "- Continue autonomously until a terminal condition or blocker is reached.",
             "- Keep all run-control decisions aligned with the launch manifest and current state.",
         ]
@@ -105,46 +116,69 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--repo",
-        help="Primary repo root. Preferred entrypoint when generating a runtime-managed prompt.",
+        required=True,
+        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
     )
+    parser.add_argument("--workspace-root")
     parser.add_argument(
         "--results-path",
-        help=(
-            "Results log path. Overrides the repo-derived default when provided. "
-            f"Defaults to {DEFAULT_RESULTS_PATH} in --repo or the current directory."
-        ),
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--state-path")
-    parser.add_argument("--launch-path")
-    parser.add_argument("--runtime-path")
+    parser.add_argument("--state-path", help=argparse.SUPPRESS)
+    parser.add_argument("--launch-path", help=argparse.SUPPRESS)
+    parser.add_argument("--runtime-path", help=argparse.SUPPRESS)
     return parser
 
 
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    if args.repo is not None:
-        repo = resolve_repo_path(args.repo)
-        results_path = resolve_repo_relative(repo, args.results_path, repo / DEFAULT_RESULTS_PATH)
-        launch_path = resolve_repo_relative(repo, args.launch_path, repo / "autoresearch-launch.json")
-        runtime_path = resolve_repo_relative(repo, args.runtime_path, repo / "autoresearch-runtime.json")
-    else:
-        results_path = Path(args.results_path or DEFAULT_RESULTS_PATH)
-        launch_path = resolve_repo_managed_path(
+    repo = resolve_repo_path(args.repo)
+    if args.results_path is not None:
+        workspace_root = (
+            resolve_workspace_root(repo, args.workspace_root)
+            if args.workspace_root is not None
+            else Path.cwd().resolve()
+        )
+        results_path = resolve_repo_relative(workspace_root, args.results_path, Path(args.results_path))
+        artifact_root = results_path.parent
+        state_default = artifact_root / STATE_FILE_NAME
+        launch_path = resolve_repo_relative(
+            workspace_root,
             args.launch_path,
-            results_path=results_path,
-            default_name="autoresearch-launch.json",
+            artifact_root / LAUNCH_MANIFEST_NAME,
         )
-        runtime_path = resolve_repo_managed_path(
+        runtime_path = resolve_repo_relative(
+            workspace_root,
             args.runtime_path,
-            results_path=results_path,
-            default_name="autoresearch-runtime.json",
+            artifact_root / RUNTIME_STATE_NAME,
         )
+    else:
+        context = require_context_for_repo(repo)
+        workspace_root = resolve_context_workspace_root(
+            repo=repo,
+            context=context,
+            raw_workspace_root=args.workspace_root,
+        )
+        defaults = default_workspace_artifacts(context.workspace_root)
+        state_default = context.state_path
+        launch_path = resolve_repo_relative(
+            workspace_root,
+            args.launch_path,
+            context.launch_path or defaults.launch_path,
+        )
+        runtime_path = resolve_repo_relative(
+            workspace_root,
+            args.runtime_path,
+            context.runtime_path or defaults.runtime_path,
+        )
+        results_path = context.results_path
     context = evaluate_launch_context(
         results_path=results_path,
         state_path_arg=args.state_path,
         launch_path=launch_path,
         runtime_path=runtime_path,
+        default_state_path=state_default,
         ignore_running_runtime=True,
     )
     if context["decision"] not in {"fresh", "resumable"}:

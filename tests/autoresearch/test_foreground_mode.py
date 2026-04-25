@@ -13,8 +13,8 @@ class AutoresearchForegroundModeTest(AutoresearchScriptsTestBase):
     def test_foreground_init_creates_only_results_and_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = self.managed_results_path(repo)
+            state_path = self.managed_state_path(repo)
 
             result = self.run_script(
                 "autoresearch_init_run.py",
@@ -45,9 +45,9 @@ class AutoresearchForegroundModeTest(AutoresearchScriptsTestBase):
             self.assertEqual(result["session_mode"], "foreground")
             self.assertTrue(results_path.exists())
             self.assertTrue(state_path.exists())
-            self.assertFalse((repo / "autoresearch-launch.json").exists())
-            self.assertFalse((repo / "autoresearch-runtime.json").exists())
-            self.assertFalse((repo / "autoresearch-runtime.log").exists())
+            self.assertFalse(self.managed_launch_path(repo).exists())
+            self.assertFalse(self.managed_runtime_path(repo).exists())
+            self.assertFalse(self.managed_runtime_log_path(repo).exists())
 
             state = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(state["config"]["session_mode"], "foreground")
@@ -64,9 +64,9 @@ class AutoresearchForegroundModeTest(AutoresearchScriptsTestBase):
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
-                str(primary / "research-results.tsv"),
+                str(self.managed_results_path(primary)),
                 "--state-path",
-                str(primary / "autoresearch-state.json"),
+                str(self.managed_state_path(primary)),
                 "--mode",
                 "loop",
                 "--goal",
@@ -91,7 +91,7 @@ class AutoresearchForegroundModeTest(AutoresearchScriptsTestBase):
                 "baseline failures",
             )
 
-            state = json.loads((primary / "autoresearch-state.json").read_text(encoding="utf-8"))
+            state = json.loads(self.managed_state_path(primary).read_text(encoding="utf-8"))
             self.assertEqual(
                 state["config"]["repos"],
                 [
@@ -99,14 +99,14 @@ class AutoresearchForegroundModeTest(AutoresearchScriptsTestBase):
                     {"path": str(companion.resolve()), "scope": "pkg/", "role": "companion"},
                 ],
             )
-            self.assertFalse((primary / "autoresearch-launch.json").exists())
-            self.assertFalse((primary / "autoresearch-runtime.json").exists())
+            self.assertFalse(self.managed_launch_path(primary).exists())
+            self.assertFalse(self.managed_runtime_path(primary).exists())
 
     def test_switching_background_state_to_foreground_clears_execution_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = self.managed_results_path(repo)
+            state_path = self.managed_state_path(repo)
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -156,9 +156,9 @@ class AutoresearchForegroundModeTest(AutoresearchScriptsTestBase):
     def test_switching_mode_is_blocked_while_background_runtime_is_active(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
-            fake_codex_path = repo / "fake-codex"
+            results_path = self.managed_results_path(repo)
+            state_path = self.managed_state_path(repo)
+            fake_codex_path = self.artifact_root(repo) / "fake-codex"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -203,10 +203,8 @@ class AutoresearchForegroundModeTest(AutoresearchScriptsTestBase):
 
             completed = self.run_script_completed(
                 "autoresearch_set_session_mode.py",
-                "--results-path",
-                str(results_path),
-                "--state-path",
-                str(state_path),
+                "--repo",
+                str(repo),
                 "--session-mode",
                 "foreground",
             )

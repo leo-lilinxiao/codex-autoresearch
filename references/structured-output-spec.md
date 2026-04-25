@@ -80,9 +80,10 @@ Required completion summary:
 
 Artifact:
 
-- `research-results.tsv`
-- `autoresearch-lessons.md` (if lessons were extracted)
-- `autoresearch-state.json` (session state snapshot, not committed to git; see `references/session-resume-protocol.md`)
+- `autoresearch-results/results.tsv`
+- `autoresearch-results/lessons.md` (if lessons were extracted)
+- `autoresearch-results/state.json` (session state snapshot, not committed to git; see `references/session-resume-protocol.md`)
+- `autoresearch-results/context.json` (canonical workspace-owned run context for hooks, status, and resume)
 
 ### plan
 
@@ -157,9 +158,10 @@ security/{YYMMDD}-{HHMM}-{slug}/
 
 Ship mode also persists the generic iterating-run artifacts:
 
-- `research-results.tsv`
-- `autoresearch-lessons.md` (if lessons were extracted)
-- `autoresearch-state.json`
+- `autoresearch-results/results.tsv`
+- `autoresearch-results/lessons.md` (if lessons were extracted)
+- `autoresearch-results/state.json`
+- `autoresearch-results/context.json`
 
 Output directory:
 
@@ -198,6 +200,6 @@ Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker.
 
 - TSV headers must be written exactly once.
 - When helper-managed artifacts include timestamps (for example lessons entries or runtime/state metadata), they should use UTC.
-- File paths should be repo-relative inside artifacts.
+- Workspace-owned artifact metadata should use the documented canonical paths. `context.json` and state config fields store absolute paths so hooks and control-plane helpers can resolve the active run without cwd guessing.
 - Final summaries should reference every artifact created.
 - Parallel workers use `[PARALLEL worker-{id}]` prefix.

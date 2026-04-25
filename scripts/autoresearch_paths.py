@@ -9,15 +9,23 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from autoresearch_core import (
+    ARTIFACT_DIR_NAME,
     AUTORESEARCH_OWNED_BASENAMES,
     EXEC_SCRATCH_ROOT,
     HOOK_CONTEXT_NAME,
     AutoresearchError,
     LESSONS_FILE_NAME,
     LAUNCH_MANIFEST_NAME,
+    LEGACY_AUTORESEARCH_OWNED_BASENAMES,
+    RESULTS_FILE_NAME,
     ParsedLog,
     RUNTIME_LOG_NAME,
     RUNTIME_STATE_NAME,
+    STATE_FILE_NAME,
+)
+from autoresearch_workspace import (
+    artifact_root_from_start,
+    default_workspace_artifacts,
 )
 
 
@@ -64,34 +72,31 @@ def has_git_repo(start: Path | None = None) -> bool:
 
 
 def default_launch_manifest_path(cwd: Path | None = None) -> Path:
-    return find_repo_root(cwd) / LAUNCH_MANIFEST_NAME
+    return artifact_root_from_start(cwd) / LAUNCH_MANIFEST_NAME
 
 
 def default_runtime_state_path(cwd: Path | None = None) -> Path:
-    return find_repo_root(cwd) / RUNTIME_STATE_NAME
+    return artifact_root_from_start(cwd) / RUNTIME_STATE_NAME
 
 
 def default_runtime_log_path(cwd: Path | None = None) -> Path:
-    return find_repo_root(cwd) / RUNTIME_LOG_NAME
+    return artifact_root_from_start(cwd) / RUNTIME_LOG_NAME
 
 
 def default_lessons_path(cwd: Path | None = None) -> Path:
-    return find_repo_root(cwd) / LESSONS_FILE_NAME
+    if cwd is None:
+        return Path(ARTIFACT_DIR_NAME) / LESSONS_FILE_NAME
+    return artifact_root_from_start(cwd) / LESSONS_FILE_NAME
 
 
 def default_hook_context_path(cwd: Path | None = None) -> Path:
-    return find_repo_root(cwd) / HOOK_CONTEXT_NAME
+    return artifact_root_from_start(cwd) / HOOK_CONTEXT_NAME
 
 
 def default_state_path(cwd: Path | None = None) -> Path:
     if cwd is None:
-        return Path("autoresearch-state.json")
-    return find_repo_root(cwd) / "autoresearch-state.json"
-
-
-def results_repo_root(results_path: Path) -> Path:
-    context = results_path.parent if results_path.is_absolute() else lexical_abspath(results_path.parent)
-    return find_repo_root(context)
+        return Path(ARTIFACT_DIR_NAME) / STATE_FILE_NAME
+    return artifact_root_from_start(cwd) / STATE_FILE_NAME
 
 
 def resolve_repo_path(repo_arg: str | None) -> Path:
@@ -107,22 +112,6 @@ def resolve_repo_relative(repo: Path, raw: str | None, default_path: Path) -> Pa
     return candidate.resolve()
 
 
-def resolve_repo_managed_path(
-    requested_path: str | None,
-    *,
-    results_path: Path,
-    default_name: str,
-) -> Path:
-    repo = results_repo_root(results_path)
-    if requested_path is None:
-        return repo / default_name
-
-    candidate = Path(requested_path)
-    if not candidate.is_absolute():
-        candidate = repo / candidate
-    return lexical_abspath(candidate)
-
-
 def parse_scope_patterns(scope_text: str | None) -> list[str]:
     if not scope_text:
         return []
@@ -134,16 +123,26 @@ def path_is_in_scope(path: str, patterns: list[str]) -> bool:
         return False
 
     normalized = path.replace("\\", "/")
-    stripped_path = normalized.lstrip("./")
+    stripped_path = normalized[2:] if normalized.startswith("./") else normalized
     candidate = PurePosixPath(stripped_path)
     for pattern in patterns:
         pattern = pattern.strip()
         if not pattern:
             continue
 
-        normalized_pattern = pattern.replace("\\", "/").lstrip("./")
+        normalized_pattern = pattern.replace("\\", "/")
+        if normalized_pattern.startswith("./"):
+            normalized_pattern = normalized_pattern[2:]
         is_glob = any(marker in normalized_pattern for marker in "*?[")
         base = normalized_pattern.rstrip("/")
+
+        # Treat directory/** as a recursive prefix, including hidden directories such as .github/.
+        if normalized_pattern.endswith("/**"):
+            recursive_base = normalized_pattern[: -len("/**")].rstrip("/")
+            if recursive_base and (
+                stripped_path == recursive_base or stripped_path.startswith(f"{recursive_base}/")
+            ):
+                return True
 
         if normalized_pattern.endswith("/") or not is_glob:
             if base and (stripped_path == base or stripped_path.startswith(f"{base}/")):
@@ -165,6 +164,8 @@ def path_is_in_scope(path: str, patterns: list[str]) -> bool:
 
 def is_autoresearch_owned_artifact(path: str | Path) -> bool:
     candidate = Path(path)
+    if ARTIFACT_DIR_NAME in candidate.parts:
+        return True
     names = [candidate.name]
     parent_name = candidate.parent.name
     if parent_name and parent_name != ".":
@@ -179,6 +180,8 @@ def is_autoresearch_owned_artifact(path: str | Path) -> bool:
                 continue
             seen.add(current)
             if current in AUTORESEARCH_OWNED_BASENAMES:
+                return True
+            if current in LEGACY_AUTORESEARCH_OWNED_BASENAMES:
                 return True
             for base in AUTORESEARCH_OWNED_BASENAMES:
                 if current.startswith(f"{base}.") or current.endswith(f".{base}"):
@@ -223,25 +226,56 @@ def resolve_state_path(
     *,
     mode: str | None = None,
     cwd: Path | None = None,
-    allow_exec_scratch_fallback: bool = False,
 ) -> Path:
     if requested_path:
         candidate = Path(requested_path)
-        if candidate.is_absolute() or cwd is None:
+        if candidate.is_absolute():
             return candidate
-        return lexical_abspath(find_repo_root(cwd) / candidate)
+        base = lexical_abspath(cwd) if cwd is not None else lexical_abspath()
+        return lexical_abspath(base / candidate)
 
-    repo_state_path = default_state_path(cwd)
     if mode == "exec":
         return default_exec_state_path(cwd)
-    if repo_state_path.exists():
-        return repo_state_path
+    return default_state_path(cwd)
 
-    if allow_exec_scratch_fallback:
-        scratch_state_path = default_exec_state_path(cwd)
-        if scratch_state_path.exists():
-            return scratch_state_path
-    return repo_state_path
+
+def _metadata_path(metadata: dict[str, str], key: str) -> Path | None:
+    value = metadata.get(key)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return Path(value).expanduser().resolve()
+
+
+def _state_path_from_results_metadata(metadata: dict[str, str]) -> Path | None:
+    if metadata.get("mode") == "exec":
+        workspace_root = _metadata_path(metadata, "workspace_root")
+        if workspace_root is None:
+            raise AutoresearchError(
+                "Exec results log is missing workspace_root metadata needed to locate scratch state."
+            )
+        return default_exec_state_path(workspace_root)
+
+    artifact_root = _metadata_path(metadata, "artifact_root")
+    if artifact_root is not None:
+        return artifact_root / STATE_FILE_NAME
+
+    workspace_root = _metadata_path(metadata, "workspace_root")
+    if workspace_root is not None:
+        return default_workspace_artifacts(workspace_root).state_path
+
+    return None
+
+
+def _state_path_from_results_path(results_path: Path | None) -> Path | None:
+    if results_path is None:
+        return None
+    candidate = results_path.expanduser()
+    if candidate.name != RESULTS_FILE_NAME:
+        return None
+    artifact_root = candidate.parent
+    if artifact_root.name != ARTIFACT_DIR_NAME:
+        return None
+    return (artifact_root / STATE_FILE_NAME).resolve()
 
 
 def resolve_state_path_for_log(
@@ -249,6 +283,8 @@ def resolve_state_path_for_log(
     parsed: ParsedLog | dict[str, str] | None,
     *,
     cwd: Path | None = None,
+    default_path: Path | None = None,
+    results_path: Path | None = None,
 ) -> Path:
     if isinstance(parsed, ParsedLog):
         metadata = parsed.metadata
@@ -256,14 +292,25 @@ def resolve_state_path_for_log(
         metadata = parsed
     else:
         metadata = {}
-    mode = metadata.get("mode")
-    exec_mode = mode == "exec"
-    return resolve_state_path(
-        requested_path,
-        mode="exec" if exec_mode else None,
-        cwd=cwd,
-        allow_exec_scratch_fallback=exec_mode,
-    )
+
+    if requested_path is not None:
+        return resolve_state_path(requested_path, cwd=cwd)
+
+    metadata_state_path = _state_path_from_results_metadata(metadata)
+    if metadata_state_path is not None:
+        return metadata_state_path
+
+    if default_path is not None:
+        return default_path.resolve()
+
+    derived_state_path = _state_path_from_results_path(results_path)
+    if derived_state_path is not None:
+        return derived_state_path
+
+    if cwd is not None:
+        return default_state_path(cwd)
+
+    return default_state_path(None)
 
 
 def cleanup_exec_state(cwd: Path | None = None) -> tuple[Path, bool]:

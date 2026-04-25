@@ -34,19 +34,19 @@
 
 ## 빠른 시작
 
-```bash
-# 설치
-git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
-cp -r codex-autoresearch your-project/.agents/skills/codex-autoresearch
+```text
+# Codex에 설치 (권장)
+$skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-프로젝트에서 Codex를 열고:
+Codex를 다시 시작한 뒤 프로젝트에서 열고:
 
 ```
 당신:  $codex-autoresearch
        TypeScript 코드의 모든 any 타입을 제거해줘
 
 Codex: src/**/*.ts에서 47개의 `any`를 발견했습니다.
+       Results 디렉터리: ./autoresearch-results/
        지표: any 발생 횟수 (현재 47), 방향: 감소
        검증: grep 카운트 + tsc --noEmit 가드
        실행 모드: foreground 또는 background?
@@ -58,7 +58,7 @@ Codex: 백그라운드 실행 시작 — 베이스라인: 47. 반복 중.
 
 개선은 누적되고, 실패는 롤백되며, 모든 것이 기록됩니다.
 
-추가 설치 방법은 [INSTALL.md](../INSTALL.md), 전체 매뉴얼은 [GUIDE.md](../GUIDE.md) 참조.
+수동 복사, symlink, 사용자 범위 설치는 [INSTALL.md](../INSTALL.md), 전체 매뉴얼은 [GUIDE.md](../GUIDE.md) 참조.
 
 ## 작동 방식
 
@@ -115,6 +115,7 @@ Codex: 백그라운드 실행 시작 — 베이스라인: 47. 반복 중.
 | 가드 | 회귀 위험이 있으면 제안 | `npm test` |
 
 시작 전에 Codex는 항상 발견한 내용을 보여주고 확인을 요청합니다. 그 후 foreground 또는 background를 선택하고 "go"라고 말합니다.
+기본적으로 Results 디렉터리는 시작 컨텍스트에 머뭅니다. Codex를 git 저장소 안에서 시작했다면 그 저장소 루트가 기본 workspace root이고, git 저장소 밖에서 시작했다면 현재 시작 디렉터리가 기본 workspace root입니다. 더 넓은 멀티 리포 workspace를 사용하겠다고 명시적으로 확인하지 않는 한, Codex가 이를 상위 디렉터리로 조용히 넓혀서는 안 됩니다. 시작 전에 확인 요약에는 선택된 Results 디렉터리가 항상 표시되어야 합니다.
 
 ## 막혔을 때
 
@@ -131,7 +132,7 @@ Codex: 백그라운드 실행 시작 — 베이스라인: 47. 반복 중.
 
 ## 결과 로그
 
-각 반복은 `research-results.tsv`에 기록됩니다:
+각 반복은 `autoresearch-results/results.tsv`에 기록됩니다:
 
 ```
 iteration  commit   metric  delta   status    description
@@ -141,7 +142,7 @@ iteration  commit   metric  delta   status    description
 3          d4e5f6g  38      -3      keep      type-narrow API response handlers
 ```
 
-실패한 실험은 git에서 롤백되지만 로그에는 남습니다. 로그가 진정한 감사 추적입니다.
+실패한 실험은 git에서 롤백되지만 로그에는 남습니다. 로그가 진정한 감사 추적이며, `autoresearch-results/state.json`은 재개 스냅샷입니다.
 
 ## 추가 기능
 
@@ -164,7 +165,7 @@ iteration  commit   metric  delta   status    description
 
 **어떻게 멈추나요?** Foreground: Codex를 중단. Background: `$codex-autoresearch`에서 중단 요청.
 
-**중단 후 재개 가능한가요?** 네. `autoresearch-state.json`에서 자동으로 재개합니다.
+**중단 후 재개 가능한가요?** 네. `autoresearch-results/state.json`에서 자동으로 재개합니다.
 
 **CI에서 어떻게 사용하나요?** `Mode: exec`와 `codex exec`. 모든 설정 사전 제공, JSON 출력, 종료 코드 0/1/2.
 

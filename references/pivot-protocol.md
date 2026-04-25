@@ -16,7 +16,7 @@ Trigger: 3 consecutive iterations with status `discard`, `crash`, or `no-op`.
 Actions:
 1. Re-read the last 10 results log entries.
 2. Identify what is common across the failed attempts (same file? same pattern? same assumption?).
-3. Consult `autoresearch-lessons.md` for insights on similar failures.
+3. Consult `autoresearch-results/lessons.md` for insights on similar failures.
 4. Generate a hypothesis that differs from recent attempts in at least one concrete dimension:
    - Different file within scope
    - Different technique (e.g., switch from refactoring to adding new code)

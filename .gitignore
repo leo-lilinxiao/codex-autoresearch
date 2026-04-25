@@ -13,9 +13,11 @@ research-results.tsv.tmp
 results.tsv
 run.log
 autoresearch-lessons.md
-!tests/e2e-fixtures/exec_marker_reduction/research-results.tsv
-!tests/e2e-fixtures/exec_marker_reduction/autoresearch-state.json
-!tests/e2e-fixtures/exec_marker_reduction/autoresearch-lessons.md
+autoresearch-results/
+!tests/e2e-fixtures/exec_marker_reduction/autoresearch-results/
+!tests/e2e-fixtures/exec_marker_reduction/autoresearch-results/results.tsv
+!tests/e2e-fixtures/exec_marker_reduction/autoresearch-results/state.json
+!tests/e2e-fixtures/exec_marker_reduction/autoresearch-results/lessons.md
 __pycache__/
 *.pyc
 .venv/

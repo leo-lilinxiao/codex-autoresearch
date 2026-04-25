@@ -35,9 +35,10 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
             (repo / "notes.txt").write_text("user change\n", encoding="utf-8")
-            (repo / "research-results.tsv").write_text("artifact\n", encoding="utf-8")
+            (repo / "autoresearch-results").mkdir(parents=True, exist_ok=True)
+            (repo / "autoresearch-results/results.tsv").write_text("artifact\n", encoding="utf-8")
             subprocess.run(
-                ["git", "-C", str(repo), "add", "research-results.tsv"],
+                ["git", "-C", str(repo), "add", "autoresearch-results/results.tsv"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -90,7 +91,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
             nested = repo / "sub"
             nested.mkdir()
-            (nested / "research-results.tsv").write_text("artifact\n", encoding="utf-8")
+            (nested / "autoresearch-results").mkdir(parents=True, exist_ok=True)
+            (nested / "autoresearch-results/results.tsv").write_text("artifact\n", encoding="utf-8")
 
             result = self.run_script(
                 "autoresearch_commit_gate.py",
@@ -189,12 +191,13 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            artifact = repo / "autoresearch-state.json"
+            artifact = repo / "autoresearch-results/state.json"
             src = repo / "src"
             src.mkdir()
+            artifact.parent.mkdir(parents=True, exist_ok=True)
             artifact.write_text("{}\n", encoding="utf-8")
             subprocess.run(
-                ["git", "-C", str(repo), "add", "autoresearch-state.json"],
+                ["git", "-C", str(repo), "add", "autoresearch-results/state.json"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -206,7 +209,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 text=True,
             )
             subprocess.run(
-                ["git", "-C", str(repo), "mv", "autoresearch-state.json", "src/state.py"],
+                ["git", "-C", str(repo), "mv", "autoresearch-results/state.json", "src/state.py"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -222,7 +225,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "src/**/*.py",
             )
             self.assertEqual(result["decision"], "block")
-            self.assertIn("autoresearch-state.json", result["staged_artifacts"])
+            self.assertIn("autoresearch-results/state.json", result["staged_artifacts"])
 
     def test_commit_gate_allows_in_scope_changes_in_companion_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -282,8 +285,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
@@ -315,6 +318,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "autoresearch_health_check.py",
                 "--repo",
                 str(repo),
+                "--results-path",
+                str(results_path),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--min-free-mb",
@@ -330,7 +335,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
             nested = repo / "sub"
             nested.mkdir()
-            results_path = nested / "research-results.tsv"
+            results_path = nested / "autoresearch-results/results.tsv"
+            results_path.parent.mkdir(parents=True, exist_ok=True)
             results_path.write_text(
                 "\n".join(
                     [
@@ -362,8 +368,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
             docs = repo / "docs"
             src = repo / "src"
             docs.mkdir()
@@ -418,6 +424,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "autoresearch_health_check.py",
                 "--repo",
                 str(repo),
+                "--results-path",
+                str(results_path),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--min-free-mb",
@@ -439,7 +447,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "--repo",
                 str(repo),
                 "--results-path",
-                str(repo / "research-results.tsv"),
+                str(repo / "autoresearch-results/results.tsv"),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--scope",
@@ -463,7 +471,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "--repo",
                 str(repo),
                 "--results-path",
-                str(repo / "research-results.tsv"),
+                str(repo / "autoresearch-results/results.tsv"),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--scope",
@@ -490,7 +498,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "--repo",
                 str(primary),
                 "--results-path",
-                str(primary / "research-results.tsv"),
+                str(primary / "autoresearch-results/results.tsv"),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--scope",
@@ -504,7 +512,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             self.assertTrue(any(f"[{companion.resolve()}]" in warning for warning in result["warnings"]))
             self.assertEqual(len(result["repo_worktree_checks"]), 2)
 
-    def test_health_check_uses_results_repo_when_repo_flag_is_omitted(self) -> None:
+    def test_health_check_requires_repo_when_pointer_is_unavailable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             repo = base / "target"
@@ -512,20 +520,20 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
             (repo / "notes.txt").write_text("surprise\n", encoding="utf-8")
 
-            result = self.run_script(
+            completed = self.run_script_completed(
                 "autoresearch_health_check.py",
                 "--results-path",
-                str(repo / "research-results.tsv"),
+                str(repo / "autoresearch-results/results.tsv"),
                 "--state-path",
-                str(repo / "autoresearch-state.json"),
+                str(repo / "autoresearch-results/state.json"),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--min-free-mb",
                 "1",
                 cwd=base,
             )
-            self.assertEqual(result["decision"], "warn")
-            self.assertTrue(any("notes.txt" in warning for warning in result["warnings"]))
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("the following arguments are required: --repo", completed.stderr)
 
     def test_health_check_blocks_when_verify_command_is_missing_from_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -538,9 +546,9 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "--repo",
                 str(repo),
                 "--results-path",
-                str(repo / "research-results.tsv"),
+                str(repo / "autoresearch-results/results.tsv"),
                 "--state-path",
-                str(repo / "autoresearch-state.json"),
+                str(repo / "autoresearch-results/state.json"),
                 "--verify-cmd",
                 "python -V",
                 "--min-free-mb",
@@ -561,9 +569,9 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "--repo",
                 str(repo),
                 "--results-path",
-                str(repo / "research-results.tsv"),
+                str(repo / "autoresearch-results/results.tsv"),
                 "--state-path",
-                str(repo / "autoresearch-state.json"),
+                str(repo / "autoresearch-results/state.json"),
                 "--verify-cmd",
                 f"FOO=1 {sys.executable} -V",
                 "--min-free-mb",
@@ -576,8 +584,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
@@ -607,6 +615,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "autoresearch_health_check.py",
                 "--repo",
                 str(repo),
+                "--results-path",
+                str(results_path),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--min-free-mb",
@@ -615,7 +625,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(result["decision"], "ok")
             self.assertTrue(result["has_state"])
-            self.assertEqual(result["state_path"], str(state_path))
+            self.assertEqual(Path(str(result["state_path"])).resolve(), state_path.resolve())
             self.assertFalse(
                 any("results log exists without state JSON" in warning for warning in result["warnings"])
             )
@@ -624,8 +634,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
@@ -678,8 +688,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
@@ -713,6 +723,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "autoresearch_health_check.py",
                 "--repo",
                 str(repo),
+                "--results-path",
+                str(results_path),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--min-free-mb",
@@ -728,7 +740,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
+            results_path = repo / "autoresearch-results/results.tsv"
             scratch_state_path = Path(
                 self.run_script_text(
                     "autoresearch_exec_state.py",
@@ -736,10 +748,12 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                     str(repo),
                 )
             )
+            results_path.parent.mkdir(parents=True, exist_ok=True)
             results_path.write_text(
                 "\n".join(
                     [
                         "# mode: exec",
+                        f"# workspace_root: {repo}",
                         "iteration\tcommit\tmetric\tdelta\tguard\tstatus\tdescription",
                         "0\tbase123\t10\t0\t-\tbaseline\tbaseline score",
                         "corrupt",
@@ -790,6 +804,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
                 "autoresearch_health_check.py",
                 "--repo",
                 str(repo),
+                "--results-path",
+                str(results_path),
                 "--verify-cmd",
                 "python3 -c pass",
                 "--min-free-mb",
@@ -798,12 +814,12 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(result["decision"], "block")
             self.assertTrue(result["has_state"])
-            self.assertEqual(result["state_path"], str(scratch_state_path))
+            self.assertEqual(Path(str(result["state_path"])).resolve(), scratch_state_path.resolve())
             self.assertTrue(any("results log is corrupt" in blocker for blocker in result["blockers"]))
 
     def test_lessons_script_appends_and_lists_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            lessons_path = Path(tmp) / "autoresearch-lessons.md"
+            lessons_path = Path(tmp) / "autoresearch-results/lessons.md"
             self.run_script(
                 "autoresearch_lessons.py",
                 "append",
@@ -835,7 +851,8 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
 
     def test_lessons_list_backs_up_corrupt_file_and_recovers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            lessons_path = Path(tmp) / "autoresearch-lessons.md"
+            lessons_path = Path(tmp) / "autoresearch-results/lessons.md"
+            lessons_path.parent.mkdir(parents=True, exist_ok=True)
             lessons_path.write_text("this is not a valid lesson file\n", encoding="utf-8")
 
             entries = self.run_script(
@@ -846,14 +863,14 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
             )
 
             self.assertEqual(entries, [])
-            backups = sorted(Path(tmp).glob("autoresearch-lessons.md.*.bak"))
+            backups = sorted(Path(tmp).glob("autoresearch-results/lessons.md.*.bak"))
             self.assertEqual(len(backups), 1)
             self.assertFalse(lessons_path.exists())
             self.assertIn("this is not a valid lesson file", backups[0].read_text(encoding="utf-8"))
 
     def test_summary_lesson_is_not_suppressed_across_runs_without_run_tag(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            lessons_path = Path(tmp) / "autoresearch-lessons.md"
+            lessons_path = Path(tmp) / "autoresearch-results/lessons.md"
             self.run_script(
                 "autoresearch_lessons.py",
                 "append",
@@ -910,7 +927,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
 
     def test_lessons_capacity_compacts_old_history_and_preserves_current_run_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            lessons_path = Path(tmp) / "autoresearch-lessons.md"
+            lessons_path = Path(tmp) / "autoresearch-results/lessons.md"
 
             if str(SCRIPTS_DIR) not in sys.path:
                 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -953,7 +970,7 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
 
     def test_lessons_capacity_preserves_untagged_current_run_suffix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            lessons_path = Path(tmp) / "autoresearch-lessons.md"
+            lessons_path = Path(tmp) / "autoresearch-results/lessons.md"
 
             if str(SCRIPTS_DIR) not in sys.path:
                 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -980,9 +997,9 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
     def test_record_iteration_extracts_protocol_lesson_for_keep(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
-            lessons_path = tmpdir / "autoresearch-lessons.md"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            lessons_path = tmpdir / "autoresearch-results/lessons.md"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -1039,9 +1056,9 @@ class AutoresearchPreflightLessonsTest(AutoresearchScriptsTestBase):
     def test_runtime_terminal_appends_summary_lesson(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
-            lessons_path = tmpdir / "autoresearch-lessons.md"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            lessons_path = tmpdir / "autoresearch-results/lessons.md"
             fake_codex_path = tmpdir / "fake-codex"
             self.write_fake_codex(fake_codex_path, body_lines=["exit 0"])
             self.create_launch_manifest(

@@ -25,5 +25,5 @@ All specialized modes must:
 5. load the selected mode workflow reference,
 6. load detailed references such as `autonomous-loop-protocol.md`, `results-logging.md`, `lessons-protocol.md`, `pivot-protocol.md`, `health-check-protocol.md`, `parallel-experiments-protocol.md`, and `web-search-protocol.md` only when their behavior is actually needed,
 7. keep all decisions mechanical where possible,
-8. write their documented logs and output files (for foreground iterating modes this means `research-results.tsv` and `autoresearch-state.json` as the core persistent artifacts; lessons remain helper-derived secondary output, and exec persists only the TSV while cleaning up scratch JSON state before exit),
+8. write their documented logs and output files (for foreground iterating modes this means `autoresearch-results/results.tsv` and `autoresearch-results/state.json` as the core persistent artifacts; lessons remain helper-derived secondary output, and exec persists the TSV plus inactive canonical context metadata while cleaning up scratch JSON state before exit),
 9. preserve the official skill entrypoint in `SKILL.md`.

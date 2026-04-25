@@ -10,17 +10,23 @@ usage() {
   cat <<'EOF'
 Usage:
   bash scripts/run_skill_e2e.sh exec-smoke [--sandboxed] [--clean]
+  bash scripts/run_skill_e2e.sh multi-repo-smoke [--clean]
   bash scripts/run_skill_e2e.sh runtime-smoke [--clean]
   bash scripts/run_skill_e2e.sh interactive-smoke [--clean]
 
 Modes:
   exec-smoke         Prepare a disposable repo, run `codex exec` against the real skill,
                      and validate artifacts with check_skill_invariants.py.
+  multi-repo-smoke   Prepare a disposable workspace with primary + companion repos,
+                     run the helper scripts through the workspace-owned artifact
+                     path, and validate canonical context + git-local pointers.
   runtime-smoke      Prepare a disposable repo, install the skill, exercise the
                      detached runtime launch/status/stop path with a fake Codex,
                      and validate runtime-control artifacts automatically.
-  interactive-smoke  Prepare a disposable repo and print the exact manual smoke-test steps
-                     for the interactive wizard + explicit foreground/background choice.
+  interactive-smoke  [MANUAL] Prepare a disposable repo and print the exact manual
+                     smoke-test steps for the interactive wizard + explicit
+                     foreground/background choice. Not automated — requires a human
+                     to drive the Codex session and visually verify behavior.
 
 Flags:
   --dangerous        Legacy alias for the default exec-smoke behavior:
@@ -77,7 +83,15 @@ copy_skill() {
   local dest_skill_root="$1"
   mkdir -p "$(dirname "$dest_skill_root")"
   cp -R "$ROOT" "$dest_skill_root"
-  rm -rf "$dest_skill_root/.git"
+  rm -rf \
+    "$dest_skill_root/.git" \
+    "$dest_skill_root/.pytest_cache" \
+    "$dest_skill_root/.venv" \
+    "$dest_skill_root/autoresearch-results" \
+    "$dest_skill_root/debug" \
+    "$dest_skill_root/fix" \
+    "$dest_skill_root/security" \
+    "$dest_skill_root/ship"
   find "$dest_skill_root" -type d -name '__pycache__' -prune -exec rm -rf {} +
 }
 
@@ -141,6 +155,23 @@ cleanup_if_requested() {
   fi
 }
 
+sha256_file() {
+  local path="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  else
+    python3 - "$path" <<'PY'
+import hashlib
+import sys
+
+with open(sys.argv[1], "rb") as handle:
+    print(hashlib.sha256(handle.read()).hexdigest())
+PY
+  fi
+}
+
 run_exec_smoke() {
   require_tool codex
   require_tool python3
@@ -154,7 +185,7 @@ run_exec_smoke() {
   mkdir -p "$e2e_dir"
   last_message="$e2e_dir/last-message.txt"
   event_log="$e2e_dir/events.jsonl"
-  lessons_sha="$(sha256sum "$repo/autoresearch-lessons.md" | awk '{print $1}')"
+  lessons_sha="$(sha256_file "$repo/autoresearch-results/lessons.md")"
 
   codex_flags=(exec -C "$repo" --json --output-last-message "$last_message")
   if [[ "$DANGEROUS" -eq 1 ]]; then
@@ -178,6 +209,121 @@ run_exec_smoke() {
     --expect-improvement
 
   echo "exec smoke: OK"
+  cleanup_if_requested "$tmpdir"
+}
+
+run_multi_repo_smoke() {
+  require_tool python3
+  require_tool git
+
+  local tmpdir workspace primary companion skill_root
+  local primary_base companion_base primary_head companion_head
+  tmpdir="$(mktemp -d)"
+  workspace="$tmpdir/workspace"
+  primary="$workspace/primary"
+  companion="$workspace/companion"
+
+  mkdir -p "$workspace"
+  copy_fixture "exec_marker_reduction" "$primary"
+  rm -rf "$primary/autoresearch-results"
+  copy_skill "$primary/.agents/skills/codex-autoresearch"
+  init_git_repo "$primary"
+
+  mkdir -p "$companion/pkg"
+  cat > "$companion/pkg/helper.py" <<'EOF'
+def status_banner() -> str:
+    return "companion:baseline"
+EOF
+  init_git_repo "$companion"
+
+  skill_root="$primary/.agents/skills/codex-autoresearch"
+  primary_base="$(git -C "$primary" rev-parse --short HEAD)"
+  companion_base="$(git -C "$companion" rev-parse --short HEAD)"
+
+  python3 "$skill_root/scripts/autoresearch_init_run.py" \
+    --repo "$primary" \
+    --workspace-root "$workspace" \
+    --mode exec \
+    --goal "Reduce TODO_REMOVE markers across the workspace while keeping companion provenance in sync" \
+    --scope "src/**/*.py" \
+    --companion-repo-scope "$companion=pkg/**/*.py" \
+    --metric-name "TODO_REMOVE marker count" \
+    --direction lower \
+    --verify "python3 primary/scripts/count_markers.py" \
+    --verify-cwd workspace_root \
+    --guard "python3 -m py_compile primary/src/app.py companion/pkg/helper.py" \
+    --baseline-metric 2 \
+    --baseline-commit "$primary_base" \
+    --baseline-description "workspace baseline" \
+    --repo-commit "$companion=$companion_base" >/dev/null
+
+  python3 - "$primary/src/app.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+path.write_text(text.replace("TODO_REMOVE", "READY", 1), encoding="utf-8")
+PY
+  git -C "$primary" add src/app.py
+  git -C "$primary" commit -m "Reduce one TODO_REMOVE marker" >/dev/null
+  primary_head="$(git -C "$primary" rev-parse --short HEAD)"
+
+  python3 - "$companion/pkg/helper.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+path.write_text(text.replace("baseline", "improved"), encoding="utf-8")
+PY
+  git -C "$companion" add pkg/helper.py
+  git -C "$companion" commit -m "Update companion provenance" >/dev/null
+  companion_head="$(git -C "$companion" rev-parse --short HEAD)"
+
+  python3 "$skill_root/scripts/autoresearch_record_iteration.py" \
+    --results-path "$workspace/autoresearch-results/results.tsv" \
+    --status keep \
+    --metric 1 \
+    --commit "$primary_head" \
+    --repo-commit "$companion=$companion_head" \
+    --guard pass \
+    --description "reduced markers across the managed workspace" >/dev/null
+
+  python3 "$skill_root/scripts/autoresearch_exec_state.py" \
+    --repo-root "$workspace" \
+    --cleanup >/dev/null
+
+  python3 "$skill_root/scripts/check_skill_invariants.py" exec \
+    --repo "$primary" \
+    --expect-improvement
+
+  python3 - "$workspace" "$primary" "$companion" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+workspace = Path(sys.argv[1]).resolve()
+primary = Path(sys.argv[2]).resolve()
+companion = Path(sys.argv[3]).resolve()
+artifact_root = workspace / "autoresearch-results"
+context = json.loads((artifact_root / "context.json").read_text(encoding="utf-8"))
+
+if Path(context["workspace_root"]).resolve() != workspace:
+    raise SystemExit("canonical context workspace_root mismatch")
+if Path(context["primary_repo"]).resolve() != primary:
+    raise SystemExit("canonical context primary_repo mismatch")
+
+for repo in (primary, companion):
+    pointer_path = repo / ".git" / "codex-autoresearch" / "pointer.json"
+    payload = json.loads(pointer_path.read_text(encoding="utf-8"))
+    if Path(payload["artifact_root"]).resolve() != artifact_root:
+        raise SystemExit(f"pointer artifact_root mismatch for {repo}")
+    if Path(payload["workspace_root"]).resolve() != workspace:
+        raise SystemExit(f"pointer workspace_root mismatch for {repo}")
+PY
+
+  echo "multi-repo smoke: OK"
   cleanup_if_requested "$tmpdir"
 }
 
@@ -208,7 +354,7 @@ $(sed 's/^/   /' "$repo/prompt.txt")
 
 4. Expected behavior after "go":
    - Codex stays in the same foreground session and iterates live.
-   - Codex does not create autoresearch-launch.json, autoresearch-runtime.json, or autoresearch-runtime.log.
+   - Codex does not create autoresearch-results/launch.json, autoresearch-results/runtime.json, or autoresearch-results/runtime.log.
    - It iterates autonomously until tests pass or you interrupt it.
 
 5. After you stop the run, validate artifacts:
@@ -232,6 +378,7 @@ run_runtime_smoke() {
 
   python3 "$skill_root/scripts/autoresearch_runtime_ctl.py" launch \
     --repo "$repo" \
+    --workspace-root "$repo" \
     --original-goal "Reduce failing tests in this repo" \
     --mode loop \
     --goal "Reduce failing tests" \
@@ -262,6 +409,9 @@ PY
 case "$MODE" in
   exec-smoke)
     run_exec_smoke
+    ;;
+  multi-repo-smoke)
+    run_multi_repo_smoke
     ;;
   runtime-smoke)
     run_runtime_smoke

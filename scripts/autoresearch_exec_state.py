@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
+from autoresearch_core import print_json
 from autoresearch_helpers import cleanup_exec_state, default_exec_state_path
 
 
@@ -39,14 +39,14 @@ def main() -> int:
         state_path, removed = cleanup_exec_state(repo_root)
         payload = {"removed": removed, "state_path": str(state_path)}
         if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
+            print_json(payload)
         else:
             print(state_path)
         return 0
 
     state_path = default_exec_state_path(repo_root)
     if args.json:
-        print(json.dumps({"state_path": str(state_path)}, indent=2, sort_keys=True))
+        print_json({"state_path": str(state_path)})
     else:
         print(state_path)
     return 0

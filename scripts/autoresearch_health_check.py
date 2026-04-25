@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 import shutil
 from pathlib import Path
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     RepoTarget,
@@ -19,19 +19,27 @@ from autoresearch_helpers import (
     lexical_abspath,
     parse_scope_patterns,
     path_is_in_scope,
-    results_repo_root,
+    require_context_for_repo,
+    resolve_context_workspace_root,
+    resolve_repo_path,
+    resolve_repo_relative,
+    STATE_FILE_NAME,
 )
 from autoresearch_resume_check import evaluate_resume_state
+from autoresearch_workspace import resolve_workspace_root
 
 
 def run_health_check(
     *,
     repo: Path,
+    workspace_root: Path | None,
     results_path: Path,
     state_path_arg: str | None,
     verify_command: str,
+    verify_cwd: str,
     scope_text: str | None,
     min_free_mb: int,
+    default_state_path: Path | None = None,
     companion_targets: list[RepoTarget] | None = None,
 ) -> dict[str, Any]:
     warnings: list[str] = []
@@ -46,6 +54,7 @@ def run_health_check(
     resume = evaluate_resume_state(
         results_path=results_path,
         state_path_arg=state_path_arg,
+        default_state_path=default_state_path,
         write_repaired_state=False,
     )
     state_path = Path(str(resume["state_path"]))
@@ -104,6 +113,8 @@ def run_health_check(
         "warnings": warnings,
         "blockers": blockers,
         "free_mb": free_mb,
+        "verify_cwd": verify_cwd,
+        "verify_root": str((workspace_root or repo).resolve() if verify_cwd == "workspace_root" else repo.resolve()),
         "results_path": str(results_path),
         "state_path": str(state_path),
         "has_results": bool(resume["has_results"]),
@@ -123,10 +134,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the executable health checks for an autoresearch repo."
     )
-    parser.add_argument("--repo")
-    parser.add_argument("--results-path", default="research-results.tsv")
-    parser.add_argument("--state-path")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument(
+        "--results-path",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument("--state-path", help=argparse.SUPPRESS)
     parser.add_argument("--verify-cmd", required=True)
+    parser.add_argument("--verify-cwd", choices=["workspace_root", "primary_repo"], default="workspace_root")
+    parser.add_argument("--workspace-root")
     parser.add_argument("--scope")
     parser.add_argument(
         "--companion-repo-scope",
@@ -141,16 +157,24 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    results_path = Path(args.results_path)
-    repo = (
-        lexical_abspath(Path(args.repo))
-        if args.repo is not None
-        else results_repo_root(
-            lexical_abspath(results_path) if results_path.is_absolute() else results_path
+    repo = resolve_repo_path(args.repo)
+    if args.results_path is not None:
+        workspace_root = (
+            resolve_workspace_root(repo, args.workspace_root)
+            if args.workspace_root is not None
+            else Path.cwd().resolve()
         )
-    )
-    if not results_path.is_absolute():
-        results_path = repo / results_path
+        results_path = resolve_repo_relative(workspace_root, args.results_path, Path(args.results_path))
+        state_default = results_path.parent / STATE_FILE_NAME
+    else:
+        context = require_context_for_repo(repo)
+        workspace_root = resolve_context_workspace_root(
+            repo=repo,
+            context=context,
+            raw_workspace_root=args.workspace_root,
+        )
+        results_path = context.results_path
+        state_default = context.state_path
     if args.companion_repo_scope:
         if not str(args.scope or "").strip():
             raise AutoresearchError("A primary --scope is required when using --companion-repo-scope.")
@@ -166,14 +190,17 @@ def main() -> int:
         companion_targets = []
     output = run_health_check(
         repo=repo,
-        results_path=lexical_abspath(results_path),
+        workspace_root=workspace_root,
+        results_path=results_path,
         state_path_arg=args.state_path,
+        default_state_path=state_default,
         verify_command=args.verify_cmd,
+        verify_cwd=args.verify_cwd,
         scope_text=primary_scope,
         min_free_mb=args.min_free_mb,
         companion_targets=companion_targets,
     )
-    print(json.dumps(output, indent=2, sort_keys=True))
+    print_json(output)
     return 0
 
 

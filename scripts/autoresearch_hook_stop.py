@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 
+from autoresearch_core import json_dumps
 from autoresearch_hook_context import update_hook_context_pointer
 from autoresearch_hook_common import build_context
 
@@ -24,12 +25,16 @@ FOLLOWUP_CONTINUATION_PROMPT = (
 
 
 def run_supervisor(context) -> dict[str, object] | None:
-    if context.skill_root is None:
+    if context.helper_root is None:
         return None
-    helper = context.skill_root / "scripts" / "autoresearch_supervisor_status.py"
+    if context.artifacts.results_path is None:
+        return None
+    helper = context.helper_root / "autoresearch_supervisor_status.py"
     command = [
         sys.executable,
         str(helper),
+        "--repo",
+        str(context.repo),
         "--results-path",
         str(context.artifacts.results_path),
     ]
@@ -39,6 +44,7 @@ def run_supervisor(context) -> dict[str, object] | None:
         command,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         cwd=context.repo,
     )
     if completed.returncode != 0:
@@ -55,12 +61,12 @@ def emit_block(reason: str) -> None:
         "decision": "block",
         "reason": reason,
     }
-    print(json.dumps(payload), end="")
+    print(json_dumps(payload), end="")
 
 
 def main() -> int:
     context = build_context(__file__)
-    if context is None or context.skill_root is None:
+    if context is None or context.helper_root is None:
         return 0
     if not context.session_is_autoresearch:
         return 0

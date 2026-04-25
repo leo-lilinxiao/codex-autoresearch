@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from typing import Any
 
+from autoresearch_core import print_json
 from autoresearch_helpers import (
     AutoresearchError,
     build_state_payload,
@@ -69,6 +69,12 @@ def apply_status_transition(
     next_iteration: int,
     repo_commit_map: dict[str, str] | None = None,
     labels: list[str] | None = None,
+    trial_metrics: dict[str, Any] | None = None,
+    retained_metrics: dict[str, Any] | None = None,
+    trial_acceptance: bool | None = None,
+    retained_acceptance: bool | None = None,
+    trial_required_keep_satisfied: bool | None = None,
+    retained_required_keep_satisfied: bool | None = None,
 ) -> dict[str, Any]:
     new_payload = clone_state_payload(payload)
     state = new_payload["state"]
@@ -84,6 +90,14 @@ def apply_status_transition(
     state["last_trial_commit"] = commit
     state["last_trial_metric"] = decimal_to_json_number(metric_decimal)
     state["last_trial_labels"] = list(normalized_labels)
+    if trial_metrics:
+        state["last_trial_metrics"] = dict(trial_metrics)
+    elif "last_trial_metrics" in state and status in {"discard", "crash", "keep", "drift"}:
+        state.pop("last_trial_metrics", None)
+    if trial_acceptance is not None:
+        state["last_trial_acceptance"] = bool(trial_acceptance)
+    if trial_required_keep_satisfied is not None:
+        state["last_trial_required_keep_satisfied"] = bool(trial_required_keep_satisfied)
     if trial_repo_commits:
         state["last_trial_repo_commits"] = dict(trial_repo_commits)
     else:
@@ -93,6 +107,20 @@ def apply_status_transition(
         state["keeps"] = state.get("keeps", 0) + 1
         state["current_metric"] = decimal_to_json_number(metric_decimal)
         state["current_labels"] = list(normalized_labels)
+        if retained_metrics:
+            state["current_metrics"] = dict(retained_metrics)
+        elif trial_metrics:
+            state["current_metrics"] = dict(trial_metrics)
+        else:
+            state.pop("current_metrics", None)
+        if retained_acceptance is not None:
+            state["current_acceptance"] = bool(retained_acceptance)
+        elif trial_acceptance is not None:
+            state["current_acceptance"] = bool(trial_acceptance)
+        if retained_required_keep_satisfied is not None:
+            state["current_required_keep_satisfied"] = bool(retained_required_keep_satisfied)
+        elif trial_required_keep_satisfied is not None:
+            state["current_required_keep_satisfied"] = bool(trial_required_keep_satisfied)
         state["last_commit"] = commit
         if trial_repo_commits:
             state["last_repo_commits"] = dict(trial_repo_commits)
@@ -121,6 +149,20 @@ def apply_status_transition(
         state["current_metric"] = decimal_to_json_number(metric_decimal)
         if normalized_labels:
             state["current_labels"] = list(normalized_labels)
+        if retained_metrics:
+            state["current_metrics"] = dict(retained_metrics)
+        elif trial_metrics:
+            state["current_metrics"] = dict(trial_metrics)
+        else:
+            state.pop("current_metrics", None)
+        if retained_acceptance is not None:
+            state["current_acceptance"] = bool(retained_acceptance)
+        elif trial_acceptance is not None:
+            state["current_acceptance"] = bool(trial_acceptance)
+        if retained_required_keep_satisfied is not None:
+            state["current_required_keep_satisfied"] = bool(retained_required_keep_satisfied)
+        elif trial_required_keep_satisfied is not None:
+            state["current_required_keep_satisfied"] = bool(trial_required_keep_satisfied)
         if commit != "-":
             state["last_commit"] = commit
             if trial_repo_commits:
@@ -154,6 +196,18 @@ def apply_status_transition(
         "pivot_count": state["pivot_count"],
         "last_status": state["last_status"],
     }
+    if "current_metrics" in state:
+        rewritten_summary["current_metrics"] = dict(state["current_metrics"])
+    if "last_trial_metrics" in state:
+        rewritten_summary["last_trial_metrics"] = dict(state["last_trial_metrics"])
+    for field_name in (
+        "current_acceptance",
+        "last_trial_acceptance",
+        "current_required_keep_satisfied",
+        "last_trial_required_keep_satisfied",
+    ):
+        if field_name in state:
+            rewritten_summary[field_name] = bool(state[field_name])
     if "last_repo_commits" in state:
         rewritten_summary["last_repo_commits"] = dict(state["last_repo_commits"])
     if "last_trial_repo_commits" in state:
@@ -182,17 +236,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    print(
-        json.dumps(
-            derive_trial_status(
-                direction=args.direction,
-                current_metric=args.current_metric,
-                trial_metric=args.trial_metric,
-                guard=args.guard,
-                crashed=args.crashed,
-            ),
-            indent=2,
-            sort_keys=True,
+    print_json(
+        derive_trial_status(
+            direction=args.direction,
+            current_metric=args.current_metric,
+            trial_metric=args.trial_metric,
+            guard=args.guard,
+            crashed=args.crashed,
         )
     )
     return 0

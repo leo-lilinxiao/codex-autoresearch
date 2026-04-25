@@ -224,7 +224,7 @@ iteration	commit	metric	delta	guard	status	description
 
 After a parallel batch completes and the best result is merged (or all results are discarded):
 
-1. Update `autoresearch-state.json` once per batch, not once per worker.
+1. Update `autoresearch-results/state.json` once per batch, not once per worker.
 2. Increment `state.iteration` by 1 (the batch counts as a single main iteration).
 3. Set `state.current_metric` to the selected worker's metric, or leave it unchanged if all workers are discarded.
 4. Set `state.last_trial_metric` to the batch's selected metric, or to the best discarded attempt if no worker is kept.

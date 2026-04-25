@@ -17,8 +17,10 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_init_and_serial_iteration_state_is_consistent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            results_path.parent.mkdir(parents=True, exist_ok=True)
+            results_path.parent.mkdir(parents=True, exist_ok=True)
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -99,15 +101,70 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
             )
             self.assertEqual(resume["decision"], "full_resume")
             self.assertEqual(resume["tsv_summary"]["iteration"], 2)
-            self.assertFalse((tmpdir / "autoresearch-launch.json").exists())
-            self.assertFalse((tmpdir / "autoresearch-runtime.json").exists())
-            self.assertFalse((tmpdir / "autoresearch-runtime.log").exists())
+            self.assertFalse((tmpdir / "autoresearch-results/launch.json").exists())
+            self.assertFalse((tmpdir / "autoresearch-results/runtime.json").exists())
+            self.assertFalse((tmpdir / "autoresearch-results/runtime.log").exists())
+
+    def test_init_run_preserves_utf8_paths_in_results_state_and_context_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            workspace = tmpdir / "工作区"
+            repo = workspace / "仓库"
+            artifact_root = workspace / "autoresearch-results"
+            results_path = artifact_root / "results.tsv"
+            state_path = artifact_root / "state.json"
+            context_path = artifact_root / "context.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--repo",
+                str(repo),
+                "--workspace-root",
+                str(workspace),
+                "--mode",
+                "loop",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline failures",
+            )
+
+            results_text = results_path.read_text(encoding="utf-8")
+            state_text = state_path.read_text(encoding="utf-8")
+            context_text = context_path.read_text(encoding="utf-8")
+
+            self.assertIn("工作区", results_text)
+            self.assertIn("仓库", results_text)
+            self.assertIn("工作区", state_text)
+            self.assertIn("仓库", state_text)
+            self.assertIn("工作区", context_text)
+            self.assertIn("仓库", context_text)
+            self.assertNotIn("\\u5de5", results_text)
+            self.assertNotIn("\\u4ed3", results_text)
+            self.assertNotIn("\\u5de5", state_text)
+            self.assertNotIn("\\u4ed3", state_text)
+            self.assertNotIn("\\u5de5", context_text)
+            self.assertNotIn("\\u4ed3", context_text)
 
     def test_required_stop_labels_and_iteration_labels_are_persisted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            results_path.parent.mkdir(parents=True, exist_ok=True)
+            results_path.parent.mkdir(parents=True, exist_ok=True)
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -175,8 +232,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_required_keep_labels_downgrade_improved_keep_to_discard_without_polluting_retained_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -256,8 +313,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_tsv_reconstruction_preserves_structured_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -332,8 +389,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_resume_check_accepts_repo_as_primary_entrypoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -377,8 +434,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
             companion = root / "companion"
             primary.mkdir()
             companion.mkdir()
-            results_path = primary / "research-results.tsv"
-            state_path = primary / "autoresearch-state.json"
+            results_path = primary / "autoresearch-results/results.tsv"
+            state_path = primary / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -488,8 +545,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_discard_requires_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -536,8 +593,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_crash_requires_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -582,8 +639,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_strategy_only_refine_can_omit_commit_but_measured_refine_cannot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -644,8 +701,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_refine_counts_toward_consecutive_discards_for_state_and_resume(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -736,9 +793,9 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_parallel_batch_selects_best_worker_and_appends_main_row(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
-            batch_path = tmpdir / "batch.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            batch_path = self.artifact_root(tmpdir) / "batch.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -821,9 +878,9 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_parallel_batch_keep_gate_preserves_best_discarded_trial_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
-            batch_path = tmpdir / "batch.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            batch_path = self.artifact_root(tmpdir) / "batch.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -919,8 +976,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_resume_check_can_rebuild_missing_state_from_tsv(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -997,8 +1054,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_resume_check_detects_json_tsv_divergence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -1039,7 +1096,7 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
             self.assertEqual(resume["decision"], "mini_wizard")
             self.assertTrue(any("current_metric" in reason for reason in resume["reasons"]))
 
-    def test_resume_check_ignores_stale_exec_scratch_for_fresh_interactive_repo(self) -> None:
+    def test_resume_check_requires_context_instead_of_stale_exec_scratch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             scratch_state_path = Path(
@@ -1079,15 +1136,16 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
                 encoding="utf-8",
             )
 
-            resume = self.run_script("autoresearch_resume_check.py", cwd=repo)
-            self.assertEqual(resume["decision"], "fresh_start")
-            self.assertEqual(resume["state_path"], "autoresearch-state.json")
+            completed = self.run_script_completed("autoresearch_resume_check.py", cwd=repo)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("No codex-autoresearch context found", completed.stderr)
 
     def test_resume_check_treats_incomplete_json_state_as_unusable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            results_path.parent.mkdir(parents=True, exist_ok=True)
 
             results_path.write_text(
                 "\n".join(
@@ -1126,8 +1184,9 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_resume_check_rejects_missing_main_iteration_row(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            results_path.parent.mkdir(parents=True, exist_ok=True)
 
             results_path.write_text(
                 "\n".join(
@@ -1184,8 +1243,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
     def test_resume_check_keeps_json_path_when_tsv_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
-            results_path = tmpdir / "research-results.tsv"
-            state_path = tmpdir / "autoresearch-state.json"
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
 
             self.run_script(
                 "autoresearch_init_run.py",
@@ -1228,8 +1287,8 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
 
             result = self.run_script(
                 "autoresearch_init_run.py",
@@ -1255,15 +1314,15 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
                 "baseline failures",
                 cwd=REPO_ROOT.parent,
             )
-            self.assertEqual(result["state_path"], str(state_path))
+            self.assertEqual(Path(result["state_path"]).resolve(), state_path.resolve())
             self.assertTrue(state_path.exists())
 
     def test_resume_check_uses_repo_state_for_absolute_results_path_outside_repo_cwd(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             subprocess.run(["git", "init", str(repo)], check=True, capture_output=True, text=True)
-            results_path = repo / "research-results.tsv"
-            state_path = repo / "autoresearch-state.json"
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
             self.run_script(
                 "autoresearch_init_run.py",
                 "--results-path",
@@ -1296,4 +1355,130 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
                 cwd=REPO_ROOT.parent,
             )
             self.assertEqual(resume["decision"], "full_resume")
-            self.assertEqual(resume["state_path"], str(state_path))
+            self.assertEqual(Path(str(resume["state_path"])).resolve(), state_path.resolve())
+
+    def test_resume_check_repo_entrypoint_requires_git_local_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.init_git_repo(Path(tmp))
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "autoresearch_resume_check.py"),
+                    "--repo",
+                    str(repo),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("No codex-autoresearch context found", completed.stderr)
+            self.assertFalse((repo / "autoresearch-results").exists())
+
+    def test_resume_check_reports_legacy_repo_root_artifacts_before_missing_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.init_git_repo(Path(tmp))
+            (repo / "research-results.tsv").write_text("legacy\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "autoresearch_resume_check.py"),
+                    "--repo",
+                    str(repo),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Found legacy repo-root autoresearch artifacts", completed.stderr)
+            self.assertNotIn("No codex-autoresearch context found", completed.stderr)
+            self.assertFalse((repo / "autoresearch-results").exists())
+
+    def test_init_run_requires_explicit_workspace_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            repo = self.init_git_repo(workspace / "repo")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "autoresearch_init_run.py"),
+                    "--repo",
+                    str(repo),
+                    "--mode",
+                    "loop",
+                    "--goal",
+                    "Reduce failures",
+                    "--scope",
+                    "src/**/*.py",
+                    "--metric-name",
+                    "failure count",
+                    "--direction",
+                    "lower",
+                    "--verify",
+                    "python3 -c pass",
+                    "--baseline-metric",
+                    "10",
+                    "--baseline-commit",
+                    "a1b2c3d",
+                    "--baseline-description",
+                    "baseline failures",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("the following arguments are required: --workspace-root", completed.stderr)
+            self.assertFalse((repo / "autoresearch-results").exists())
+            self.assertFalse((workspace / "autoresearch-results").exists())
+
+    def test_init_run_validates_managed_repos_before_writing_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp) / "workspace"
+            primary = self.init_git_repo(workspace / "primary")
+            companion = workspace / "companion"
+            companion.mkdir(parents=True)
+            artifact_root = workspace / "autoresearch-results"
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPTS_DIR / "autoresearch_init_run.py"),
+                    "--repo",
+                    str(primary),
+                    "--workspace-root",
+                    str(workspace),
+                    "--mode",
+                    "loop",
+                    "--goal",
+                    "Reduce failures",
+                    "--scope",
+                    "src/**/*.py",
+                    "--companion-repo-scope",
+                    f"{companion}=pkg/",
+                    "--metric-name",
+                    "failure count",
+                    "--direction",
+                    "lower",
+                    "--verify",
+                    "python3 -c pass",
+                    "--baseline-metric",
+                    "10",
+                    "--baseline-commit",
+                    "a1b2c3d",
+                    "--baseline-description",
+                    "baseline failures",
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("Managed repos must be git repositories", completed.stderr)
+            self.assertFalse((artifact_root / "results.tsv").exists())
+            self.assertFalse((artifact_root / "state.json").exists())
+            self.assertFalse((artifact_root / "context.json").exists())

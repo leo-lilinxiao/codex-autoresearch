@@ -27,6 +27,10 @@ Optional:
 - `Stop condition`
 - `Required keep labels` (when the run should only retain results from a specific mechanism, path, backend, or root-cause signal)
 - `Required stop labels` (when the goal has a structural or causal success requirement, not just a numeric threshold)
+- `Verify format` — `scalar` (default) or `metrics_json`; use `metrics_json` when the verify command outputs a JSON object with multiple metrics as its final line
+- `Primary metric key` — which key in the metrics JSON to use as the TSV primary metric; defaults to the metric name
+- `Acceptance criteria` — list of `{metric_key, operator, target}` thresholds the retained result must satisfy before the run can stop (see `references/results-logging.md` Metrics And Acceptance Contract)
+- `Required keep criteria` — list of `{metric_key, operator, target}` hard gates every retained result must satisfy to enter `keep` state; use when some metrics must never regress regardless of primary metric improvement
 - `Rollback policy` (required before launch if destructive rollback may be used)
 
 For every new interactive loop, use the wizard contract from `references/interaction-wizard.md` to scan the repo, clarify with the user, and confirm the launch-ready config before the loop begins.
@@ -45,7 +49,7 @@ Use the launch gate first:
 python3 <skill-root>/scripts/autoresearch_launch_gate.py --repo /path/to/repo
 ```
 
-1. Check for `autoresearch-state.json` first (primary recovery source), then `research-results.tsv`, `autoresearch-lessons.md`, and recent `experiment:` commits.
+1. Resolve the current run through the git-local pointer and `autoresearch-results/context.json`, then check `autoresearch-results/state.json` first (primary recovery source), followed by `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, and recent `experiment:` commits.
 2. Apply the Recovery Priority Matrix from `session-resume-protocol.md`:
    - JSON valid + TSV consistent -> full resume (skip wizard).
    - JSON valid + TSV inconsistent -> mini-wizard (1 round).
@@ -65,20 +69,21 @@ Exec-mode exception:
 
 ### Run Artifact Initialization
 
-Do not create `research-results.tsv` or `autoresearch-state.json` before the baseline metric is known.
+Do not create `autoresearch-results/results.tsv` or `autoresearch-results/state.json` before the baseline metric is known.
 
 After Phase 2 establishes the baseline, initialize both artifacts together:
 
 ```bash
-python3 <skill-root>/scripts/autoresearch_init_run.py ...
+python3 <skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root> ...
 ```
 
 This writes the baseline TSV row (`iteration = 0`) and the matching JSON snapshot in one step.
 
 Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`, so the exact command becomes `python3 .agents/skills/codex-autoresearch/scripts/...`.
 
+Bundled helpers expose `--force` only as an internal maintenance override for tests or deliberate manual recovery. Normal skill flow should prefer explicit fresh-start archival instead of using `--force` to bypass legacy-layout or existing-artifact protection.
+
 Exec-mode exception:
-- Do not create or leave repo-root `autoresearch-state.json`.
 - Let the helper scripts use their scratch JSON state under `/tmp/codex-autoresearch-exec/...`.
 - Clean that scratch state before exit with `python3 <skill-root>/scripts/autoresearch_exec_state.py --cleanup`.
 
@@ -102,7 +107,7 @@ Before starting any interactive loop, ALWAYS:
 
 Never silently infer all fields and start iterating. A 30-second confirmation is always cheaper than wasted iterations.
 
-**Two-phase boundary:** All questions happen BEFORE launch. Before the user says "go", require an explicit run-mode choice: **foreground** or **background**. If the user chooses foreground, keep the loop in the same Codex session and use the shared helper scripts directly. If the user chooses background, call `autoresearch_runtime_ctl.py launch` so the confirmed launch manifest and detached runtime are created in one script-level handoff. The launch manifest may describe either a single primary repo or a primary repo plus companion repos with separate scopes. Background runtime cycles launch non-interactive `codex exec` sessions with the generated runtime prompt supplied on stdin. Background launch manifests carry an `execution_policy`; this skill now defaults that policy to `danger_full_access`, so detached sessions normally run with `--dangerously-bypass-approvals-and-sandbox` unless a caller explicitly opts into sandboxed `workspace_write`. If that background `codex exec` session cannot be launched, the runtime must transition to `needs_human` instead of silently falling back to an idle state. If an explicit stop request cannot actually terminate the detached runner, the runtime must also transition to `needs_human` instead of claiming the run is fully stopped. After launch, NEVER pause to ask the user anything during the loop -- not for clarification, not for confirmation, not for permission. If you encounter ambiguity mid-loop, apply best practices, log your reasoning in the commit message, and keep iterating. The user may be asleep.
+**Two-phase boundary:** All questions happen BEFORE launch. Before the user says "go", require an explicit run-mode choice: **foreground** or **background**. If the user chooses foreground, keep the loop in the same Codex session and use the shared helper scripts directly. If the user chooses background, call `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root>` so the confirmed launch manifest and detached runtime are created in one script-level handoff. The launch manifest may describe either a single primary repo or a primary repo plus companion repos with separate scopes. Background runtime cycles launch non-interactive `codex exec` sessions with the generated runtime prompt supplied on stdin. Background launch manifests carry an `execution_policy`; this skill now defaults that policy to `danger_full_access`, so detached sessions normally run with `--dangerously-bypass-approvals-and-sandbox` unless a caller explicitly opts into sandboxed `workspace_write`. If that background `codex exec` session cannot be launched, the runtime must transition to `needs_human` instead of silently falling back to an idle state. If an explicit stop request cannot actually terminate the detached runner, the runtime must also transition to `needs_human` instead of claiming the run is fully stopped. After launch, NEVER pause to ask the user anything during the loop -- not for clarification, not for confirmation, not for permission. If you encounter ambiguity mid-loop, apply best practices, log your reasoning in the commit message, and keep iterating. The user may be asleep.
 
 Exec-mode exception:
 - Do not ask clarifying or launch questions.
@@ -124,12 +129,13 @@ Exec-mode exception:
 
 Treat these files as experiment-owned artifacts, not unrelated user changes:
 
-- `research-results.tsv`
-- `autoresearch-state.json`
-- `autoresearch-launch.json`
-- `autoresearch-runtime.json`
-- `autoresearch-runtime.log`
-- `autoresearch-lessons.md`
+- `autoresearch-results/results.tsv`
+- `autoresearch-results/state.json`
+- `autoresearch-results/context.json`
+- `autoresearch-results/lessons.md`
+- `autoresearch-results/launch.json`
+- `autoresearch-results/runtime.json`
+- `autoresearch-results/runtime.log`
 - `.tmp`, `.bak`, and `.prev` variants of those files
 
 They may stay uncommitted between iterations and across resumes, but they must never be staged in experiment commits.
@@ -162,7 +168,7 @@ Before the first edit:
 2. Read configuration or build files that influence verification.
 3. Read the latest results log if one exists.
 4. Read recent git history relevant to the scoped files.
-5. Read `autoresearch-lessons.md` if it exists (see `references/lessons-protocol.md`).
+5. Read `autoresearch-results/lessons.md` if it exists (see `references/lessons-protocol.md`).
 
 Before every later iteration:
 
@@ -182,7 +188,7 @@ Record:
 - current commit hash,
 - a short baseline description.
 
-Immediately after the baseline is known, initialize the run artifacts with `<skill-root>/scripts/autoresearch_init_run.py`.
+Immediately after the baseline is known, initialize the run artifacts with `<skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root>`.
 
 If the baseline itself fails unpredictably, do not enter the optimization loop. Either repair the setup first or switch to `debug` or `fix` mode.
 
@@ -206,7 +212,7 @@ Skip perspectives for obvious, mechanical fixes.
 
 ### Lessons Consultation
 
-Consult `autoresearch-lessons.md` (see `references/lessons-protocol.md`):
+Consult `autoresearch-results/lessons.md` (see `references/lessons-protocol.md`):
 - Prefer strategies that succeeded in similar contexts.
 - Avoid strategies that consistently failed.
 - Adapt successful strategies from related goals.
@@ -260,6 +266,13 @@ Rules:
 - if there is no diff, log `no-op` and move on (counts toward the consecutive-discard threshold for stuck recovery),
 - prefer descriptive `experiment:` commit messages.
 
+Commit failure policy:
+
+- if `git commit` reports "nothing to commit", treat the attempt as `no-op` with no retry;
+- if `git commit` fails because of a transient repo-plumbing issue (for example `index.lock` or another temporary git file lock), re-read `git status` and retry once;
+- if the retry still fails, or a pre-commit hook / repository policy rejects the diff, treat the attempt as `crash`; fix only trivial issues if the hypothesis is still valid, retry at most 2 quick times, otherwise restore a clean worktree with the approved rollback strategy and log `crash`;
+- if the repository itself is broken (permissions, corrupt index, disk full), treat it as a hard blocker.
+
 If the workspace is not safe for commits, log a hard blocker and stop the loop. Do not ask -- report the situation in the completion summary.
 
 ## Phase 6: Verify
@@ -272,6 +285,14 @@ Capture:
 - relevant stderr or stdout excerpt,
 - wall clock duration,
 - crash signal if any.
+
+Metric parsing contract:
+
+- if `verify_format=scalar`, the final non-empty verify output line must be a single numeric scalar parseable as the metric value;
+- if `verify_format=metrics_json`, follow the final-line JSON contract in `references/results-logging.md`;
+- do not guess from banner text, earlier lines, or arbitrary regex scraping during the loop; if output is noisy, tighten the verify command during setup instead;
+- if verify output is unparseable, rerun verify once only to rule out transient truncation or shell noise; if the second run is still unparseable, treat the attempt as `crash`;
+- if the baseline itself cannot be parsed, do not launch the loop; fix the verify command first or stop with a blocker.
 
 Timeout rule:
 
@@ -327,7 +348,7 @@ git reset --hard HEAD~1
 - Otherwise use `git revert --no-edit HEAD`.
 - Never roll back unrelated user changes or autoresearch-owned artifacts.
 
-The results log (`research-results.tsv`) serves as the true audit trail for all experiments, including discarded ones.
+The results log (`autoresearch-results/results.tsv`) serves as the true audit trail for all experiments, including discarded ones.
 
 ### Crash
 
@@ -356,7 +377,7 @@ The results log stays uncommitted.
 
 ### JSON State Update
 
-Do not hand-edit `research-results.tsv` or `autoresearch-state.json`.
+Do not hand-edit `autoresearch-results/results.tsv` or `autoresearch-results/state.json`.
 
 - For serial/main rows, prefer:
   ```bash
@@ -433,16 +454,7 @@ Run the Protocol Fingerprint Check when any of the following is true:
 
 ### Protocol Fingerprint Check
 
-A zero-token self-check. Use `runtime-hard-invariants.md` plus the selected mode workflow as the source of truth. Internally verify that you can still recall:
-
-1. baseline before init,
-2. every completed experiment must be logged before the next one starts,
-3. helper scripts own authoritative TSV/JSON updates and keep/stop gating,
-4. foreground's core artifacts are `research-results.tsv` and `autoresearch-state.json`, while background adds launch/runtime control artifacts,
-5. the current stop conditions for this run,
-6. the current rollback strategy in use,
-7. the active pivot/refine escalation thresholds when they matter,
-8. the selected mode workflow's key deviation from the default loop.
+A zero-token self-check. Use `runtime-hard-invariants.md` plus the selected mode workflow as the source of truth. Internally verify the exact Protocol Fingerprint Check published in `runtime-hard-invariants.md`; do not maintain a second, looser copy of the checklist here.
 
 ### On Failure
 
@@ -475,7 +487,7 @@ Every 5 iterations and at completion, summarize:
 
 A **hard blocker** is any condition that makes continued iteration unsafe or meaningless:
 
-- the verify command no longer exists or returns unparseable output,
+- the verify command no longer exists, or its final metric line remains unparseable after one clean retry,
 - scope files have been deleted externally,
 - the git repository is in a broken state,
 - disk space is exhausted,
@@ -488,4 +500,4 @@ A **hard blocker** is any condition that makes continued iteration unsafe or mea
 
 Stop immediately if any hard blocker appears. Do not ask the user -- log the blocker in the completion summary.
 
-On hard blocker, log the blocker reason in TSV with status `blocked` and stop. Keep the retained-state fields in `autoresearch-state.json` unchanged (`current_metric`, `best_metric`, `best_iteration`, `last_commit`), but it is acceptable to advance audit counters such as `iteration`, `blocked`, `last_status`, and `last_trial_*` so the JSON snapshot stays aligned with the blocked TSV row. This preserves session resume without pretending the blocker improved the retained result.
+On hard blocker, log the blocker reason in TSV with status `blocked` and stop. Keep the retained-state fields in `autoresearch-results/state.json` unchanged (`current_metric`, `best_metric`, `best_iteration`, `last_commit`), but it is acceptable to advance audit counters such as `iteration`, `blocked`, `last_status`, and `last_trial_*` so the JSON snapshot stays aligned with the blocked TSV row. This preserves session resume without pretending the blocker improved the retained result.

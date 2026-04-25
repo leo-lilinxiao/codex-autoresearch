@@ -34,19 +34,19 @@ Inspirado en [autoresearch de Karpathy](https://github.com/karpathy/autoresearch
 
 ## Inicio rápido
 
-```bash
-# Instalación
-git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
-cp -r codex-autoresearch your-project/.agents/skills/codex-autoresearch
+```text
+# Instalar en Codex (recomendado)
+$skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Abre Codex en tu proyecto y adelante:
+Reinicia Codex, abre tu proyecto y adelante:
 
 ```
 Tú:    $codex-autoresearch
        Quiero eliminar todos los tipos `any` de mi código TypeScript
 
 Codex: Encontré 47 ocurrencias de `any` en src/**/*.ts.
+       Directorio Results: ./autoresearch-results/
        Métrica: cantidad de `any` (actual: 47), dirección: menor
        Verificación: conteo grep + tsc --noEmit como guard
        Modo de ejecución: ¿foreground o background?
@@ -58,7 +58,7 @@ Codex: Iniciando ejecución en segundo plano — línea base: 47. Iterando.
 
 Cada mejora se acumula. Cada fallo se revierte. Todo queda registrado.
 
-Más opciones de instalación en [INSTALL.md](../INSTALL.md). Manual completo en [GUIDE.md](../GUIDE.md).
+Opciones de copia manual, symlink y alcance de usuario en [INSTALL.md](../INSTALL.md). Manual completo en [GUIDE.md](../GUIDE.md).
 
 ## Cómo funciona
 
@@ -115,6 +115,7 @@ No escribes configuración. Codex infiere todo a partir de tu frase y tu reposit
 | Guard | Sugiere si existe riesgo de regresión | `npm test` |
 
 Antes de empezar, Codex siempre muestra lo que encontró y pide confirmación. Luego eliges foreground o background y dices «go».
+Por defecto, el directorio Results se queda en el contexto de arranque: si iniciaste Codex dentro de un repo git, la raíz de ese repo es el workspace root por defecto; si lo iniciaste fuera de un repo git, el directorio actual de arranque es el workspace root por defecto. Codex no debería ampliarlo silenciosamente a un directorio padre salvo que confirmes explícitamente un workspace multi-repo más amplio. El resumen de confirmación siempre debería mostrar el directorio Results elegido antes de lanzar.
 
 ## Cuando se atasca
 
@@ -131,7 +132,7 @@ Un solo éxito reinicia todos los contadores.
 
 ## Registro de resultados
 
-Cada iteración se registra en `research-results.tsv`:
+Cada iteración se registra en `autoresearch-results/results.tsv`:
 
 ```
 iteration  commit   metric  delta   status    description
@@ -141,7 +142,7 @@ iteration  commit   metric  delta   status    description
 3          d4e5f6g  38      -3      keep      type-narrow API response handlers
 ```
 
-Los experimentos fallidos se revierten en git pero permanecen en el registro. El registro es la verdadera pista de auditoría.
+Los experimentos fallidos se revierten en git pero permanecen en el registro. El registro es la verdadera pista de auditoría, mientras que `autoresearch-results/state.json` es la instantánea de reanudación.
 
 ## Más funcionalidades
 
@@ -164,7 +165,7 @@ Es más fuerte cuando el objetivo y la métrica están claros — subir cobertur
 
 **¿Cómo lo detengo?** Foreground: interrumpe Codex. Background: `$codex-autoresearch` y pide que se detenga.
 
-**¿Puede reanudar tras una interrupción?** Sí. Reanuda automáticamente desde `autoresearch-state.json`.
+**¿Puede reanudar tras una interrupción?** Sí. Reanuda automáticamente desde `autoresearch-results/state.json`.
 
 **¿Cómo lo uso en CI?** `Mode: exec` con `codex exec`. Toda la configuración por adelantado, salida JSON, códigos de salida 0/1/2.
 

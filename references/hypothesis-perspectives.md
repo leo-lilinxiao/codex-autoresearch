@@ -40,7 +40,7 @@ Ask: "Why might this hypothesis fail?"
 
 Ask: "What do past results and lessons tell me?"
 
-- Consult `autoresearch-lessons.md` for relevant entries.
+- Consult `autoresearch-results/lessons.md` for relevant entries.
 - Review the results log for patterns:
   - Which strategy families have the best keep rate?
   - Which files or areas have been most responsive to changes?

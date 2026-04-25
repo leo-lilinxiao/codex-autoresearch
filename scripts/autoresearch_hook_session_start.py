@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
-
+from autoresearch_core import json_dumps
 from autoresearch_hook_common import build_context
 
 
@@ -21,12 +20,12 @@ def emit_additional_context(text: str) -> None:
             "additionalContext": text,
         }
     }
-    print(json.dumps(payload), end="")
+    print(json_dumps(payload), end="")
 
 
 def main() -> int:
     context = build_context(__file__)
-    if context is None or context.skill_root is None:
+    if context is None:
         return 0
     if not context.session_is_autoresearch:
         return 0

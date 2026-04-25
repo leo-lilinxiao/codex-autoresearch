@@ -34,19 +34,19 @@ Inspiriert von [Karpathys autoresearch](https://github.com/karpathy/autoresearch
 
 ## Schnellstart
 
-```bash
-# Installation
-git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
-cp -r codex-autoresearch your-project/.agents/skills/codex-autoresearch
+```text
+# In Codex installieren (empfohlen)
+$skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Öffnen Sie Codex in Ihrem Projekt und legen Sie los:
+Starten Sie Codex neu, öffnen Sie Ihr Projekt und legen Sie los:
 
 ```
 Du:    $codex-autoresearch
        Ich will alle `any`-Typen in meinem TypeScript-Code loswerden
 
 Codex: Ich habe 47 `any`-Vorkommen in src/**/*.ts gefunden.
+       Results-Verzeichnis: ./autoresearch-results/
        Metrik: `any`-Anzahl (aktuell: 47), Richtung: niedriger
        Verifikation: grep-Zählung + tsc --noEmit als guard
        Ausführungsmodus: foreground oder background?
@@ -58,7 +58,7 @@ Codex: Starte Hintergrundlauf — Baseline: 47. Iteriere.
 
 Jede Verbesserung baut auf. Jeder Fehlschlag wird zurückgesetzt. Alles wird protokolliert.
 
-Weitere Installationsoptionen in [INSTALL.md](../INSTALL.md). Vollständiges Handbuch in [GUIDE.md](../GUIDE.md).
+Manuelle Kopier-, Symlink- und User-Scope-Optionen stehen in [INSTALL.md](../INSTALL.md). Vollständiges Handbuch in [GUIDE.md](../GUIDE.md).
 
 ## So funktioniert es
 
@@ -115,6 +115,7 @@ Sie schreiben keine Konfiguration. Codex leitet alles aus Ihrem Satz und Ihrem R
 | Guard | Schlägt vor, wenn Regressionsrisiko besteht | `npm test` |
 
 Vor dem Start zeigt Codex immer, was er gefunden hat, und bittet um Bestätigung. Dann wählen Sie foreground oder background und sagen „go".
+Standardmäßig bleibt das Results-Verzeichnis im Startkontext: Wenn Sie Codex in einem Git-Repo gestartet haben, ist dessen Repo-Root der Standard-Workspace-Root; wenn Sie Codex außerhalb eines Git-Repos gestartet haben, ist das aktuelle Startverzeichnis der Standard-Workspace-Root. Codex sollte dies nicht stillschweigend auf ein übergeordnetes Verzeichnis ausweiten, es sei denn, Sie bestätigen ausdrücklich einen größeren Multi-Repo-Workspace. Die Bestätigungsübersicht sollte vor dem Start immer das gewählte Results-Verzeichnis anzeigen.
 
 ## Wenn es hakt
 
@@ -131,7 +132,7 @@ Ein einziger Erfolg setzt alle Zähler zurück.
 
 ## Ergebnisprotokoll
 
-Jede Iteration wird in `research-results.tsv` aufgezeichnet:
+Jede Iteration wird in `autoresearch-results/results.tsv` aufgezeichnet:
 
 ```
 iteration  commit   metric  delta   status    description
@@ -141,7 +142,7 @@ iteration  commit   metric  delta   status    description
 3          d4e5f6g  38      -3      keep      type-narrow API response handlers
 ```
 
-Fehlgeschlagene Experimente werden in git zurückgesetzt, bleiben aber im Protokoll. Das Protokoll ist die eigentliche Audit-Spur.
+Fehlgeschlagene Experimente werden in git zurückgesetzt, bleiben aber im Protokoll. Das Protokoll ist die eigentliche Audit-Spur, während `autoresearch-results/state.json` der Resume-Snapshot ist.
 
 ## Weitere Funktionen
 
@@ -164,7 +165,7 @@ Am stärksten ist es, wenn Ziel und Metrik klar sind — Abdeckung erhöhen, Feh
 
 **Wie stoppe ich es?** Foreground: Codex unterbrechen. Background: `$codex-autoresearch` und dann Stopp anfordern.
 
-**Kann es nach einer Unterbrechung fortsetzen?** Ja. Es setzt automatisch von `autoresearch-state.json` fort.
+**Kann es nach einer Unterbrechung fortsetzen?** Ja. Es setzt automatisch von `autoresearch-results/state.json` fort.
 
 **Wie nutze ich es in CI?** `Mode: exec` mit `codex exec`. Gesamte Konfiguration vorab, JSON-Ausgabe, Exit-Codes 0/1/2.
 

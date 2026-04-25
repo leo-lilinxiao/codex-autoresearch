@@ -2,7 +2,7 @@
 
 Use this workflow for the default metric-driven improve/verify loop.
 
-This is the thin execution guide for active runtime work. Keep `runtime-hard-invariants.md` in memory while you iterate. Use `autonomous-loop-protocol.md` only when you need detailed reference for setup, recovery, or escalation behavior.
+This is the thin execution guide for active runtime work. Load `autonomous-loop-protocol.md` for Phase 0 on every fresh launch, resume boundary, or recovery decision. Once the loop is running, keep `runtime-hard-invariants.md` in memory and reopen `autonomous-loop-protocol.md` only when you need detailed recovery, health-check, or escalation behavior.
 
 ## Purpose
 
@@ -17,7 +17,7 @@ Iterate toward a measurable outcome by making one focused change, verifying mech
 ## Runtime Cycle
 
 1. Read the current in-scope context, recent results rows, and relevant retained state.
-2. If no baseline exists yet, measure it and initialize `research-results.tsv` plus `autoresearch-state.json`.
+2. If no baseline exists yet, measure it and initialize `autoresearch-results/results.tsv` plus `autoresearch-results/state.json`.
 3. Choose one focused hypothesis.
 4. Make one focused change within scope.
 5. Run the verify command and guard.

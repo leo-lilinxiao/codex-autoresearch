@@ -10,7 +10,7 @@ Use this file as the primary execution checklist during active runs. Keep it sho
 4. Record each completed experiment before starting the next one.
 5. Use the bundled helper scripts for authoritative TSV/JSON updates.
 6. Let helper logic own keep/stop gating and row/state semantics.
-7. Foreground's core persistent artifacts are `research-results.tsv` and `autoresearch-state.json`. Background adds launch/runtime control artifacts.
+7. All normal run artifacts are workspace-owned under `autoresearch-results/`: `results.tsv`, `state.json`, `context.json`, and `lessons.md`; background also uses `launch.json`, `runtime.json`, and `runtime.log`.
 8. Lessons are secondary helper-derived output, not a primary runtime invariant.
 9. Stop only on goal reached, manual stop, configured iteration cap, a true blocker, or the documented soft-blocker handoff after strategy exhaustion.
 10. After any context compaction event, re-read `core-principles.md`, this file, and the selected mode workflow before the next iteration.
@@ -23,8 +23,11 @@ Verify you can still recall:
 - baseline before init,
 - log every completed experiment before the next one starts,
 - helper scripts own authoritative TSV/JSON updates and keep/stop gating,
-- the current stop conditions and rollback strategy,
-- the selected mode workflow plus any active pivot/refine escalation.
+- artifact paths come from `workspace_root` + `autoresearch-results/` and the git-local pointer, never from repo-root artifact guessing,
+- the current stop conditions for this run,
+- the current rollback strategy in use,
+- the active pivot/refine escalation thresholds when they matter,
+- the selected mode workflow's key deviation from the default loop.
 
 ## Closeout Order
 
