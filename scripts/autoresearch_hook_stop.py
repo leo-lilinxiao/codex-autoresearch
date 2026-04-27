@@ -11,16 +11,19 @@ from autoresearch_hook_common import build_context
 
 
 NONTERMINAL_DECISIONS = {"relaunch", "continue"}
+FOREGROUND_STOP_HOOK_MAX_STAGNATION = 3
 CONTINUATION_PROMPT = (
     "Continue the current autoresearch run.\n"
     "Do not rerun the wizard.\n"
     "If you just completed an experiment, record it before starting the next one.\n"
+    "Do not emit a placeholder status update or repeat prior conclusions just because this hook fired.\n"
     "Keep going until the goal is reached, the user stops you, the configured iteration cap is reached, or a true blocker appears."
 )
 FOLLOWUP_CONTINUATION_PROMPT = (
     "Continue the current autoresearch run.\n"
     "You are already inside a stop-hook continuation.\n"
-    "Do not stop yet; if you just completed an experiment, record it before the next one."
+    "Do not stop yet; if you just completed an experiment, record it before the next one.\n"
+    "If there is no new experiment, verification result, or blocker, keep working instead of repeating a no-op status message."
 )
 
 
@@ -40,6 +43,15 @@ def run_supervisor(context) -> dict[str, object] | None:
     ]
     if context.artifacts.state_path is not None:
         command.extend(["--state-path", str(context.artifacts.state_path)])
+    if not context.opt_in_env:
+        command.extend(
+            [
+                "--after-run",
+                "--write-state",
+                "--max-stagnation",
+                str(FOREGROUND_STOP_HOOK_MAX_STAGNATION),
+            ]
+        )
     completed = subprocess.run(
         command,
         capture_output=True,
