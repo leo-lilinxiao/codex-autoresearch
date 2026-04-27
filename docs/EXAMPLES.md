@@ -134,6 +134,45 @@ You:   You can modify the workflow. Docker build only on main. Go.
 
 Strategies Codex will try: parallelizing test shards, caching node_modules/pip packages, skipping redundant steps on feature branches, splitting slow integration tests into a separate job.
 
+### Optimize a noisy multi-metric scheduler
+
+Use `metrics_json` when one scalar cannot describe success. This is common for schedulers, route planners, solvers, recommender systems, or any workflow where several business metrics move together and individual metrics have run-to-run noise.
+
+```
+You:   $codex-autoresearch
+       Improve my CP-SAT course scheduler. The verify command prints JSON metrics.
+       Keep hard conflicts at zero, reduce late events and room waste, and use
+       the overall judge score as the primary metric.
+
+Codex: Found `scripts/schedule_metrics.py` and sample cases under tests/cases/.
+
+       Confirmed:
+       - Target: improve schedule quality while preserving feasibility
+       - Metric: overall judge score, direction: higher
+       - Verify: `python3 scripts/schedule_metrics.py --json`
+       - Also keeping: hard_conflicts == 0, unsatisfied_constraints == 0
+
+       Need to confirm:
+       - Should I run the full case suite or the fastest representative case?
+       - Run mode: foreground or background?
+
+You:   Use the representative case first. Background. Go.
+```
+
+The verify command should print a JSON object as its final non-empty line:
+
+```json
+{
+  "judge_score": 0.71,
+  "hard_conflicts": 0,
+  "unsatisfied_constraints": 0,
+  "late_events": 74,
+  "room_waste": 19470.0
+}
+```
+
+Internally this maps to `verify_format=metrics_json`, `primary_metric_key=judge_score`, acceptance criteria such as `hard_conflicts == 0`, and required keep criteria for feasibility invariants. Codex should optimize the primary score but mechanically reject any retained result that violates the hard constraints.
+
 ### Make clippy happy in Rust
 
 ```
