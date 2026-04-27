@@ -7,6 +7,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -126,13 +127,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def ensure_supported_platform() -> None:
-    if os.name == "nt":
-        raise AutoresearchError(
-            "Codex lifecycle hooks are not supported on Windows yet; refusing to install."
-        )
-
-
 def read_text(path: Path) -> str:
     if not path.exists():
         return ""
@@ -232,7 +226,22 @@ def normalize_hooks_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def installed_command(script_path: Path) -> str:
-    return f"python3 {shlex.quote(str(script_path))}"
+    return subprocess.list2cmdline([sys.executable, str(script_path)])
+
+
+def legacy_command_variants(script_path: Path) -> set[str]:
+    quoted = shlex.quote(str(script_path))
+    raw = str(script_path)
+    return {
+        f"python3 {quoted}",
+        f"python {quoted}",
+        f"python3 {raw}",
+        f"python {raw}",
+    }
+
+
+def managed_command_variants(script_path: Path) -> set[str]:
+    return {installed_command(script_path), *legacy_command_variants(script_path)}
 
 
 def build_managed_group(*, command: str, status_message: str, timeout: int, matcher: str | None = None) -> dict[str, Any]:
@@ -343,16 +352,22 @@ def status() -> dict[str, Any]:
     )
     manifest = read_manifest()
     managed_paths = managed_bundle_paths()
-    session_command = installed_command(session_script_path())
-    stop_command = installed_command(stop_script_path())
+    session_commands = managed_command_variants(session_script_path())
+    stop_commands = managed_command_variants(stop_script_path())
     hooks_map = hooks_payload.get("hooks", {})
     session_groups = hooks_map.get("SessionStart", []) if isinstance(hooks_map, dict) else []
     stop_groups = hooks_map.get("Stop", []) if isinstance(hooks_map, dict) else []
-    managed_session = any(group_matches_command(group, session_command) for group in session_groups)
-    managed_stop = any(group_matches_command(group, stop_command) for group in stop_groups)
+    managed_session = any(
+        any(group_matches_command(group, command) for command in session_commands)
+        for group in session_groups
+    )
+    managed_stop = any(
+        any(group_matches_command(group, command) for command in stop_commands)
+        for group in stop_groups
+    )
 
     return {
-        "supported": os.name != "nt",
+        "supported": True,
         "codex_home": str(codex_home()),
         "config_path": str(config_path()),
         "hooks_path": str(hooks_path()),
@@ -376,7 +391,6 @@ def status() -> dict[str, Any]:
 
 
 def install() -> dict[str, Any]:
-    ensure_supported_platform()
     config_before = read_text(config_path())
     previous_feature = parse_feature_value(config_before)
     feature_enabled_by_installer = previous_feature is not True
@@ -398,7 +412,9 @@ def install() -> dict[str, Any]:
 
     session_command = installed_command(session_script_path())
     stop_command = installed_command(stop_script_path())
-    managed_commands = {session_command, stop_command}
+    managed_commands = managed_command_variants(session_script_path()) | managed_command_variants(
+        stop_script_path()
+    )
 
     existing_session = hooks_map.get("SessionStart", [])
     if not isinstance(existing_session, list):
@@ -441,7 +457,6 @@ def install() -> dict[str, Any]:
 
 
 def uninstall() -> dict[str, Any]:
-    ensure_supported_platform()
     manifest = read_manifest()
     feature_enabled_by_installer = bool(manifest.get("feature_enabled_by_installer"))
 
@@ -450,10 +465,9 @@ def uninstall() -> dict[str, Any]:
     if not isinstance(hooks_map, dict):
         raise AutoresearchError("hooks.json must contain an object at top-level key 'hooks'")
 
-    managed_commands = {
-        installed_command(session_script_path()),
-        installed_command(stop_script_path()),
-    }
+    managed_commands = managed_command_variants(session_script_path()) | managed_command_variants(
+        stop_script_path()
+    )
 
     removed_count = 0
     for event_name in ("SessionStart", "Stop"):
