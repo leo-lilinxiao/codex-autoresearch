@@ -587,6 +587,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertEqual(payload["decision"], "block")
             self.assertIn("Do not rerun the wizard.", payload["reason"])
             self.assertIn("record it before starting the next one", payload["reason"])
+            self.assertIn("Do not emit a placeholder status update", payload["reason"])
 
             completed = self.run_installed_hook(
                 hook_path,
@@ -602,6 +603,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             payload = json.loads(completed.stdout)
             self.assertEqual(payload["decision"], "block")
             self.assertIn("already inside a stop-hook continuation", payload["reason"])
+            self.assertIn("keep working instead of repeating a no-op status message", payload["reason"])
 
             terminal_repo = root / "terminal-repo"
             terminal_repo.mkdir()
@@ -646,6 +648,113 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             )
             completed.check_returncode()
             self.assertEqual(completed.stdout, "")
+
+    def test_foreground_stop_hook_escalates_repeated_same_signature_to_needs_human(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            env = self.hook_env(home)
+            self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            hook_path = self.installed_hook_path(home, "stop.py")
+
+            repo = root / "stagnated-foreground"
+            repo.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(repo / "autoresearch-results/results.tsv"),
+                "--state-path",
+                str(repo / "autoresearch-results/state.json"),
+                "--mode",
+                "loop",
+                "--session-mode",
+                "foreground",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "base111",
+                "--baseline-description",
+                "baseline failures",
+                env=env,
+            )
+
+            transcript_path = root / "foreground-stagnated.jsonl"
+            self.write_transcript_marker(transcript_path)
+
+            first = self.run_installed_hook(
+                hook_path,
+                cwd=repo,
+                payload={
+                    "cwd": str(repo),
+                    "stop_hook_active": False,
+                    "transcript_path": str(transcript_path),
+                },
+                env=env,
+            )
+            first.check_returncode()
+            self.assertEqual(json.loads(first.stdout)["decision"], "block")
+
+            second = self.run_installed_hook(
+                hook_path,
+                cwd=repo,
+                payload={
+                    "cwd": str(repo),
+                    "stop_hook_active": True,
+                    "transcript_path": str(transcript_path),
+                },
+                env=env,
+            )
+            second.check_returncode()
+            self.assertEqual(json.loads(second.stdout)["decision"], "block")
+
+            third = self.run_installed_hook(
+                hook_path,
+                cwd=repo,
+                payload={
+                    "cwd": str(repo),
+                    "stop_hook_active": True,
+                    "transcript_path": str(transcript_path),
+                },
+                env=env,
+            )
+            third.check_returncode()
+            self.assertEqual(json.loads(third.stdout)["decision"], "block")
+
+            fourth = self.run_installed_hook(
+                hook_path,
+                cwd=repo,
+                payload={
+                    "cwd": str(repo),
+                    "stop_hook_active": True,
+                    "transcript_path": str(transcript_path),
+                },
+                env=env,
+            )
+            fourth.check_returncode()
+            self.assertEqual(fourth.stdout, "")
+
+            pointer_payload = json.loads(
+                self.repo_hook_context_path(repo).read_text(encoding="utf-8")
+            )
+            self.assertFalse(pointer_payload["active"])
+
+            state_payload = json.loads(
+                (repo / "autoresearch-results" / "state.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(state_payload["supervisor"]["recommended_action"], "needs_human")
+            self.assertEqual(state_payload["supervisor"]["last_exit_kind"], "stagnated")
+            self.assertEqual(state_payload["supervisor"]["stagnation_count"], 3)
 
     def test_stop_hook_uses_background_opt_in_and_workspace_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
