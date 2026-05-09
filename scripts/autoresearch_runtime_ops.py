@@ -198,6 +198,21 @@ def build_codex_exec_command(
     return [codex_bin, "exec", *codex_args, "-C", str(repo), "-"]
 
 
+def codex_args_for_runtime(
+    *,
+    execution_policy: str,
+    extra_args: list[str],
+    workspace_root: Path,
+) -> list[str]:
+    codex_args = codex_args_for_execution_policy(
+        execution_policy,
+        extra_args=extra_args,
+    )
+    if execution_policy == "workspace_write":
+        codex_args.extend(["--add-dir", str(workspace_root)])
+    return codex_args
+
+
 def mark_runtime_needs_human(
     *,
     repo: Path,
@@ -614,8 +629,9 @@ def start_runtime(args: argparse.Namespace, *, runner_path: Path) -> dict[str, A
     execution_policy = str(
         launch_manifest.get("config", {}).get("execution_policy") or DEFAULT_EXECUTION_POLICY
     )
-    codex_args_for_execution_policy(
-        execution_policy,
+    codex_args_for_runtime(
+        execution_policy=execution_policy,
+        workspace_root=workspace_root,
         extra_args=args.codex_arg,
     )
     preflight = evaluate_runtime_preflight(
@@ -843,8 +859,9 @@ def run_runtime(args: argparse.Namespace) -> int:
     execution_policy = str(
         launch_manifest.get("config", {}).get("execution_policy") or DEFAULT_EXECUTION_POLICY
     )
-    codex_args = codex_args_for_execution_policy(
-        execution_policy,
+    codex_args = codex_args_for_runtime(
+        execution_policy=execution_policy,
+        workspace_root=workspace_root,
         extra_args=args.codex_arg,
     )
     startup_failure_count = 0

@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shlex
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +19,7 @@ from autoresearch_helpers import AutoresearchError, utc_now
 
 MANIFEST_VERSION = 1
 FEATURE_SECTION = "features"
-FEATURE_KEY = "codex_hooks"
+FEATURE_KEY = "hooks"
 MANAGED_DIR_NAME = "autoresearch-hooks"
 SESSION_SCRIPT_NAME = "session_start.py"
 STOP_SCRIPT_NAME = "stop.py"
@@ -28,6 +30,8 @@ SESSION_STATUS_MESSAGE = "codex-autoresearch SessionStart hook"
 STOP_STATUS_MESSAGE = "codex-autoresearch Stop hook"
 SESSION_TIMEOUT_SECONDS = 5
 STOP_TIMEOUT_SECONDS = 10
+HOOK_TRUST_BLOCK_BEGIN = "# BEGIN codex-autoresearch hook trust"
+HOOK_TRUST_BLOCK_END = "# END codex-autoresearch hook trust"
 HELPER_BUNDLE_SCRIPT_NAMES = (
     "autoresearch_acceptance.py",
     "autoresearch_supervisor_status.py",
@@ -157,21 +161,25 @@ def write_text_with_backup(path: Path, content: str) -> str | None:
     return str(backup) if backup is not None else None
 
 
+def parse_toml_config(text: str) -> dict[str, Any]:
+    if not text.strip():
+        return {}
+    try:
+        payload = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise AutoresearchError(f"Invalid TOML in {config_path()}: {exc}") from exc
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
 def parse_feature_value(text: str) -> bool | None:
-    section_match = re.search(
-        rf"(?ms)^\[{re.escape(FEATURE_SECTION)}\]\s*$\n(?P<body>.*?)(?=^\[|\Z)",
-        text,
-    )
-    if section_match is None:
+    payload = parse_toml_config(text)
+    features = payload.get(FEATURE_SECTION)
+    if not isinstance(features, dict):
         return None
-    body = section_match.group("body")
-    key_match = re.search(
-        rf"(?m)^\s*{re.escape(FEATURE_KEY)}\s*=\s*(true|false)\s*(?:#.*)?$",
-        body,
-    )
-    if key_match is None:
-        return None
-    return key_match.group(1) == "true"
+    value = features.get(FEATURE_KEY)
+    return value if isinstance(value, bool) else None
 
 
 def set_toml_boolean(text: str, *, section: str, key: str, value: bool) -> str:
@@ -207,6 +215,180 @@ def set_toml_boolean(text: str, *, section: str, key: str, value: bool) -> str:
 
     rendered = "\n".join(lines).rstrip()
     return rendered + "\n"
+
+
+def toml_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def canonical_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: canonical_json(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [canonical_json(item) for item in value]
+    return value
+
+
+def codex_toml_hash(value: dict[str, Any]) -> str:
+    serialized = json.dumps(
+        canonical_json(value),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(serialized).hexdigest()
+
+
+def hook_event_key_label(event_name: str) -> str:
+    labels = {
+        "SessionStart": "session_start",
+        "Stop": "stop",
+    }
+    return labels[event_name]
+
+
+def hook_state_key(event_name: str, group_index: int, handler_index: int) -> str:
+    return (
+        f"{hooks_path()}:"
+        f"{hook_event_key_label(event_name)}:"
+        f"{group_index}:"
+        f"{handler_index}"
+    )
+
+
+def command_hook_hash_for_group(event_name: str, group: dict[str, Any]) -> str | None:
+    hooks = group.get("hooks")
+    if not isinstance(hooks, list) or len(hooks) != 1:
+        return None
+    hook = hooks[0]
+    if not isinstance(hook, dict) or hook.get("type") != "command":
+        return None
+    command = hook.get("command")
+    if not isinstance(command, str) or not command.strip():
+        return None
+    if bool(hook.get("async", False)):
+        return None
+
+    try:
+        timeout = max(1, int(hook.get("timeout", 600)))
+    except (TypeError, ValueError):
+        return None
+
+    status_message = hook.get("statusMessage")
+    if status_message is not None and not isinstance(status_message, str):
+        status_message = None
+
+    handler: dict[str, Any] = {
+        "async": False,
+        "command": command,
+        "timeout": timeout,
+        "type": "command",
+    }
+    if status_message is not None:
+        handler["statusMessage"] = status_message
+
+    identity: dict[str, Any] = {
+        "event_name": hook_event_key_label(event_name),
+        "hooks": [handler],
+    }
+    matcher = group.get("matcher")
+    if event_name == "SessionStart" and isinstance(matcher, str):
+        identity["matcher"] = matcher
+    return codex_toml_hash(identity)
+
+
+def managed_hook_trust_entries_from_payload(payload: dict[str, Any]) -> dict[str, str]:
+    hooks_map = payload.get("hooks", {})
+    if not isinstance(hooks_map, dict):
+        return {}
+    managed_commands = {
+        "SessionStart": installed_command(session_script_path()),
+        "Stop": installed_command(stop_script_path()),
+    }
+    entries: dict[str, str] = {}
+    for event_name, command in managed_commands.items():
+        groups = hooks_map.get(event_name, [])
+        if not isinstance(groups, list):
+            continue
+        for group_index, group in enumerate(groups):
+            if not group_matches_command(group, command):
+                continue
+            if not isinstance(group, dict):
+                continue
+            current_hash = command_hook_hash_for_group(event_name, group)
+            if current_hash is None:
+                continue
+            entries[hook_state_key(event_name, group_index, 0)] = current_hash
+    return entries
+
+
+def trusted_hashes_from_config_text(text: str) -> dict[str, str]:
+    payload = parse_toml_config(text)
+    hooks = payload.get("hooks")
+    if not isinstance(hooks, dict):
+        return {}
+    state = hooks.get("state")
+    if not isinstance(state, dict):
+        return {}
+
+    trusted: dict[str, str] = {}
+    for key, hook_state in state.items():
+        if not isinstance(key, str) or not isinstance(hook_state, dict):
+            continue
+        trusted_hash = hook_state.get("trusted_hash")
+        if isinstance(trusted_hash, str):
+            trusted[key] = trusted_hash
+    return trusted
+
+
+def remove_hook_state_tables_for_keys(text: str, keys: set[str]) -> str:
+    if not keys:
+        return text
+    headers = {f"[hooks.state.{toml_string(key)}]" for key in keys}
+    rendered_lines: list[str] = []
+    skip_table = False
+    table_header_pattern = re.compile(r"^\s*\[.*\]\s*(?:#.*)?$")
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        normalized_header = stripped.split("#", 1)[0].strip()
+        if skip_table and table_header_pattern.match(stripped):
+            skip_table = False
+        if not skip_table and normalized_header in headers:
+            skip_table = True
+            continue
+        if skip_table:
+            continue
+        rendered_lines.append(line)
+
+    rendered = "\n".join(rendered_lines).rstrip()
+    return rendered + "\n" if rendered else ""
+
+
+def remove_autoresearch_hook_trust_state(text: str, *, keys: set[str] | None = None) -> str:
+    without_block = re.sub(
+        rf"(?ms)^\s*{re.escape(HOOK_TRUST_BLOCK_BEGIN)}\n.*?^\s*{re.escape(HOOK_TRUST_BLOCK_END)}\n?",
+        "",
+        text,
+    )
+    without_tables = remove_hook_state_tables_for_keys(without_block, keys or set())
+    rendered = without_tables.rstrip()
+    return rendered + "\n" if rendered else ""
+
+
+def set_toml_hook_trust_state(text: str, entries: dict[str, str]) -> str:
+    cleaned = remove_autoresearch_hook_trust_state(text, keys=set(entries))
+    if not entries:
+        return cleaned
+    block_lines = [HOOK_TRUST_BLOCK_BEGIN]
+    for index, key in enumerate(sorted(entries)):
+        if index:
+            block_lines.append("")
+        block_lines.append(f"[hooks.state.{toml_string(key)}]")
+        block_lines.append(f"trusted_hash = {toml_string(entries[key])}")
+    block_lines.append(HOOK_TRUST_BLOCK_END)
+    block = "\n".join(block_lines) + "\n"
+    cleaned = cleaned.rstrip()
+    return f"{cleaned}\n\n{block}" if cleaned else block
 
 
 def load_json_file(path: Path, *, default: dict[str, Any]) -> dict[str, Any]:
@@ -263,11 +445,28 @@ def group_matches_command(group: Any, command: str) -> bool:
     return hook.get("type") == "command" and hook.get("command") == command
 
 
+def group_is_managed_autoresearch(group: Any, commands: set[str]) -> bool:
+    if not isinstance(group, dict):
+        return False
+    hooks = group.get("hooks")
+    if not isinstance(hooks, list) or len(hooks) != 1:
+        return False
+    hook = hooks[0]
+    if not isinstance(hook, dict) or hook.get("type") != "command":
+        return False
+    if hook.get("command") in commands:
+        return True
+    return hook.get("statusMessage") in {
+        SESSION_STATUS_MESSAGE,
+        STOP_STATUS_MESSAGE,
+    }
+
+
 def remove_managed_groups(groups: list[Any], commands: set[str]) -> tuple[list[Any], int]:
     kept: list[Any] = []
     removed = 0
     for group in groups:
-        if any(group_matches_command(group, command) for command in commands):
+        if group_is_managed_autoresearch(group, commands):
             removed += 1
             continue
         kept.append(group)
@@ -350,6 +549,13 @@ def status() -> dict[str, Any]:
     stop_groups = hooks_map.get("Stop", []) if isinstance(hooks_map, dict) else []
     managed_session = any(group_matches_command(group, session_command) for group in session_groups)
     managed_stop = any(group_matches_command(group, stop_command) for group in stop_groups)
+    trust_entries = managed_hook_trust_entries_from_payload(hooks_payload)
+    trusted_hashes = trusted_hashes_from_config_text(config_text)
+    trusted_keys = {
+        key for key, current_hash in trust_entries.items() if trusted_hashes.get(key) == current_hash
+    }
+    managed_session_trusted = any(":session_start:" in key for key in trusted_keys)
+    managed_stop_trusted = any(":stop:" in key for key in trusted_keys)
 
     return {
         "supported": os.name != "nt",
@@ -361,6 +567,8 @@ def status() -> dict[str, Any]:
         "feature_enabled_by_installer": bool(manifest.get("feature_enabled_by_installer")),
         "managed_session_start_installed": managed_session and session_script_path().exists(),
         "managed_stop_installed": managed_stop and stop_script_path().exists(),
+        "managed_session_start_trusted": managed_session and managed_session_trusted,
+        "managed_stop_trusted": managed_stop and managed_stop_trusted,
         "managed_scripts_present": all(path.exists() for path in managed_paths),
         "manifest_present": manifest_path().exists(),
         "helper_root_fallback": manifest.get("helper_root_fallback") or str(hooks_home()),
@@ -370,6 +578,8 @@ def status() -> dict[str, Any]:
             parse_feature_value(config_text) is True
             and managed_session
             and managed_stop
+            and managed_session_trusted
+            and managed_stop_trusted
             and all(path.exists() for path in managed_paths)
         ),
     }
@@ -382,14 +592,6 @@ def install() -> dict[str, Any]:
     feature_enabled_by_installer = previous_feature is not True
 
     install_managed_scripts()
-
-    updated_config = set_toml_boolean(
-        config_before,
-        section=FEATURE_SECTION,
-        key=FEATURE_KEY,
-        value=True,
-    )
-    config_backup = write_text_with_backup(config_path(), updated_config)
 
     payload = normalize_hooks_payload(load_json_file(hooks_path(), default={"hooks": {}}))
     hooks_map = payload.setdefault("hooks", {})
@@ -427,6 +629,18 @@ def install() -> dict[str, Any]:
     )
     hooks_map["Stop"] = stop_groups
 
+    updated_config = set_toml_boolean(
+        config_before,
+        section=FEATURE_SECTION,
+        key=FEATURE_KEY,
+        value=True,
+    )
+    updated_config = set_toml_hook_trust_state(
+        updated_config,
+        managed_hook_trust_entries_from_payload(payload),
+    )
+    config_backup = write_text_with_backup(config_path(), updated_config)
+
     hooks_backup = write_text_with_backup(
         hooks_path(),
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
@@ -446,6 +660,7 @@ def uninstall() -> dict[str, Any]:
     feature_enabled_by_installer = bool(manifest.get("feature_enabled_by_installer"))
 
     payload = normalize_hooks_payload(load_json_file(hooks_path(), default={"hooks": {}}))
+    trust_entries = managed_hook_trust_entries_from_payload(payload)
     hooks_map = payload.setdefault("hooks", {})
     if not isinstance(hooks_map, dict):
         raise AutoresearchError("hooks.json must contain an object at top-level key 'hooks'")
@@ -474,15 +689,20 @@ def uninstall() -> dict[str, Any]:
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         )
 
-    config_backup = None
+    config_before = read_text(config_path())
+    updated_config = remove_autoresearch_hook_trust_state(
+        config_before,
+        keys=set(trust_entries),
+    )
     if feature_enabled_by_installer and count_all_hook_groups(payload) == 0:
-        config_before = read_text(config_path())
         updated_config = set_toml_boolean(
-            config_before,
+            updated_config,
             section=FEATURE_SECTION,
             key=FEATURE_KEY,
             value=False,
         )
+    config_backup = None
+    if updated_config != config_before:
         config_backup = write_text_with_backup(config_path(), updated_config)
 
     for script_path in (*managed_bundle_paths(), manifest_path()):

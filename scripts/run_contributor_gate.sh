@@ -27,7 +27,7 @@ Notes:
       bash scripts/run_skill_e2e.sh interactive-smoke
   - The launch/status/stop control-plane handoff is covered automatically by:
       bash scripts/run_skill_e2e.sh runtime-smoke --clean
-  - The skill gate assumes `codex`, `python3`, and `git` are available locally.
+  - The skill gate assumes `codex`, Python 3.11+, and `git` are available locally.
 EOF
 }
 
