@@ -188,18 +188,20 @@ def codex_args_for_execution_policy(
     extras = list(extra_args or [])
     conflicting_flags = {
         "--full-auto",
+        "--sandbox",
+        "-s",
         "--dangerously-bypass-approvals-and-sandbox",
         "--yolo",
     }
     for value in extras:
-        if value in conflicting_flags:
+        if value in conflicting_flags or value.startswith("--sandbox="):
             raise AutoresearchError(
                 "Execution policy is configured separately; do not pass sandbox-selection "
                 f"flags through --codex-arg ({value!r})."
             )
 
     if policy == "workspace_write":
-        return ["--full-auto", *extras]
+        return ["--sandbox", "workspace-write", *extras]
     return ["--dangerously-bypass-approvals-and-sandbox", *extras]
 
 

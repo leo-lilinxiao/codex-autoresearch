@@ -32,7 +32,7 @@ Flags:
   --dangerous        Legacy alias for the default exec-smoke behavior:
                      pass --dangerously-bypass-approvals-and-sandbox to codex exec
                      inside the disposable temp repo created by this harness.
-  --sandboxed        Force exec-smoke to use --full-auto instead. This is useful for
+  --sandboxed        Force exec-smoke to use --sandbox workspace-write instead. This is useful for
                      reproducing sandbox-related blockers, but may fail protocol checks
                      because git commit/revert writes inside .git are sandboxed.
   --clean            Delete the temp repo after the command finishes successfully.
@@ -191,7 +191,7 @@ run_exec_smoke() {
   if [[ "$DANGEROUS" -eq 1 ]]; then
     codex_flags+=(--dangerously-bypass-approvals-and-sandbox)
   else
-    codex_flags+=(--full-auto)
+    codex_flags+=(--sandbox workspace-write)
   fi
 
   if ! codex "${codex_flags[@]}" - < "$repo/prompt.txt" | tee "$event_log"; then

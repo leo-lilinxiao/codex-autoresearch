@@ -1584,7 +1584,11 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.wait_for_runtime_status(tmpdir, {"needs_human"})
             codex_args = args_path.read_text(encoding="utf-8")
-            self.assertIn("--full-auto", codex_args)
+            self.assertIn("--sandbox", codex_args)
+            self.assertIn("workspace-write", codex_args)
+            self.assertIn("--add-dir", codex_args)
+            self.assertIn(str(tmpdir), codex_args)
+            self.assertNotIn("--full-auto", codex_args)
             self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", codex_args)
 
     def test_runtime_controller_retries_preinit_failures_then_stops(self) -> None:

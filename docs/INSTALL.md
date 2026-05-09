@@ -7,7 +7,7 @@
 - Codex with skills enabled.
 - macOS or Linux.
 - Git for iterative modes, because the loop commits, verifies, and reverts experiments.
-- Python 3 for the bundled helper scripts.
+- Python 3.11+ for the bundled helper scripts.
 - A working `codex` CLI in `PATH` for managed background runs and `exec` mode.
 
 ## Install
