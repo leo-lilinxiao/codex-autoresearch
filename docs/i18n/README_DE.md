@@ -56,6 +56,8 @@ Du:    Background, go. Lass es über Nacht laufen.
 Codex: Starte Hintergrundlauf — Baseline: 47. Iteriere.
 ```
 
+Starten Sie Background-Läufe aus einer vertrauenswürdigen **Full Access** Codex-Sitzung. Background startet abgekoppelte `codex exec`-Kind-Sitzungen; diese brauchen neben dem Ziel-Repo auch normalen Zugriff auf Codex' eigenes home/state. Wenn die übergeordnete Sitzung auf einen workspace-only sandbox beschränkt ist, nutzen Sie foreground oder starten Codex mit Full Access neu, bevor Sie background wählen.
+
 Jede Verbesserung baut auf. Jeder Fehlschlag wird zurückgesetzt. Alles wird protokolliert.
 
 Manuelle Kopier-, Symlink- und User-Scope-Optionen stehen in [INSTALL.md](../INSTALL.md). Vollständiges Handbuch in [GUIDE.md](../GUIDE.md).

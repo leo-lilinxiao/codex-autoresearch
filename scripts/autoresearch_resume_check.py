@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repo",
         required=True,
-        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
+        help="Primary repo root. Run context is resolved from this repo's repo-local pointer.",
     )
     parser.add_argument("--workspace-root")
     parser.add_argument(

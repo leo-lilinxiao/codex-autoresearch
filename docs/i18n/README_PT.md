@@ -56,6 +56,8 @@ Você:  Background, go. Deixa rodando a noite toda.
 Codex: Iniciando execução em segundo plano — baseline: 47. Iterando.
 ```
 
+Para execuções background, inicie o Codex a partir de uma sessão **Full Access** confiável. O modo background inicia sessões filhas `codex exec` separadas, que precisam de acesso normal ao home/state do Codex além do repositório alvo. Se a sessão pai estiver limitada a um sandbox workspace-only, use foreground ou reinicie o Codex com Full Access antes de escolher background.
+
 Cada melhoria se acumula. Cada falha é revertida. Tudo fica registrado.
 
 Opções de cópia manual, symlink e escopo de usuário em [INSTALL.md](../INSTALL.md). Manual completo em [GUIDE.md](../GUIDE.md).

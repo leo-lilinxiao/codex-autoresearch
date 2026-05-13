@@ -1004,7 +1004,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
         self.assertEqual(state["reason"], "not_running")
         self.assertIn("not running", state["message"])
 
-    def test_runtime_process_state_rejects_missing_identity_snapshot(self) -> None:
+    def test_runtime_process_state_rejects_command_mismatch_without_ps_start_snapshot(self) -> None:
         with (
             mock.patch.object(
                 autoresearch_launch_gate,
@@ -1032,8 +1032,84 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
 
         self.assertTrue(state["alive"])
         self.assertFalse(state["matches"])
-        self.assertEqual(state["reason"], "runtime_identity_unverifiable")
-        self.assertIn("process_started_at", state["message"])
+        self.assertEqual(state["reason"], "identity_mismatch")
+        self.assertIn("command no longer matches", state["message"])
+
+    def test_runtime_process_state_accepts_equivalent_timezone_start_time(self) -> None:
+        if not hasattr(time, "tzset"):
+            self.skipTest("tzset is unavailable")
+
+        old_tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Asia/Shanghai"
+        time.tzset()
+        try:
+            with (
+                mock.patch.object(
+                    autoresearch_launch_gate,
+                    "pid_is_alive",
+                    return_value=True,
+                ),
+                mock.patch.object(
+                    autoresearch_launch_gate,
+                    "inspect_process_identity",
+                    return_value={
+                        "pid": 4242,
+                        "pgid": 4242,
+                        "started_at": "Thu May 14 01:46:26 2026",
+                        "command": f"{sys.executable} runner.py",
+                    },
+                ),
+            ):
+                state = autoresearch_launch_gate.runtime_process_state(
+                    {
+                        "pid": 4242,
+                        "pgid": 4242,
+                        "command": [sys.executable, "runner.py"],
+                        "process_started_at": "Wed May 13 17:46:27 2026 UTC",
+                        "process_command": f"{sys.executable} runner.py",
+                    }
+                )
+        finally:
+            if old_tz is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = old_tz
+            time.tzset()
+
+        self.assertTrue(state["alive"])
+        self.assertTrue(state["matches"])
+        self.assertEqual(state["reason"], "running")
+
+    def test_runtime_process_state_allows_alive_pid_when_ps_identity_is_unavailable(self) -> None:
+        with (
+            mock.patch.object(
+                autoresearch_launch_gate,
+                "pid_is_alive",
+                return_value=True,
+            ),
+            mock.patch.object(
+                autoresearch_launch_gate,
+                "inspect_process_identity",
+                return_value=None,
+            ),
+            mock.patch.object(
+                autoresearch_launch_gate,
+                "_process_group_id",
+                return_value=4242,
+            ),
+        ):
+            state = autoresearch_launch_gate.runtime_process_state(
+                {
+                    "pid": 4242,
+                    "pgid": 4242,
+                    "command": [sys.executable, "runner.py"],
+                    "process_command": f"{sys.executable} runner.py",
+                }
+            )
+
+        self.assertTrue(state["alive"])
+        self.assertTrue(state["matches"])
+        self.assertEqual(state["reason"], "running_identity_unavailable")
 
     def test_runtime_stop_refuses_to_signal_when_live_pid_identity_mismatches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1470,6 +1546,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             fake_codex_path = tmpdir / "fake-codex"
             prompt_path = tmpdir / ".runtime-prompt.txt"
             args_path = tmpdir / ".codex-args.txt"
+            sqlite_home_path = tmpdir / ".codex-sqlite-home.txt"
             results_rel = "autoresearch-results/results.tsv"
             state_rel = "autoresearch-results/state.json"
 
@@ -1490,7 +1567,9 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                     "prompt_from_stdin=0",
                     f'prompt_path="{prompt_path}"',
                     f'args_path="{args_path}"',
+                    f'sqlite_home_path="{sqlite_home_path}"',
                     'printf "%s\\n" "$@" >"$args_path"',
+                    'printf "%s" "${CODEX_SQLITE_HOME:-}" >"$sqlite_home_path"',
                     'while [[ $# -gt 0 ]]; do',
                     '  case "$1" in',
                     '    -C) repo="$2"; shift 2 ;;',
@@ -1521,6 +1600,10 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
                 str(tmpdir),
                 "--codex-bin",
                 str(fake_codex_path),
+                "--codex-arg=-m",
+                "--codex-arg=gpt-5.4-mini",
+                "--codex-arg=-c",
+                '--codex-arg=model_reasoning_effort="medium"',
                 "--sleep-seconds",
                 "0",
                 "--max-stagnation",
@@ -1534,8 +1617,17 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             codex_args = args_path.read_text(encoding="utf-8")
             self.assertIn("$codex-autoresearch", prompt_text)
             self.assertIn("Reduce failures in this repo", prompt_text)
+            self.assertIn("-m", codex_args)
+            self.assertIn("gpt-5.4-mini", codex_args)
+            self.assertIn("-c", codex_args)
+            self.assertIn('model_reasoning_effort="medium"', codex_args)
+            self.assertIn("--ephemeral", codex_args)
             self.assertIn("--dangerously-bypass-approvals-and-sandbox", codex_args)
             self.assertNotIn("--full-auto", codex_args)
+            self.assertEqual(
+                Path(sqlite_home_path.read_text(encoding="utf-8")).resolve(),
+                (tmpdir / "autoresearch-results" / "codex-sqlite").resolve(),
+            )
             self.assertTrue(results_path.exists())
             self.assertTrue(state_path.exists())
 
@@ -1584,6 +1676,7 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             )
             self.wait_for_runtime_status(tmpdir, {"needs_human"})
             codex_args = args_path.read_text(encoding="utf-8")
+            self.assertIn("--ephemeral", codex_args)
             self.assertIn("--sandbox", codex_args)
             self.assertIn("workspace-write", codex_args)
             self.assertIn("--add-dir", codex_args)
@@ -1634,3 +1727,34 @@ class AutoresearchRuntimeControllerTest(AutoresearchScriptsTestBase):
             self.assertEqual(status["status"], "needs_human")
             self.assertEqual(status["reason"], "startup_failed_before_artifacts")
             self.assertEqual(counter_path.read_text(encoding="utf-8"), "2")
+
+    def test_runtime_controller_reports_sandboxed_codex_startup_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            fake_codex_path = tmpdir / "fake-codex"
+
+            self.create_launch_manifest(tmpdir)
+            self.write_fake_codex(
+                fake_codex_path,
+                body_lines=[
+                    'echo "Error: failed to initialize in-process app-server client: Operation not permitted (os error 1)"',
+                    "exit 1",
+                ],
+            )
+
+            self.run_script(
+                "autoresearch_runtime_ctl.py",
+                "start",
+                "--repo",
+                str(tmpdir),
+                "--codex-bin",
+                str(fake_codex_path),
+                "--sleep-seconds",
+                "0",
+                "--max-stagnation",
+                "1",
+            )
+            status = self.wait_for_runtime_status(tmpdir, {"needs_human"})
+            self.assertEqual(status["reason"], "startup_failed_before_artifacts")
+            self.assertIn("current sandbox", str(status["error"]))
+            self.assertIn("workspace-write", str(status["error"]))

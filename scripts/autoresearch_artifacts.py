@@ -99,6 +99,33 @@ def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
         raise
 
 
+METADATA_JSON_PREFIX = "json:"
+
+
+def format_metadata_comment(key: str, value: object) -> str:
+    key_text = str(key).strip()
+    if not key_text:
+        raise AutoresearchError("Metadata comment key must be non-empty.")
+    value_text = str(value)
+    if "\n" in value_text or "\r" in value_text:
+        encoded = json.dumps(value_text, ensure_ascii=False, separators=(",", ":"))
+        value_text = METADATA_JSON_PREFIX + encoded
+    return f"# {key_text}: {value_text}"
+
+
+def decode_metadata_value(value: str) -> str:
+    if not value.startswith(METADATA_JSON_PREFIX):
+        return value
+    raw_json = value[len(METADATA_JSON_PREFIX) :]
+    try:
+        decoded = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return value
+    if not isinstance(decoded, str):
+        return value
+    return decoded
+
+
 def parse_metadata_comment(line: str) -> tuple[str, str] | None:
     if not line.startswith("#"):
         return None
@@ -109,7 +136,20 @@ def parse_metadata_comment(line: str) -> tuple[str, str] | None:
     key = key.strip()
     if not key:
         return None
-    return key, value.strip()
+    return key, decode_metadata_value(value.strip())
+
+
+def normalize_results_comment(comment: str) -> list[str]:
+    text = comment.rstrip("\n")
+    if "\n" not in text and "\r" not in text:
+        return [text]
+
+    parsed = parse_metadata_comment(text)
+    if parsed is not None:
+        key, value = parsed
+        return [format_metadata_comment(key, value)]
+
+    return [line if line.startswith("#") else f"# {line}" for line in text.splitlines()]
 
 
 def parse_log_metadata(path: Path) -> dict[str, str]:
@@ -188,7 +228,8 @@ def parse_results_log(path: Path) -> ParsedLog:
 def write_results_log(path: Path, comments: list[str], rows: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     parts: list[str] = []
-    parts.extend(comment.rstrip("\n") for comment in comments)
+    for comment in comments:
+        parts.extend(normalize_results_comment(comment))
     parts.append("\t".join(HEADER))
     for row in rows:
         parts.append(

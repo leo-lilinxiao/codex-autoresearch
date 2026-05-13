@@ -25,7 +25,7 @@ from autoresearch_helpers import (
 def resolve_workspace_context_for_repo(repo: Path, *, mode_name: str):
     """Resolve the managed workspace context for invariant checks.
 
-    Real managed runs in git repos must persist a valid git-local pointer plus
+    Real managed runs in git repos must persist a valid repo-local pointer plus
     canonical context. Lightweight fixture tests may still use non-git temp
     directories and validate repo-local artifacts directly.
     """
@@ -34,7 +34,7 @@ def resolve_workspace_context_for_repo(repo: Path, *, mode_name: str):
         return context.workspace_root, context
     if (repo / ".git").exists():
         raise AutoresearchError(
-            f"{mode_name} invariants require a valid git-local pointer and canonical context for {repo}."
+            f"{mode_name} invariants require a valid repo-local pointer and canonical context for {repo}."
         )
     return repo, None
 

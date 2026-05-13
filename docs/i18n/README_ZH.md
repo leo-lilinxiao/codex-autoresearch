@@ -56,6 +56,8 @@ Codex: 在 src/**/*.ts 中找到 47 个 `any`。
 Codex: 开始后台运行 -- 基线：47。持续迭代中。
 ```
 
+后台运行请从可信的 **Full Access** Codex 会话启动。background 会启动分离的 `codex exec` 子会话；除了目标仓库，它们还需要访问 Codex 自己的 home/state。如果父会话限制在 workspace-only sandbox，请使用 foreground，或先用 Full Access 重启 Codex 后再选择 background。
+
 改善累积，失败回滚，全程记录。
 
 手动复制、symlink、用户级安装方式见 [INSTALL.md](../INSTALL.md)。完整操作手册见 [GUIDE.md](../GUIDE.md)。

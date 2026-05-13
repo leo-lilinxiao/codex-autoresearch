@@ -96,6 +96,8 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
             self.assertTrue(installed["ready_for_future_sessions"])
             self.assertTrue(installed["feature_enabled"])
+            self.assertTrue(installed["hooks_feature_enabled"])
+            self.assertTrue(installed["goals_feature_enabled"])
             self.assertTrue(installed["managed_session_start_trusted"])
             self.assertTrue(installed["managed_stop_trusted"])
             self.assertTrue(installed["managed_scripts_present"])
@@ -103,6 +105,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
 
             config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
             self.assertIn("hooks = true", config_text)
+            self.assertIn("goals = true", config_text)
             self.assertIn("# BEGIN codex-autoresearch hook trust", config_text)
             self.assertIn("trusted_hash = \"sha256:", config_text)
             hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
@@ -118,6 +121,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertTrue(reinstalled["ready_for_future_sessions"])
             self.assertTrue(reinstalled["managed_session_start_trusted"])
             self.assertTrue(reinstalled["managed_stop_trusted"])
+            self.assertTrue(reinstalled["goals_feature_enabled_by_installer"])
             hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
             self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
             self.assertEqual(len(hooks_payload["hooks"]["Stop"]), 1)
@@ -130,6 +134,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertIn("UserPromptSubmit", hooks_payload["hooks"])
             config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
             self.assertIn("hooks = true", config_text)
+            self.assertIn("goals = false", config_text)
             self.assertNotIn("# BEGIN codex-autoresearch hook trust", config_text)
             self.assertNotIn("trusted_hash = \"sha256:", config_text)
 
@@ -301,6 +306,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
 
             config_text = (home / ".codex" / "config.toml").read_text(encoding="utf-8")
             self.assertIn("hooks = false", config_text)
+            self.assertIn("goals = false", config_text)
             self.assertNotIn("# BEGIN codex-autoresearch hook trust", config_text)
             self.assertNotIn("trusted_hash = \"sha256:", config_text)
             self.assertFalse(self.installed_hook_path(home, "autoresearch_hook_common.py").exists())
@@ -308,6 +314,29 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertFalse(self.installed_hook_path(home, "session_start.py").exists())
             self.assertFalse(self.installed_hook_path(home, "stop.py").exists())
             self.assertFalse(self.installed_hook_path(home, "autoresearch_supervisor_status.py").exists())
+
+    def test_uninstall_preserves_user_enabled_goals(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            env = self.hook_env(home)
+            (codex_home / "config.toml").write_text(
+                "[features]\ngoals = true\n",
+                encoding="utf-8",
+            )
+
+            installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            self.assertTrue(installed["ready_for_future_sessions"])
+            self.assertFalse(installed["goals_feature_enabled_by_installer"])
+
+            removed = self.run_script("autoresearch_hooks_ctl.py", "uninstall", env=env)
+            self.assertFalse(removed["ready_for_future_sessions"])
+
+            config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
+            self.assertIn("hooks = false", config_text)
+            self.assertIn("goals = true", config_text)
 
     def test_session_start_hook_requires_an_autoresearch_session_signal(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -144,7 +144,7 @@ def require_git_repo(start: Path | None = None) -> Path:
     repo = resolve_git_repo(start)
     if repo is None:
         raise AutoresearchError(
-            "Managed repos must be git repositories so codex-autoresearch can store git-local pointers."
+            "Managed repos must be git repositories so codex-autoresearch can store repo-local pointers."
         )
     return repo
 
@@ -173,7 +173,7 @@ def git_path(repo: Path, relative_path: str) -> Path:
 
 
 def repo_pointer_path(repo: Path) -> Path:
-    return git_path(repo, f"{POINTER_DIR_NAME}/{POINTER_FILE_NAME}")
+    return require_git_repo(repo) / POINTER_DIR_NAME / POINTER_FILE_NAME
 
 
 def artifact_root_from_start(start: Path | None = None) -> Path:
@@ -185,6 +185,9 @@ def artifact_root_from_start(start: Path | None = None) -> Path:
         pointer = load_repo_pointer(repo)
         if pointer is not None:
             return pointer.artifact_root
+        context = load_default_context_for_repo(repo)
+        if context is not None:
+            return context.artifact_root
         raise AutoresearchError(
             f"No codex-autoresearch pointer is available for repo {repo}. "
             "Start a new workspace-owned run or pass an explicit artifact root."
@@ -444,10 +447,31 @@ def load_canonical_context(path_or_artifact_root: Path) -> CanonicalContext | No
         return None
 
 
+def context_matches_repo(context: CanonicalContext, repo: Path) -> bool:
+    resolved_repo = repo.resolve()
+    if context.primary_repo == resolved_repo:
+        return True
+    for target in context.repo_targets:
+        raw_path = target.get("path")
+        if isinstance(raw_path, str) and Path(raw_path).expanduser().resolve() == resolved_repo:
+            return True
+    return False
+
+
+def load_default_context_for_repo(repo: Path) -> CanonicalContext | None:
+    context = load_canonical_context(default_workspace_artifacts(repo).context_path)
+    if context is None or not context_matches_repo(context, repo):
+        return None
+    return context
+
+
 def load_context_for_repo(repo: Path | None) -> CanonicalContext | None:
     pointer = load_repo_pointer(repo)
     if pointer is not None:
         return load_canonical_context(pointer.artifact_root)
+    resolved_repo = resolve_git_repo(repo)
+    if resolved_repo is not None:
+        return load_default_context_for_repo(resolved_repo)
     return None
 
 
@@ -459,20 +483,17 @@ def require_context_for_repo(repo: Path | None) -> CanonicalContext:
         raise AutoresearchError(
             f"Could not resolve codex-autoresearch pointer path for repo {resolved_repo}: {exc}"
         ) from exc
-    if not pointer_path.exists():
+    pointer = load_repo_pointer(resolved_repo)
+    if pointer is None:
+        default_context = load_default_context_for_repo(resolved_repo)
+        if default_context is not None:
+            return default_context
         legacy_error = legacy_layout_error(resolved_repo)
         if legacy_error is not None:
             raise AutoresearchError(legacy_error)
         raise AutoresearchError(
-            f"No codex-autoresearch context found for repo {resolved_repo}; expected git-local "
-            f"pointer at {pointer_path} to canonical autoresearch-results/context.json."
-        )
-
-    pointer = load_repo_pointer(resolved_repo)
-    if pointer is None:
-        raise AutoresearchError(
-            f"Invalid codex-autoresearch pointer at {pointer_path}; expected a v{POINTER_VERSION} "
-            "git-local pointer to canonical autoresearch-results/context.json."
+            f"No codex-autoresearch context found for repo {resolved_repo}; expected repo-local "
+            f"pointer at {pointer_path} or canonical autoresearch-results/context.json."
         )
 
     context_path = canonical_context_path(pointer.artifact_root)
@@ -484,15 +505,15 @@ def require_context_for_repo(repo: Path | None) -> CanonicalContext:
         )
     if context.workspace_root != pointer.workspace_root:
         raise AutoresearchError(
-            f"Git-local pointer at {pointer_path} disagrees with canonical context workspace_root."
+            f"Repo-local pointer at {pointer_path} disagrees with canonical context workspace_root."
         )
     if context.artifact_root != pointer.artifact_root:
         raise AutoresearchError(
-            f"Git-local pointer at {pointer_path} disagrees with canonical context artifact_root."
+            f"Repo-local pointer at {pointer_path} disagrees with canonical context artifact_root."
         )
     if context.primary_repo != pointer.primary_repo:
         raise AutoresearchError(
-            f"Git-local pointer at {pointer_path} disagrees with canonical context primary_repo."
+            f"Repo-local pointer at {pointer_path} disagrees with canonical context primary_repo."
         )
     return context
 
@@ -539,9 +560,12 @@ def ensure_local_exclude_entry(repo: Path, artifact_root: Path) -> bool:
     if not _path_within(artifact_root, repo):
         return False
     relative = artifact_root.resolve().relative_to(repo.resolve()).as_posix().rstrip("/") + "/"
-    exclude_path = git_path(repo, "info/exclude")
-    exclude_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = exclude_path.read_text(encoding="utf-8") if exclude_path.exists() else ""
+    try:
+        exclude_path = git_path(repo, "info/exclude")
+        exclude_path.parent.mkdir(parents=True, exist_ok=True)
+        existing = exclude_path.read_text(encoding="utf-8") if exclude_path.exists() else ""
+    except (AutoresearchError, OSError):
+        return False
     lines = [line.strip() for line in existing.splitlines() if line.strip()]
     if relative in lines:
         return False
@@ -549,7 +573,10 @@ def ensure_local_exclude_entry(repo: Path, artifact_root: Path) -> bool:
     if updated and not updated.endswith("\n"):
         updated += "\n"
     updated += relative + "\n"
-    exclude_path.write_text(updated, encoding="utf-8")
+    try:
+        exclude_path.write_text(updated, encoding="utf-8")
+    except OSError:
+        return False
     return True
 
 
@@ -584,7 +611,7 @@ def persist_run_context(
     )
     artifact_root = workspace_artifact_root(workspace_root)
     for resolved_repo in resolved_repos:
-        write_repo_pointer(
+        pointer_path = write_repo_pointer(
             repo=resolved_repo,
             workspace_root=workspace_root,
             artifact_root=artifact_root,
@@ -592,6 +619,7 @@ def persist_run_context(
             active=active,
         )
         ensure_local_exclude_entry(resolved_repo, artifact_root)
+        ensure_local_exclude_entry(resolved_repo, pointer_path.parent)
     return context_path
 
 

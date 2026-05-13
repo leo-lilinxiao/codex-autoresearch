@@ -14,6 +14,7 @@ from autoresearch_helpers import (
     cleanup_exec_state,
     decimal_to_json_number,
     format_decimal,
+    format_metadata_comment,
     legacy_layout_error,
     make_row,
     normalize_criteria_config,
@@ -274,53 +275,60 @@ def main() -> int:
     baseline_metric = parse_decimal(args.baseline_metric, "baseline metric")
     baseline_acceptance = acceptance_state(config=config, metric=baseline_metric, metrics=baseline_metrics)
 
-    comments = [f"# metric_direction: {args.direction}"]
+    comment = format_metadata_comment
+    comments = [comment("metric_direction", args.direction)]
     if args.environment_summary:
-        comments.insert(0, f"# environment: {args.environment_summary}")
+        comments.insert(0, comment("environment", args.environment_summary))
     comments.extend(
         [
-            f"# mode: {args.mode}",
-            f"# parallel: {args.parallel_mode}",
-            f"# web_search: {args.web_search}",
-            f"# workspace_root: {workspace_root}",
-            f"# artifact_root: {artifact_defaults.artifact_root}",
-            f"# primary_repo: {repo.resolve()}",
-            f"# goal: {args.goal}",
-            f"# scope: {repo_targets[0].scope}",
-            "# repos_json: "
-            + json_dumps(serialize_repo_targets(repo_targets), sort_keys=True, separators=(",", ":")),
-            f"# metric: {args.metric_name}",
-            f"# verify: {args.verify}",
-            f"# verify_cwd: {args.verify_cwd}",
-            f"# verify_format: {args.verify_format}",
-            f"# primary_metric_key: {config['primary_metric_key']}",
+            comment("mode", args.mode),
+            comment("parallel", args.parallel_mode),
+            comment("web_search", args.web_search),
+            comment("workspace_root", workspace_root),
+            comment("artifact_root", artifact_defaults.artifact_root),
+            comment("primary_repo", repo.resolve()),
+            comment("goal", args.goal),
+            comment("scope", repo_targets[0].scope),
+            comment(
+                "repos_json",
+                json_dumps(serialize_repo_targets(repo_targets), sort_keys=True, separators=(",", ":")),
+            ),
+            comment("metric", args.metric_name),
+            comment("verify", args.verify),
+            comment("verify_cwd", args.verify_cwd),
+            comment("verify_format", args.verify_format),
+            comment("primary_metric_key", config["primary_metric_key"]),
         ]
     )
     if args.run_tag:
-        comments.append(f"# run_tag: {args.run_tag}")
+        comments.append(comment("run_tag", args.run_tag))
     if args.guard:
-        comments.append(f"# guard: {args.guard}")
+        comments.append(comment("guard", args.guard))
     if args.iterations is not None:
-        comments.append(f"# iterations: {args.iterations}")
+        comments.append(comment("iterations", args.iterations))
     if args.stop_condition:
-        comments.append(f"# stop_condition: {args.stop_condition}")
+        comments.append(comment("stop_condition", args.stop_condition))
     if args.rollback_policy:
-        comments.append(f"# rollback_policy: {args.rollback_policy}")
+        comments.append(comment("rollback_policy", args.rollback_policy))
     if args.mode == "exec" or session_mode == "background":
-        comments.append(f"# execution_policy: {args.execution_policy}")
+        comments.append(comment("execution_policy", args.execution_policy))
     if required_stop_labels:
-        comments.append(f"# required_stop_labels: {', '.join(required_stop_labels)}")
+        comments.append(comment("required_stop_labels", ", ".join(required_stop_labels)))
     if required_keep_labels:
-        comments.append(f"# required_keep_labels: {', '.join(required_keep_labels)}")
+        comments.append(comment("required_keep_labels", ", ".join(required_keep_labels)))
     if acceptance_criteria:
         comments.append(
-            "# acceptance_criteria_json: "
-            + json_dumps(acceptance_criteria, sort_keys=True, separators=(",", ":"))
+            comment(
+                "acceptance_criteria_json",
+                json_dumps(acceptance_criteria, sort_keys=True, separators=(",", ":")),
+            )
         )
     if required_keep_criteria:
         comments.append(
-            "# required_keep_criteria_json: "
-            + json_dumps(required_keep_criteria, sort_keys=True, separators=(",", ":"))
+            comment(
+                "required_keep_criteria_json",
+                json_dumps(required_keep_criteria, sort_keys=True, separators=(",", ":")),
+            )
         )
 
     baseline_row = make_row(

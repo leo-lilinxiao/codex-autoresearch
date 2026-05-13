@@ -58,6 +58,8 @@ Codex: Starting background run — baseline: 47. Iterating.
 
 Each improvement stacks. Each failure reverts. Everything is logged.
 
+For background runs, start Codex from a trusted **Full Access** session. Background mode launches detached `codex exec` sessions, and those child sessions need Codex's normal home/state access in addition to the target repo. If the parent Codex session is restricted to workspace-only sandboxing, use foreground mode or restart Codex with Full Access before choosing background.
+
 See [INSTALL.md](docs/INSTALL.md) for manual copy, symlink, and user-scope options. See [GUIDE.md](docs/GUIDE.md) for the full manual.
 
 ## How It Works
