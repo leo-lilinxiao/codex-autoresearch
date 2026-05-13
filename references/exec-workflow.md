@@ -52,6 +52,22 @@ Before using `codex exec` in CI, configure Codex CLI authentication outside the 
 | Session resume | full | disabled (fresh start; prior JSON/TSV renamed to `.prev`) |
 | Execution policy | chosen during launch | `danger_full_access` by default, `workspace_write` only when explicitly requested |
 
+## Mandatory Run Order
+
+Exec mode is still a managed autoresearch run. The machine-readable JSON is a report of the helper-backed audit trail, not a replacement for it.
+
+1. Measure the baseline with the configured `Verify` command.
+2. Call `python3 <skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root> --mode exec ...` before the first edit. Let it archive any prior results/state.
+3. Make one focused change.
+4. Create the scoped trial commit.
+5. Run `Verify`, then `Guard` if configured.
+6. Call `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...` with the actual clean HEAD commit.
+7. Emit the JSON iteration line only after the helper records that row.
+8. Repeat until the iteration cap or target is reached.
+9. Run `python3 <skill-root>/scripts/autoresearch_exec_state.py --cleanup` as the final helper step, then emit the completion JSON.
+
+This order is mandatory. Do not hand-write iteration JSON from memory. A kept exec iteration with `commit: null`, an uncommitted worktree, or no helper-recorded row is invalid even if the metric improved.
+
 ## JSON Output Format
 
 ### Per-Iteration Line (stdout)

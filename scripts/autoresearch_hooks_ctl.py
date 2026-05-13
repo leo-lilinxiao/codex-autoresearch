@@ -29,6 +29,9 @@ CONTEXT_SCRIPT_NAME = "autoresearch_hook_context.py"
 MANIFEST_FILE_NAME = "manifest.json"
 SESSION_STATUS_MESSAGE = "codex-autoresearch SessionStart hook"
 STOP_STATUS_MESSAGE = "codex-autoresearch Stop hook"
+RECOMMENDED_LAUNCH_COMMAND = (
+    "codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox"
+)
 SESSION_TIMEOUT_SECONDS = 5
 STOP_TIMEOUT_SECONDS = 10
 HOOK_TRUST_BLOCK_BEGIN = "# BEGIN codex-autoresearch hook trust"
@@ -181,6 +184,163 @@ def parse_feature_value(text: str, key: str) -> bool | None:
         return None
     value = features.get(key)
     return value if isinstance(value, bool) else None
+
+
+def parse_config_string_value(text: str, key: str) -> str | None:
+    payload = parse_toml_config(text)
+    value = payload.get(key)
+    return value if isinstance(value, str) else None
+
+
+def current_process_command(pid: int) -> str | None:
+    try:
+        import subprocess
+
+        output = subprocess.check_output(
+            ["ps", "-p", str(pid), "-o", "args="],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except Exception:
+        return None
+    command = output.strip()
+    return command or None
+
+
+def current_process_parent(pid: int) -> int | None:
+    try:
+        import subprocess
+
+        output = subprocess.check_output(
+            ["ps", "-p", str(pid), "-o", "ppid="],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except Exception:
+        return None
+    stripped = output.strip()
+    if not stripped:
+        return None
+    try:
+        parent = int(stripped.split()[0])
+    except (IndexError, ValueError):
+        return None
+    return parent if parent > 1 and parent != pid else None
+
+
+def parent_process_commands(*, start_pid: int | None = None, limit: int = 12) -> list[str]:
+    if os.name == "nt":
+        return []
+    commands: list[str] = []
+    pid = start_pid if start_pid is not None else os.getpid()
+    for _ in range(limit):
+        command = current_process_command(pid)
+        if command:
+            commands.append(command)
+        parent = current_process_parent(pid)
+        if parent is None:
+            break
+        pid = parent
+    return commands
+
+
+def split_process_command(command: str) -> list[str]:
+    try:
+        return shlex.split(command)
+    except ValueError:
+        return command.split()
+
+
+def is_interactive_codex_invocation(argv: list[str]) -> bool:
+    if not argv:
+        return False
+    executable = Path(argv[0]).name
+    if executable != "codex":
+        return False
+    return not any(arg in {"app-server", "mcp-server", "remote-control"} for arg in argv[1:3])
+
+
+def parse_codex_launch_overrides(argv: list[str]) -> dict[str, bool | None]:
+    overrides: dict[str, bool | None] = {
+        "goals_feature": None,
+        "hooks_feature": None,
+        "danger_full_access": None,
+    }
+    index = 1
+    while index < len(argv):
+        arg = argv[index]
+        next_arg = argv[index + 1] if index + 1 < len(argv) else None
+
+        feature_value: str | None = None
+        feature_enabled: bool | None = None
+        if arg == "--enable" and next_arg is not None:
+            feature_value = next_arg
+            feature_enabled = True
+            index += 1
+        elif arg.startswith("--enable="):
+            feature_value = arg.split("=", 1)[1]
+            feature_enabled = True
+        elif arg == "--disable" and next_arg is not None:
+            feature_value = next_arg
+            feature_enabled = False
+            index += 1
+        elif arg.startswith("--disable="):
+            feature_value = arg.split("=", 1)[1]
+            feature_enabled = False
+
+        if feature_value is not None and feature_enabled is not None:
+            if feature_value == GOALS_FEATURE_KEY:
+                overrides["goals_feature"] = feature_enabled
+            elif feature_value == HOOKS_FEATURE_KEY:
+                overrides["hooks_feature"] = feature_enabled
+
+        if arg == "--dangerously-bypass-approvals-and-sandbox":
+            overrides["danger_full_access"] = True
+        elif arg in {"--sandbox", "-s"} and next_arg is not None:
+            overrides["danger_full_access"] = next_arg == "danger-full-access"
+            index += 1
+        elif arg.startswith("--sandbox=") or arg.startswith("-s="):
+            overrides["danger_full_access"] = arg.split("=", 1)[1] == "danger-full-access"
+        elif arg in {"--config", "-c"} and next_arg is not None:
+            if next_arg in {
+                f"{FEATURE_SECTION}.{GOALS_FEATURE_KEY}=true",
+                f"{FEATURE_SECTION}.{GOALS_FEATURE_KEY}=false",
+            }:
+                overrides["goals_feature"] = next_arg.endswith("=true")
+            elif next_arg in {
+                f"{FEATURE_SECTION}.{HOOKS_FEATURE_KEY}=true",
+                f"{FEATURE_SECTION}.{HOOKS_FEATURE_KEY}=false",
+            }:
+                overrides["hooks_feature"] = next_arg.endswith("=true")
+            elif next_arg in {
+                'sandbox_mode="danger-full-access"',
+                "sandbox_mode='danger-full-access'",
+            }:
+                overrides["danger_full_access"] = True
+            index += 1
+
+        index += 1
+    return overrides
+
+
+def current_codex_launch() -> dict[str, Any]:
+    for command in parent_process_commands():
+        argv = split_process_command(command)
+        if not is_interactive_codex_invocation(argv):
+            continue
+        overrides = parse_codex_launch_overrides(argv)
+        return {
+            "codex_process_detected": True,
+            "goals_feature_override": overrides["goals_feature"],
+            "hooks_feature_override": overrides["hooks_feature"],
+            "danger_full_access_override": overrides["danger_full_access"],
+        }
+    return {
+        "codex_process_detected": False,
+        "goals_feature_override": None,
+        "hooks_feature_override": None,
+        "danger_full_access_override": None,
+    }
 
 
 def set_toml_boolean(text: str, *, section: str, key: str, value: bool) -> str:
@@ -344,7 +504,10 @@ def trusted_hashes_from_config_text(text: str) -> dict[str, str]:
 def remove_hook_state_tables_for_keys(text: str, keys: set[str]) -> str:
     if not keys:
         return text
-    headers = {f"[hooks.state.{toml_string(key)}]" for key in keys}
+    headers: set[str] = set()
+    for key in keys:
+        headers.add(f"[hooks.state.{toml_string(key)}]")
+        headers.add(f"[hooks.{toml_string('state')}.{toml_string(key)}]")
     rendered_lines: list[str] = []
     skip_table = False
     table_header_pattern = re.compile(r"^\s*\[.*\]\s*(?:#.*)?$")
@@ -365,28 +528,55 @@ def remove_hook_state_tables_for_keys(text: str, keys: set[str]) -> str:
     return rendered + "\n" if rendered else ""
 
 
-def remove_autoresearch_hook_trust_state(text: str, *, keys: set[str] | None = None) -> str:
-    without_block = re.sub(
-        rf"(?ms)^\s*{re.escape(HOOK_TRUST_BLOCK_BEGIN)}\n.*?^\s*{re.escape(HOOK_TRUST_BLOCK_END)}\n?",
-        "",
-        text,
+def strip_autoresearch_trust_markers(text: str) -> str:
+    lines = [
+        line
+        for line in text.splitlines()
+        if line.strip() not in {HOOK_TRUST_BLOCK_BEGIN, HOOK_TRUST_BLOCK_END}
+    ]
+    rendered = "\n".join(lines).rstrip()
+    return rendered + "\n" if rendered else ""
+
+
+def key_is_managed_hook_state_event(key: str) -> bool:
+    prefixes = (
+        f"{hooks_path()}:session_start:",
+        f"{hooks_path()}:stop:",
     )
-    without_tables = remove_hook_state_tables_for_keys(without_block, keys or set())
+    return key.startswith(prefixes)
+
+
+def remove_autoresearch_hook_trust_state(
+    text: str,
+    *,
+    keys: set[str] | None = None,
+    trusted_hashes: set[str] | None = None,
+) -> str:
+    keys_to_remove = set(keys or set())
+    if trusted_hashes:
+        for key, trusted_hash in trusted_hashes_from_config_text(text).items():
+            if trusted_hash in trusted_hashes and key_is_managed_hook_state_event(key):
+                keys_to_remove.add(key)
+    without_markers = strip_autoresearch_trust_markers(text)
+    without_tables = remove_hook_state_tables_for_keys(without_markers, keys_to_remove)
     rendered = without_tables.rstrip()
     return rendered + "\n" if rendered else ""
 
 
 def set_toml_hook_trust_state(text: str, entries: dict[str, str]) -> str:
-    cleaned = remove_autoresearch_hook_trust_state(text, keys=set(entries))
+    cleaned = remove_autoresearch_hook_trust_state(
+        text,
+        keys=set(entries),
+        trusted_hashes=set(entries.values()),
+    )
     if not entries:
         return cleaned
-    block_lines = [HOOK_TRUST_BLOCK_BEGIN]
+    block_lines: list[str] = []
     for index, key in enumerate(sorted(entries)):
         if index:
             block_lines.append("")
         block_lines.append(f"[hooks.state.{toml_string(key)}]")
         block_lines.append(f"trusted_hash = {toml_string(entries[key])}")
-    block_lines.append(HOOK_TRUST_BLOCK_END)
     block = "\n".join(block_lines) + "\n"
     cleaned = cleaned.rstrip()
     return f"{cleaned}\n\n{block}" if cleaned else block
@@ -546,6 +736,20 @@ def status() -> dict[str, Any]:
     config_text = read_text(config_path())
     hooks_feature_enabled = parse_feature_value(config_text, HOOKS_FEATURE_KEY) is True
     goals_feature_enabled = parse_feature_value(config_text, GOALS_FEATURE_KEY) is True
+    config_full_access = parse_config_string_value(config_text, "sandbox_mode") == "danger-full-access"
+    launch = current_codex_launch()
+    launch_goals = launch["goals_feature_override"]
+    launch_hooks = launch["hooks_feature_override"]
+    launch_full_access = launch["danger_full_access_override"]
+    current_goals_feature_enabled = (
+        bool(launch_goals) if launch_goals is not None else goals_feature_enabled
+    )
+    current_hooks_feature_enabled = (
+        bool(launch_hooks) if launch_hooks is not None else hooks_feature_enabled
+    )
+    current_full_access = (
+        bool(launch_full_access) if launch_full_access is not None else config_full_access
+    )
     hooks_payload = normalize_hooks_payload(
         load_json_file(hooks_path(), default={"hooks": {}})
     )
@@ -575,6 +779,38 @@ def status() -> dict[str, Any]:
             manifest.get("feature_enabled_by_installer"),
         )
     )
+    persistent_setup_ready = (
+        hooks_feature_enabled
+        and goals_feature_enabled
+        and managed_session
+        and managed_stop
+        and managed_session_trusted
+        and managed_stop_trusted
+        and all(path.exists() for path in managed_paths)
+    )
+    persistent_setup_missing: list[str] = []
+    if not goals_feature_enabled:
+        persistent_setup_missing.append("goals_feature")
+    if not hooks_feature_enabled:
+        persistent_setup_missing.append("hooks_feature")
+    if not managed_session or not session_script_path().exists():
+        persistent_setup_missing.append("session_start_hook")
+    if not managed_stop or not stop_script_path().exists():
+        persistent_setup_missing.append("stop_hook")
+    if managed_session and not managed_session_trusted:
+        persistent_setup_missing.append("session_start_hook_trust")
+    if managed_stop and not managed_stop_trusted:
+        persistent_setup_missing.append("stop_hook_trust")
+    if not all(path.exists() for path in managed_paths):
+        persistent_setup_missing.append("managed_scripts")
+
+    startup_tip_reasons: list[str] = []
+    if not current_goals_feature_enabled:
+        startup_tip_reasons.append("goals_not_enabled")
+    if not current_hooks_feature_enabled:
+        startup_tip_reasons.append("hooks_not_enabled")
+    if not current_full_access:
+        startup_tip_reasons.append("full_access_not_enabled")
 
     return {
         "supported": os.name != "nt",
@@ -582,10 +818,13 @@ def status() -> dict[str, Any]:
         "config_path": str(config_path()),
         "hooks_path": str(hooks_path()),
         "managed_dir": str(hooks_home()),
-        "feature_enabled": hooks_feature_enabled,
         "hooks_feature_enabled": hooks_feature_enabled,
         "goals_feature_enabled": goals_feature_enabled,
-        "feature_enabled_by_installer": hooks_feature_enabled_by_installer,
+        "config_full_access": config_full_access,
+        "current_launch": launch,
+        "current_session_goals_feature_enabled": current_goals_feature_enabled,
+        "current_session_hooks_feature_enabled": current_hooks_feature_enabled,
+        "current_session_full_access": current_full_access,
         "hooks_feature_enabled_by_installer": hooks_feature_enabled_by_installer,
         "goals_feature_enabled_by_installer": bool(
             manifest.get("goals_feature_enabled_by_installer")
@@ -602,15 +841,11 @@ def status() -> dict[str, Any]:
         "other_hook_groups_present": count_all_hook_groups(hooks_payload)
         - int(managed_session)
         - int(managed_stop),
-        "ready_for_future_sessions": (
-            hooks_feature_enabled
-            and goals_feature_enabled
-            and managed_session
-            and managed_stop
-            and managed_session_trusted
-            and managed_stop_trusted
-            and all(path.exists() for path in managed_paths)
-        ),
+        "persistent_setup_ready": persistent_setup_ready,
+        "persistent_setup_missing": persistent_setup_missing,
+        "startup_tip_needed": bool(startup_tip_reasons),
+        "startup_tip_reasons": startup_tip_reasons,
+        "recommended_launch_command": RECOMMENDED_LAUNCH_COMMAND,
     }
 
 
@@ -719,9 +954,6 @@ def uninstall() -> dict[str, Any]:
             manifest.get("feature_enabled_by_installer"),
         )
     )
-    goals_feature_enabled_by_installer = bool(
-        manifest.get("goals_feature_enabled_by_installer")
-    )
 
     payload = normalize_hooks_payload(load_json_file(hooks_path(), default={"hooks": {}}))
     trust_entries = managed_hook_trust_entries_from_payload(payload)
@@ -757,19 +989,13 @@ def uninstall() -> dict[str, Any]:
     updated_config = remove_autoresearch_hook_trust_state(
         config_before,
         keys=set(trust_entries),
+        trusted_hashes=set(trust_entries.values()),
     )
     if hooks_feature_enabled_by_installer and count_all_hook_groups(payload) == 0:
         updated_config = set_toml_boolean(
             updated_config,
             section=FEATURE_SECTION,
             key=HOOKS_FEATURE_KEY,
-            value=False,
-        )
-    if goals_feature_enabled_by_installer:
-        updated_config = set_toml_boolean(
-            updated_config,
-            section=FEATURE_SECTION,
-            key=GOALS_FEATURE_KEY,
             value=False,
         )
     config_backup = None

@@ -34,6 +34,15 @@ Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch),
 
 ## Quick Start
 
+> [!IMPORTANT]
+> Start Codex with Goals, hooks, and Full Access enabled:
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> Use this before starting autoresearch for the smoothest foreground and background experience.
+
 ```text
 # Install in Codex (recommended)
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
@@ -58,7 +67,7 @@ Codex: Starting background run — baseline: 47. Iterating.
 
 Each improvement stacks. Each failure reverts. Everything is logged.
 
-For background runs, start Codex from a trusted **Full Access** session. Background mode launches detached `codex exec` sessions, and those child sessions need Codex's normal home/state access in addition to the target repo. If the parent Codex session is restricted to workspace-only sandboxing, use foreground mode or restart Codex with Full Access before choosing background.
+For background runs, start Codex from a trusted **Full Access** session. If Codex is restricted to workspace-only sandboxing, use foreground mode or restart with Full Access before choosing background.
 
 See [INSTALL.md](docs/INSTALL.md) for manual copy, symlink, and user-scope options. See [GUIDE.md](docs/GUIDE.md) for the full manual.
 
@@ -114,7 +123,7 @@ You don't write config. Codex infers everything from your sentence and your repo
 | Metric | Proposes based on goal + tooling | any count (current: 47) |
 | Direction | Infers from "improve" / "reduce" / "eliminate" | lower |
 | Verify | Matches to repo tooling | `grep` count + `tsc --noEmit` |
-| Guard | Suggests if regression risk exists | `npm test` |
+| Guard | Suggests a baseline-passing regression check | `npm test` |
 
 Before starting, Codex always shows what it found and asks you to confirm. Then you choose foreground or background and say "go."
 By default, the Results directory stays in the launch context: if you started Codex inside a git repo, that repo root is the default workspace root; if you started outside a git repo, the current launch directory is the default workspace root. Codex should not silently widen that to a parent directory unless you explicitly confirm a broader multi-repo workspace. The confirmation summary should always show the chosen Results directory before launch.

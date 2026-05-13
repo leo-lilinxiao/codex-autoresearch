@@ -34,6 +34,15 @@
 
 ## 快速上手
 
+> [!IMPORTANT]
+> 推荐用 Goals、hooks 和 Full Access 启动 Codex：
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> 开始 autoresearch 前先用这个命令启动，foreground 和 background 体验最完整。
+
 ```text
 # 在 Codex 中安装（推荐）
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
@@ -56,7 +65,7 @@ Codex: 在 src/**/*.ts 中找到 47 个 `any`。
 Codex: 开始后台运行 -- 基线：47。持续迭代中。
 ```
 
-后台运行请从可信的 **Full Access** Codex 会话启动。background 会启动分离的 `codex exec` 子会话；除了目标仓库，它们还需要访问 Codex 自己的 home/state。如果父会话限制在 workspace-only sandbox，请使用 foreground，或先用 Full Access 重启 Codex 后再选择 background。
+后台运行请从可信的 **Full Access** Codex 会话启动。如果 Codex 限制在 workspace-only sandbox，请使用 foreground，或先用 Full Access 重启后再选择 background。
 
 改善累积，失败回滚，全程记录。
 
@@ -114,7 +123,7 @@ Codex: 开始后台运行 -- 基线：47。持续迭代中。
 | 指标 | 基于目标 + 工具链提出 | any 计数（当前：47） |
 | 方向 | 从 "改善" / "减少" / "消除" 推断 | 降低 |
 | 验证命令 | 匹配仓库工具链 | `grep` 计数 + `tsc --noEmit` |
-| 守护 | 如果存在回归风险则建议 | `npm test` |
+| 守护 | 建议一个基线已通过的回归检查 | `npm test` |
 
 开始之前，Codex 总是展示它发现的内容并请求确认。然后你选 foreground 或 background，说 "go"。
 默认情况下，Results 目录应留在当前启动上下文里：如果你是在 git 仓库内启动 Codex，该仓库根目录就是默认的 workspace root；如果你是在 git 仓库外启动 Codex，当前启动目录就是默认的 workspace root。除非你明确确认要使用更大的多仓库 workspace，否则 Codex 不应该静默把它上推到父目录。启动前的确认摘要也应始终展示最终选择的 Results 目录。

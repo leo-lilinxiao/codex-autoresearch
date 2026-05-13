@@ -34,6 +34,15 @@ Inspiré par [autoresearch de Karpathy](https://github.com/karpathy/autoresearch
 
 ## Démarrage rapide
 
+> [!IMPORTANT]
+> Démarrez Codex avec Goals, hooks et Full Access activés :
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> Utilisez cette commande avant autoresearch pour l'expérience foreground et background la plus fluide.
+
 ```text
 # Installation dans Codex (recommandée)
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
@@ -56,7 +65,7 @@ Vous:  Background, go. Laisse tourner toute la nuit.
 Codex: Lancement en arrière-plan — référence : 47. Itération en cours.
 ```
 
-Pour les exécutions background, démarrez Codex depuis une session **Full Access** de confiance. Le mode background lance des sessions `codex exec` détachées qui ont besoin de l'accès normal au home/state de Codex en plus du repo cible. Si la session parente est limitée à un sandbox workspace-only, utilisez foreground ou redémarrez Codex en Full Access avant de choisir background.
+Pour les exécutions background, démarrez Codex depuis une session **Full Access** de confiance. Si Codex est limité à un sandbox workspace-only, utilisez foreground ou redémarrez en Full Access avant de choisir background.
 
 Chaque amélioration s'accumule. Chaque échec est annulé. Tout est journalisé.
 
@@ -114,7 +123,7 @@ Pas besoin d'écrire de configuration. Codex infère tout à partir de votre phr
 | Métrique | Propose en fonction de l'objectif + outillage | nombre de any (actuel : 47) |
 | Direction | Déduit de « améliorer » / « réduire » / « éliminer » | diminuer |
 | Vérification | Associe à l'outillage du dépôt | comptage `grep` + `tsc --noEmit` |
-| Guard | Suggère si un risque de régression existe | `npm test` |
+| Guard | Suggère un contrôle de régression qui passe déjà au baseline | `npm test` |
 
 Avant de commencer, Codex montre toujours ce qu'il a trouvé et demande confirmation. Ensuite vous choisissez foreground ou background et dites « go ».
 Par défaut, le répertoire Results reste dans le contexte de lancement : si vous avez démarré Codex dans un dépôt git, la racine de ce dépôt est le workspace root par défaut ; si vous l'avez démarré hors d'un dépôt git, le répertoire de lancement courant est le workspace root par défaut. Codex ne doit pas l'élargir silencieusement à un répertoire parent sauf si vous confirmez explicitement un workspace multi-repo plus large. Le récapitulatif de confirmation doit toujours afficher le répertoire Results choisi avant le lancement.
