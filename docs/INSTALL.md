@@ -10,6 +10,15 @@
 - Python 3.11+ for the bundled helper scripts.
 - A working `codex` CLI in `PATH` for managed background runs and `exec` mode.
 
+> [!IMPORTANT]
+> Recommended launch command:
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> Use this before starting autoresearch for the smoothest foreground and background experience.
+
 ## Install
 
 ### Via Skill Installer (recommended)
@@ -77,9 +86,9 @@ Expected behavior:
 - loads the relevant workflow for the request,
 - and collects any missing fields via the wizard.
 
-## Required Session Hooks
+## Codex Integration
 
-The interactive skill requires these user-level Codex session hooks and auto-installs or repairs them right after the initial repo scan whenever `autoresearch_hooks_ctl.py status` is not ready for future sessions. This bootstrap happens before the first clarification question. If you want to preinstall or inspect them manually:
+Autoresearch includes a small Codex integration for continuity across reopen, resume, stop, and background handoff. The skill prepares it automatically after it scans the repo and before it asks launch questions. You normally do not need to run anything yourself. If you want to preinstall or inspect it manually:
 
 ```bash
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
@@ -91,19 +100,16 @@ Inspect the current state first if you want:
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py status
 ```
 
-What they do:
+What it does:
 
-- `SessionStart` reinjects the short runtime checklist when a future session starts or resumes.
+- `SessionStart` restores the short runtime checklist when you reopen or resume an autoresearch run.
 - `Stop` lets Codex continue only when the autoresearch run still looks active/resumable.
 
 Important:
 
-- For the interactive skill, these hooks are required bootstrap infrastructure and are installed automatically when needed.
-- Hooks only attach to later Codex sessions that clearly look like `codex-autoresearch` work. They do not retroactively change the currently open foreground session, and unrelated Codex conversations in the same repo are left alone.
-- If the skill just installed them in the current session, `background` can use them immediately.
-- The currently open foreground session will not use them mid-session. To get hooks there, reopen/resume the same thread in a new Codex session. In the CLI this is often `codex resume`; in the app, reopen the same thread in a new session.
-- Managed `background` runs explicitly pass the workspace-owned Results directory into nested sessions.
-- Future `foreground` sessions can also recover the run context through the repo-local pointer, but hooks still require an explicit autoresearch session signal before they attach.
+- They only attach to conversations that clearly look like `codex-autoresearch` work; unrelated Codex conversations in the same repo are left alone.
+- The recommended launch command above gives both foreground and background runs the intended capabilities from the start.
+- Managed `background` runs keep their workspace-owned Results directory attached automatically.
 
 ## Updating
 

@@ -21,7 +21,7 @@ Use this mode when the user wants the system repaired, not just diagnosed.
 | Flag | Purpose |
 |------|---------|
 | `--target "<command>"` | Explicit verify command |
-| `--guard "<command>"` | Safety command that must always pass |
+| `--guard "<command>"` | Baseline-passing regression command; do not use a currently failing target as guard |
 | `--scope "<glob>"` | Limit editable files |
 | `--category test|type|lint|build|bug` | Only fix one category |
 | `--skip-lint` | Ignore lint-only issues |
@@ -34,7 +34,7 @@ If `Target` or `Scope` is missing, collect:
 
 - what to fix,
 - scope,
-- guard command (optional),
+- guard command (optional; only for checks that already pass at baseline),
 - launch choice.
 
 ## Phases
@@ -78,7 +78,7 @@ Re-run the target command and compare the error count.
 
 ### Phase 6: Guard
 
-Run the guard if configured.
+Run the guard if configured. A command that fails at baseline belongs in the target/verify path or final acceptance check, not in guard.
 
 ### Phase 7: Decide
 

@@ -34,6 +34,15 @@ Inspiriert von [Karpathys autoresearch](https://github.com/karpathy/autoresearch
 
 ## Schnellstart
 
+> [!IMPORTANT]
+> Starte Codex mit aktivierten Goals, hooks und Full Access:
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> Nutze dies vor autoresearch, damit foreground und background am reibungslosesten funktionieren.
+
 ```text
 # In Codex installieren (empfohlen)
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
@@ -56,7 +65,7 @@ Du:    Background, go. Lass es über Nacht laufen.
 Codex: Starte Hintergrundlauf — Baseline: 47. Iteriere.
 ```
 
-Starten Sie Background-Läufe aus einer vertrauenswürdigen **Full Access** Codex-Sitzung. Background startet abgekoppelte `codex exec`-Kind-Sitzungen; diese brauchen neben dem Ziel-Repo auch normalen Zugriff auf Codex' eigenes home/state. Wenn die übergeordnete Sitzung auf einen workspace-only sandbox beschränkt ist, nutzen Sie foreground oder starten Codex mit Full Access neu, bevor Sie background wählen.
+Starten Sie Background-Läufe aus einer vertrauenswürdigen **Full Access** Codex-Sitzung. Wenn Codex auf einen workspace-only sandbox beschränkt ist, nutzen Sie foreground oder starten Sie mit Full Access neu, bevor Sie background wählen.
 
 Jede Verbesserung baut auf. Jeder Fehlschlag wird zurückgesetzt. Alles wird protokolliert.
 
@@ -114,7 +123,7 @@ Sie schreiben keine Konfiguration. Codex leitet alles aus Ihrem Satz und Ihrem R
 | Metrik | Schlägt basierend auf Ziel + Tooling vor | any-Anzahl (aktuell: 47) |
 | Richtung | Leitet ab aus „verbessern" / „reduzieren" / „eliminieren" | niedriger |
 | Verifikation | Ordnet dem Repo-Tooling zu | `grep`-Zählung + `tsc --noEmit` |
-| Guard | Schlägt vor, wenn Regressionsrisiko besteht | `npm test` |
+| Guard | Schlägt eine bereits in der Baseline bestehende Regressionsprüfung vor | `npm test` |
 
 Vor dem Start zeigt Codex immer, was er gefunden hat, und bittet um Bestätigung. Dann wählen Sie foreground oder background und sagen „go".
 Standardmäßig bleibt das Results-Verzeichnis im Startkontext: Wenn Sie Codex in einem Git-Repo gestartet haben, ist dessen Repo-Root der Standard-Workspace-Root; wenn Sie Codex außerhalb eines Git-Repos gestartet haben, ist das aktuelle Startverzeichnis der Standard-Workspace-Root. Codex sollte dies nicht stillschweigend auf ein übergeordnetes Verzeichnis ausweiten, es sei denn, Sie bestätigen ausdrücklich einen größeren Multi-Repo-Workspace. Die Bestätigungsübersicht sollte vor dem Start immer das gewählte Results-Verzeichnis anzeigen.

@@ -8,22 +8,23 @@ The user says one sentence. Codex figures out the rest through guided conversati
 
 When this file mentions `<skill-root>`, it means the directory containing the loaded `SKILL.md`.
 
-**Clarify First: The Ask-Before-Act Protocol.** Codex ALWAYS scans the repo and asks at least one round of clarifying questions before starting any loop, even if all fields seem inferable. No exceptions. A 30-second confirmation is always cheaper than 50 wasted iterations in the wrong direction.
+**Clarify First.** For new interactive launches, scan the repo and ask at least one repo-grounded confirmation round before starting the loop. This confirmation round is mandatory. The user should stay in control without learning the internal config shape.
 
 ## Global Rules
 
 1. Accept natural language input. The user's first message may be as short as "improve my test coverage" or "make training faster".
 2. Scan the repo before asking anything -- read directory structure, key config files, scripts, and code relevant to the user's goal.
-3. ALWAYS ask at least one round of clarifying questions, even when you think you can infer everything. Show the user what you found and what you plan to do. Let them confirm or correct.
+3. Ask at least one round of clarifying questions before launch. Show what you found and what you plan to do, then let the user confirm or correct it.
 4. Guide the user through conversation. Ask one question at a time (or batch tightly related ones). Each question must be specific and grounded in what you found in the repo.
 5. Propose concrete defaults with every question. Let the user confirm or correct.
-6. Aim to finish clarification in 1 to 3 rounds. Ask more only when a real blocker remains, and never exceed 5 rounds. Never skip clarification entirely.
+6. Aim to finish clarification in 1 to 3 rounds. Ask more only when a real blocker remains; avoid turning setup into a questionnaire.
 7. Present a structured confirmation summary before launching (see Confirmation Format below).
-8. The mandatory confirmation round must never collapse into a bare "foreground/background + go" prompt. Even if the only unresolved choice is run mode, first show a short repo-grounded summary of the confirmed goal, metric, verify path, and next step.
+8. Do not collapse confirmation into a bare "foreground/background + go" prompt. Even when run mode is the only remaining choice, first show a short repo-grounded summary of the goal, metric, verify path, and next step.
 9. The user should never see raw field names (Goal, Scope, Metric, Direction, Verify, Guard). Translate everything into natural conversation.
 10. After the user approves the summary, follow the chosen run mode directly from the same skill entrypoint. Foreground stays in the current session; background persists the confirmed launch manifest and starts the runtime controller. Do not tell the user to switch to a different wrapper command.
 11. End the confirmation summary with a short runtime checklist that reinforces execution order: baseline first, then initialize artifacts, and always log a completed experiment before starting the next one.
-12. For every new interactive foreground/background run, immediately after the initial repo scan check `python3 <skill-root>/scripts/autoresearch_hooks_ctl.py status`. If the status is not ready for future sessions, automatically install or repair the managed hooks and required Codex feature flags before clarification continues. Do not turn this into a separate approval step. If hooks were just installed in the current session, keep one short mode-shaping note ready: `background` can use them immediately, while the current `foreground` session would need a new Codex session / reopened thread to pick them up.
+12. After the initial repo scan, check `python3 <skill-root>/scripts/autoresearch_hooks_ctl.py status`. If the managed integration is missing, stale, disabled, or untrusted, install or update it before clarification continues. Treat this as internal preparation; keep setup details out of the user-facing summary unless a setup failure blocks launch. Use model-visible goal tools when they are actually available.
+13. Capture the first status response's `startup_tip_needed` value before any install/update. If true, show one product-facing startup tip in the confirmation summary: "For the smoothest long-running runs, start Codex with `codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox`." Do not expose status field names or claim to have detected the exact shell command.
 
 ## Clarification Protocol
 
@@ -31,13 +32,13 @@ When this file mentions `<skill-root>`, it means the directory containing the lo
 
 Read the repo to understand what exists -- source files, training scripts, config files, test suites, build systems, CI configs, etc. Check manifest files (`package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, etc.) to understand the stack before asking about it.
 
-Immediately after this scan, check `autoresearch_hooks_ctl.py status` for every new interactive run. If the status is not ready for future sessions, automatically install or repair the managed hooks and required Codex feature flags before asking the next clarification question.
+Immediately after this scan, run the integration check from the global rules. If setup work is needed, do it silently before asking the next clarification question. Do not infer current-session goal-tool availability from saved integration state; use model-visible goal tools when they are actually available. If the first status says `startup_tip_needed: true`, keep that decision even if install later updates persistent files, mention the tip once in the confirmation summary, then continue the normal wizard.
 
 When model-visible goal tools are available, call `get_goal` before the confirmation summary. If an existing official goal cannot be reused for the proposed autoresearch objective, include that conflict in the summary before the user chooses foreground.
 
-### Step 2: Guided Questions (MANDATORY -- at least 1 round)
+### Step 2: Guided Questions (required)
 
-ALWAYS ask at least one round of questions, even when the goal seems obvious. Use the optional question appendix below only when you need help choosing the shortest useful question set for the situation.
+Ask at least one round of questions, even when the goal seems obvious. Use the optional question appendix below only when you need help choosing the shortest useful question set for the situation.
 
 | What you need | Bad (skipping) | Good (confirming) |
 |---------------|----------------|-------------------|
@@ -99,9 +100,10 @@ Before launching, present a structured confirmation summary. The user should be 
 7. Keep the base template minimal. Add optional blocks only when they are genuinely needed.
 8. Only show "Required keep labels" and/or "Required stop labels" when the goal truly has structural success requirements beyond the numeric target.
 9. Keep the runtime checklist short. It exists to reinforce execution order, not to restate the whole protocol.
-10. Only show the optional hooks note when hooks were just installed in the current session and the mode choice would otherwise be misleading.
+10. Do not include integration setup details in the normal confirmation summary. Mention them only when a setup failure blocks the selected run mode.
 11. When the run tracks multiple metrics, show the additional thresholds in plain language (e.g., "Also keeping: hard_conflicts == 0") rather than exposing internal field names. Omit this line entirely for single-metric runs.
 12. Always show the `Results directory`. If it is the default `./autoresearch-results/` under the launch context, the relative form is fine. If it lives outside the launch context or outside the primary repo, show the absolute path and make that widening explicit before launch.
+13. If the startup tip is shown, keep it outside the confirmed run config so users do not confuse it with an internal requirement for this specific run.
 
 The user replies "go", "start", "launch", or corrects something. No field names, no YAML, no structured input required.
 
@@ -110,8 +112,7 @@ The user replies "go", "start", "launch", or corrects something. No field names,
 When the user replies with launch approval (`go`, `start`, `launch`, or an equivalent clear confirmation):
 
 1. Require an explicit run-mode choice: **foreground** or **background**.
-2. By handoff time, hooks should already have been checked and auto-installed immediately after the initial repo scan.
-   - If hooks were just installed in the current session, surface the short mode-shaping note **before** the user chooses `foreground` or `background`: `background` can use them immediately, while the current `foreground` session would need a new Codex session / reopened thread to pick them up.
+2. By handoff time, the managed integration check should already be complete. Keep setup details out of the user-facing handoff unless a setup failure blocks the selected run mode.
 3. If the user chose **foreground**, keep the loop in the current Codex session:
    - when model-visible goal tools are available, align the official Codex goal before initialization: call `get_goal`, reuse a matching non-complete current goal, or call `create_goal` with the confirmed objective when no goal exists
    - if an existing official goal cannot be reused, do not create another goal; surface that conflict in the confirmation summary before launch and let the user resolve it there
@@ -119,7 +120,6 @@ When the user replies with launch approval (`go`, `start`, `launch`, or an equiv
    - do not create `autoresearch-results/launch.json`, `autoresearch-results/runtime.json`, or `autoresearch-results/runtime.log`
    - keep the runtime checklist active: baseline first, then log every completed experiment before the next one starts
    - mark the official Codex goal complete only when the configured autoresearch success condition is actually met; hard blockers and user interruptions are not complete goals
-   - if hooks were just installed in this current session, remind the user once that this specific foreground session will not pick them up mid-session; reopening/resuming the same thread in a new session is the path if they want hooks there
    - report that the foreground run has started in the current session
 4. If the user chose **background**, persist the confirmed config to `autoresearch-results/launch.json`, start the detached runtime controller, and report the Results directory. The wizard supplies the confirmed `--workspace-root <workspace_root>` internally; users should not have to type it.
    - the nested background session must receive the same runtime checklist, especially the "log before the next experiment" rule
@@ -160,6 +160,7 @@ Use this appendix only when you need help choosing the shortest useful question 
 - "Should I make sure `tsc --noEmit` still passes after each change, so we don't introduce type errors?"
 - "The build takes 3 minutes. Should I use it as the guard, or is there a faster smoke test?"
 - "I found `npm test` and `npm run lint` -- should I guard with both, or just tests?"
+- If a command fails at baseline and is part of the user's repair target, present it as the verify/final acceptance check, not as guard. Guard is only for baseline-passing regression checks.
 
 ### Duration & Strategy
 
@@ -174,7 +175,7 @@ Use this appendix only when you need help choosing the shortest useful question 
 
 - "I can test multiple ideas at the same time using parallel experiments. Want me to try up to 3 hypotheses per round? (I detected {N} GPUs/NPUs -- each experiment would need how many?)"
 - "If I get stuck, can I search the web for solutions? (results are always verified mechanically before applying)"
-- "Should I remember lessons from this run for future sessions?"
+- "Should I remember lessons from this run for future runs?"
 
 ### Debug-Specific
 
@@ -213,7 +214,7 @@ The wizard internally maps the conversation to these fields (the user never sees
 - Metric -- proposed by Codex, confirmed by user
 - Direction -- inferred from goal ("improve" = higher, "reduce/eliminate" = lower)
 - Verify -- Codex proposes a command based on repo tooling
-- Guard (optional) -- Codex suggests if there's a regression risk
+- Guard (optional) -- Codex suggests if there's a regression risk and the command already passes at baseline
 - Iterations (optional) -- asked only if user wants bounded run
 - Required keep labels (optional) -- ask only when only a specific mechanism, path, backend, or root-cause signal should be allowed into retained state
 - Required stop labels (optional) -- ask only when the run should stop on a specific mechanism, path, backend, or root-cause signal in addition to the metric target
@@ -241,7 +242,7 @@ The wizard internally maps the conversation to these fields (the user never sees
 
 - Target -- inferred from user's description ("tests are failing" -> test runner)
 - Scope -- inferred from repo structure
-- Guard (optional) -- suggested if appropriate
+- Guard (optional) -- suggested only for baseline-passing regression checks; failing target commands are verify/final acceptance
 
 ### security
 
@@ -277,7 +278,7 @@ Before launching, silently validate:
 - scope resolves to real files,
 - metric is mechanical (a command can produce a number),
 - verify command is runnable,
-- guard command is pass/fail only,
+- guard command is pass/fail only and already passes at baseline,
 - iterations is a positive integer when provided.
 
 If validation fails, tell the user in plain language what went wrong and suggest a fix. Do not show raw error formats.
@@ -287,7 +288,7 @@ If validation fails, tell the user in plain language what went wrong and suggest
 - `plan` mode does not edit code unless the user explicitly says to launch.
 - `ship` mode never performs side effects without explicit confirmation.
 - After the user says "go" / "start" / "launch", begin immediately. Do not ask again.
-- **Two-phase boundary:** ALL questions happen before launch. Once the loop starts, it is fully autonomous. NEVER pause to ask the user anything during execution -- not for clarification, not for confirmation, not for permission. If you encounter ambiguity mid-loop, apply best practices, log your reasoning, and keep iterating. The user may be asleep.
+- **Two-phase boundary:** all questions happen before launch. Once the loop starts, keep running without more user questions; if ambiguity appears mid-loop, apply best practices, log the reasoning, and continue until a stop condition or true blocker appears.
 
 ## Mini-Wizard (Session Resume)
 

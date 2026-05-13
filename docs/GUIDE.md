@@ -23,6 +23,15 @@ Verify: open Codex in the target repo, type `$`, confirm `codex-autoresearch` ap
 
 See [INSTALL.md](INSTALL.md) for symlink, admin scope, and live-development options.
 
+> [!IMPORTANT]
+> For the full foreground experience, start Codex with Goals, hooks, and Full Access:
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> Use this before starting autoresearch for the smoothest foreground and background experience.
+
 ---
 
 ## How Interaction Works
@@ -78,26 +87,23 @@ Once execution begins, keep the runtime contract tiny:
 - record every completed experiment before the next one starts
 - use helper scripts for authoritative log/state updates
 
-### Required Session Hooks
+### Codex Integration
 
-The interactive skill requires these user-level Codex session hooks and auto-installs or repairs them right after the initial repo scan whenever `autoresearch_hooks_ctl.py status` is not ready for future sessions. This bootstrap happens before the first clarification question. If you want to preinstall them yourself:
+Autoresearch includes a small Codex integration for continuity across reopen, resume, stop, and background handoff. The skill prepares it automatically after it scans the repo and before it asks launch questions. You normally do not need to run anything yourself. If you want to preinstall it manually:
 
 ```bash
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
 ```
 
-They provide the continuity layer for the interactive skill:
+It provides the continuity layer for the interactive skill:
 
-- `SessionStart` re-anchors future sessions with the short runtime checklist
+- `SessionStart` restores the short runtime checklist when you reopen or resume an autoresearch run
 - `Stop` only blocks Codex from ending a session when the autoresearch run still appears resumable
 
-These hooks only attach to later Codex sessions that clearly look like `codex-autoresearch` work. They do not retroactively change the foreground session already open in front of you, and unrelated Codex conversations in the same repo are left alone.
+These hooks only attach to conversations that clearly look like `codex-autoresearch` work, so unrelated Codex conversations in the same repo are left alone.
 
-- If the skill just installed them in the current session, `background` can use them immediately.
-- The foreground session already open in front of you will **not** start using them mid-session. To get hooks there, reopen/resume the same thread in a new Codex session.
-- Managed `background` runs explicitly pass their workspace-owned Results directory into nested sessions.
-- In the CLI this reopen/resume path is often `codex resume`; in the app, reopen the same thread in a new session.
-- Future `foreground` sessions can also recover the workspace-owned run context through the repo-local pointer, but hooks still require an explicit autoresearch session signal before they attach.
+- The recommended launch command above gives both foreground and background runs the intended capabilities from the start.
+- Managed `background` runs keep their workspace-owned Results directory attached automatically.
 
 ---
 
@@ -191,7 +197,7 @@ Codex infers these from your natural language input and repo context. You never 
 
 | Field | Default | What it does |
 |-------|---------|--------------|
-| `Guard` | none | Regression-prevention command that must always pass |
+| `Guard` | none | Baseline-passing regression-prevention command |
 | `Iterations` | unlimited | Stop after N iterations |
 | `Run tag` | none (optional) | Label for this run in the results log when the launch config provides one |
 | `Required keep labels` | none | Structured labels that a numerically improved trial must carry before it can enter retained state (for example `production-path`, `real-backend`) |
@@ -598,7 +604,7 @@ The public human workflow now stays on a single entrypoint: `$codex-autoresearch
    The TSV `commit` column remains the primary repo commit; companion-repo commit provenance lives in `autoresearch-results/state.json`.
 12. Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
    Background launch manifests carry an `execution_policy`; this skill now defaults to `danger_full_access`, so detached sessions run with `--dangerously-bypass-approvals-and-sandbox` unless you explicitly opt back into the sandboxed `workspace_write` path.
-   Start background runs from a trusted Full Access Codex session; a parent session restricted to workspace-only sandboxing can prevent detached child Codex sessions from accessing Codex's own home/state files.
+   Start background runs from a trusted Full Access Codex session; if Codex is restricted to workspace-only sandboxing, choose foreground or restart with Full Access.
 13. Before each background detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
 14. If background `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
 15. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.

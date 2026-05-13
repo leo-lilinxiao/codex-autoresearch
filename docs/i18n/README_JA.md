@@ -34,6 +34,15 @@
 
 ## クイックスタート
 
+> [!IMPORTANT]
+> Goals、hooks、Full Access を有効にして Codex を起動することを推奨します：
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> autoresearch を始める前にこのコマンドで起動すると、foreground と background が最もスムーズに動きます。
+
 ```text
 # Codex にインストール（推奨）
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
@@ -56,7 +65,7 @@ Codex:  src/**/*.ts に 47 個の `any` が見つかりました。
 Codex:  background 実行を開始 — ベースライン：47。反復中。
 ```
 
-background 実行は、信頼できる **Full Access** の Codex セッションから開始してください。background は分離された `codex exec` 子セッションを起動するため、対象リポジトリに加えて Codex 自身の home/state への通常アクセスが必要です。親セッションが workspace-only sandbox に制限されている場合は、foreground を使うか、Full Access で Codex を再起動してから background を選んでください。
+background 実行は、信頼できる **Full Access** の Codex セッションから開始してください。Codex が workspace-only sandbox に制限されている場合は、foreground を使うか、Full Access で再起動してから background を選んでください。
 
 改善は蓄積され、失敗はロールバックされ、全てが記録されます。
 
@@ -114,7 +123,7 @@ background 実行は、信頼できる **Full Access** の Codex セッション
 | 指標 | 目標 + ツールチェーンから提案 | any カウント（現在: 47） |
 | 方向 | "改善" / "削減" / "除去" から推論 | 減少 |
 | 検証コマンド | リポジトリのツールとマッチング | `grep` カウント + `tsc --noEmit` |
-| ガード | リグレッションリスクがあれば提案 | `npm test` |
+| ガード | ベースラインで既に通る回帰チェックを提案 | `npm test` |
 
 開始前に、Codex は常に検出した内容を提示し、確認を求めます。その後 foreground か background を選んで "go" と言います。
 デフォルトでは、Results ディレクトリは起動コンテキストに置かれます。Codex を git リポジトリ内で起動した場合はそのリポジトリルートが既定の workspace root になり、git リポジトリ外で起動した場合は現在の起動ディレクトリが既定の workspace root になります。より広いマルチリポジトリ workspace を明示的に確認しない限り、Codex が黙って親ディレクトリへ広げるべきではありません。起動前の確認サマリーには、選ばれた Results ディレクトリを必ず表示するべきです。

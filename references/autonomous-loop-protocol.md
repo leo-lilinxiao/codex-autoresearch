@@ -97,7 +97,7 @@ Run environment detection per `references/environment-awareness.md`:
 
 ### Ask-Before-Act
 
-Before starting any interactive loop, ALWAYS:
+Before starting any interactive loop:
 
 1. Scan the repo to understand context.
 2. Ask at least one round of clarifying questions based on what you found -- confirm scope, metric, verify command, run style (until interrupted vs bounded), and any rollback approval needed for unattended execution.
@@ -105,9 +105,17 @@ Before starting any interactive loop, ALWAYS:
 3. Present a plain-language summary for the user to approve.
 4. Only start the loop after the user explicitly says "go" / "start" / "launch" or equivalent.
 
-Never silently infer all fields and start iterating. A 30-second confirmation is always cheaper than wasted iterations.
+Do not silently infer every field and start iterating. The user should approve the goal, success signal, scope, verification, and run mode before the loop begins.
 
-**Two-phase boundary:** All questions happen BEFORE launch. Before the user says "go", require an explicit run-mode choice: **foreground** or **background**. If the user chooses foreground, keep the loop in the same Codex session, use the official Codex goal only as the thread-level continuation anchor when goal tools are available, and use the shared helper scripts directly. If the user chooses background, call `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root>` so the confirmed launch manifest and detached runtime are created in one script-level handoff; do not create or update official Codex goals for background runs. The launch manifest may describe either a single primary repo or a primary repo plus companion repos with separate scopes. Background runtime cycles launch non-interactive `codex exec` sessions with the generated runtime prompt supplied on stdin. Background launch manifests carry an `execution_policy`; this skill now defaults that policy to `danger_full_access`, so detached sessions normally run with `--dangerously-bypass-approvals-and-sandbox` unless a caller explicitly opts into sandboxed `workspace_write`. If that background `codex exec` session cannot be launched, the runtime must transition to `needs_human` instead of silently falling back to an idle state. If an explicit stop request cannot actually terminate the detached runner, the runtime must also transition to `needs_human` instead of claiming the run is fully stopped. After launch, NEVER pause to ask the user anything during the loop -- not for clarification, not for confirmation, not for permission. If you encounter ambiguity mid-loop, apply best practices, log your reasoning in the commit message, and keep iterating. The user may be asleep.
+**Two-phase boundary:** Ask questions before launch. After launch, keep working until a stop condition, blocker, or user interrupt.
+
+- Before the user says "go", require an explicit run-mode choice: **foreground** or **background**.
+- Foreground stays in the same Codex session, uses the official Codex goal as the thread-level continuation anchor when goal tools are available, and calls the shared helper scripts directly.
+- Background calls `autoresearch_runtime_ctl.py launch --repo <primary_repo> --workspace-root <workspace_root>` so the confirmed launch manifest and detached runtime are created in one script-level handoff. Do not create or update official Codex goals for background runs.
+- The launch manifest may describe either a single primary repo or a primary repo plus companion repos with separate scopes.
+- Background runtime cycles launch non-interactive `codex exec` sessions with the generated runtime prompt supplied on stdin. Launch manifests default to `danger_full_access`, so detached sessions normally run with `--dangerously-bypass-approvals-and-sandbox` unless the caller explicitly opts into sandboxed `workspace_write`.
+- If background `codex exec` cannot be launched, or if a stop request cannot actually terminate the detached runner, transition to `needs_human` instead of reporting a misleading idle or stopped state.
+- After launch, do not pause for clarification, confirmation, or permission. If ambiguity appears mid-loop, apply best practices, log the reasoning, and keep iterating.
 
 Exec-mode exception:
 - Do not ask clarifying or launch questions.
@@ -405,8 +413,7 @@ For bounded runs:
 
 For unbounded runs:
 
-- NEVER ask "should I continue?" after launch. The user may be asleep.
-- NEVER pause to ask any question during the loop. If something is unclear, apply best practices and keep going.
+- Do not ask "should I continue?" or pause for clarification after launch. If something is unclear, apply best practices and keep going.
 - Continue iterating until the goal is reached, the user explicitly interrupts, the configured iteration cap is reached, a true blocker appears, or the run reaches the documented soft-blocker handoff.
 - If you run out of obvious ideas, revisit the results log for patterns, try combinations, or attempt bolder changes. Pausing to ask is not an option.
 

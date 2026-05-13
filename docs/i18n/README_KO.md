@@ -34,6 +34,15 @@
 
 ## 빠른 시작
 
+> [!IMPORTANT]
+> Goals, hooks, Full Access를 켠 상태로 Codex를 시작하는 것을 권장합니다:
+>
+> ```bash
+> codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
+> ```
+>
+> autoresearch를 시작하기 전에 이 명령으로 실행하면 foreground와 background를 가장 매끄럽게 사용할 수 있습니다.
+
 ```text
 # Codex에 설치 (권장)
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
@@ -56,7 +65,7 @@ Codex: src/**/*.ts에서 47개의 `any`를 발견했습니다.
 Codex: 백그라운드 실행 시작 — 베이스라인: 47. 반복 중.
 ```
 
-background 실행은 신뢰할 수 있는 **Full Access** Codex 세션에서 시작하세요. background는 분리된 `codex exec` 자식 세션을 띄우므로 대상 repo뿐 아니라 Codex 자체 home/state에도 정상 접근이 필요합니다. 부모 세션이 workspace-only sandbox로 제한되어 있다면 foreground를 쓰거나 Full Access로 Codex를 다시 시작한 뒤 background를 선택하세요.
+background 실행은 신뢰할 수 있는 **Full Access** Codex 세션에서 시작하세요. Codex가 workspace-only sandbox로 제한되어 있다면 foreground를 쓰거나 Full Access로 다시 시작한 뒤 background를 선택하세요.
 
 개선은 누적되고, 실패는 롤백되며, 모든 것이 기록됩니다.
 
@@ -114,7 +123,7 @@ background 실행은 신뢰할 수 있는 **Full Access** Codex 세션에서 시
 | 지표 | 목표 + 도구 체인 기반 제안 | any 카운트 (현재: 47) |
 | 방향 | "개선" / "감소" / "제거"에서 추론 | 감소 |
 | 검증 명령 | 저장소 도구와 매칭 | `grep` 카운트 + `tsc --noEmit` |
-| 가드 | 회귀 위험이 있으면 제안 | `npm test` |
+| 가드 | 기준선에서 이미 통과하는 회귀 검사를 제안 | `npm test` |
 
 시작 전에 Codex는 항상 발견한 내용을 보여주고 확인을 요청합니다. 그 후 foreground 또는 background를 선택하고 "go"라고 말합니다.
 기본적으로 Results 디렉터리는 시작 컨텍스트에 머뭅니다. Codex를 git 저장소 안에서 시작했다면 그 저장소 루트가 기본 workspace root이고, git 저장소 밖에서 시작했다면 현재 시작 디렉터리가 기본 workspace root입니다. 더 넓은 멀티 리포 workspace를 사용하겠다고 명시적으로 확인하지 않는 한, Codex가 이를 상위 디렉터리로 조용히 넓혀서는 안 됩니다. 시작 전에 확인 요약에는 선택된 Results 디렉터리가 항상 표시되어야 합니다.
