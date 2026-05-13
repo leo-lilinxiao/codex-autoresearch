@@ -62,6 +62,7 @@ from autoresearch_runtime_common import (
 
 STOP_POLL_INTERVAL_SECONDS = 0.1
 STOP_KILL_WAIT_SECONDS = 1.0
+STARTUP_LOG_TAIL_BYTES = 32768
 HOOK_ACTIVE_ENV = "AUTORESEARCH_HOOK_ACTIVE"
 HOOK_RESULTS_PATH_ENV = "AUTORESEARCH_HOOK_RESULTS_PATH"
 HOOK_STATE_PATH_ENV = "AUTORESEARCH_HOOK_STATE_PATH"
@@ -208,6 +209,8 @@ def codex_args_for_runtime(
         execution_policy,
         extra_args=extra_args,
     )
+    if "--ephemeral" not in codex_args:
+        codex_args.insert(0, "--ephemeral")
     if execution_policy == "workspace_write":
         codex_args.extend(["--add-dir", str(workspace_root)])
     return codex_args
@@ -234,6 +237,39 @@ def mark_runtime_needs_human(
     persist_runtime(runtime_path, runtime)
     update_hook_context_pointer(repo=repo, active=False, session_mode="background")
     return 2
+
+
+def read_runtime_log_tail(log_path: Path, *, max_bytes: int = STARTUP_LOG_TAIL_BYTES) -> str:
+    try:
+        with log_path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(size - max_bytes, 0), os.SEEK_SET)
+            raw = handle.read(max_bytes)
+    except OSError:
+        return ""
+    return raw.decode("utf-8", errors="replace")
+
+
+def classify_codex_startup_failure(log_path: Path) -> str | None:
+    log_tail = read_runtime_log_tail(log_path).lower()
+    if not log_tail:
+        return None
+    if (
+        "failed to initialize in-process app-server client" in log_tail
+        and "operation not permitted" in log_tail
+    ):
+        return (
+            "Nested codex exec could not initialize inside the current sandbox because "
+            "Codex home/state writes were blocked. If this background run was launched "
+            "from a workspace-write session, start it from a trusted unsandboxed session "
+            "or explicitly grant Codex home/state access."
+        )
+    if "failed to lookup address information" in log_tail and (
+        "api.openai.com" in log_tail or "github.com" in log_tail
+    ):
+        return "Nested codex exec could not reach the network before writing autoresearch artifacts."
+    return None
 
 
 def wait_for_process_exit(pid: int | None, *, timeout: float) -> bool:
@@ -681,7 +717,7 @@ def start_runtime(args: argparse.Namespace, *, runner_path: Path) -> dict[str, A
     if state_path_arg:
         command.extend(["--state-path", state_path_arg])
     for value in args.codex_arg:
-        command.extend(["--codex-arg", value])
+        command.append(f"--codex-arg={value}")
 
     process = subprocess.Popen(
         command,
@@ -940,6 +976,9 @@ def run_runtime(args: argparse.Namespace) -> int:
             codex_env[HOOK_STATE_PATH_ENV] = str(state_path)
             codex_env[HOOK_LAUNCH_PATH_ENV] = str(launch_path)
             codex_env[HOOK_RUNTIME_PATH_ENV] = str(runtime_path)
+            sqlite_home = results_path.parent / "codex-sqlite"
+            sqlite_home.mkdir(parents=True, exist_ok=True)
+            codex_env.setdefault("CODEX_SQLITE_HOME", str(sqlite_home))
             codex_exit = subprocess.run(
                 codex_cmd,
                 cwd=workspace_root,
@@ -968,6 +1007,7 @@ def run_runtime(args: argparse.Namespace) -> int:
         )
         decision = supervisor["decision"]
         reason = supervisor["reason"]
+        startup_error: str | None = None
         if reason == "missing_artifacts":
             startup_failure_count += 1
             if codex_exit == 0:
@@ -976,6 +1016,8 @@ def run_runtime(args: argparse.Namespace) -> int:
             elif startup_failure_count >= args.max_stagnation:
                 decision = "needs_human"
                 reason = "startup_failed_before_artifacts"
+            if decision == "needs_human":
+                startup_error = classify_codex_startup_failure(log_path)
         else:
             startup_failure_count = 0
 
@@ -984,6 +1026,8 @@ def run_runtime(args: argparse.Namespace) -> int:
         runtime["last_seen_iteration"] = supervisor.get("iteration")
         runtime["last_seen_status"] = supervisor.get("last_status", "")
         runtime["launch_context"] = launch_context
+        if startup_error:
+            runtime["last_error"] = startup_error
 
         if decision == "relaunch":
             runtime["status"] = "running"

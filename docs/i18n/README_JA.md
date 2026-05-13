@@ -56,6 +56,8 @@ Codex:  src/**/*.ts に 47 個の `any` が見つかりました。
 Codex:  background 実行を開始 — ベースライン：47。反復中。
 ```
 
+background 実行は、信頼できる **Full Access** の Codex セッションから開始してください。background は分離された `codex exec` 子セッションを起動するため、対象リポジトリに加えて Codex 自身の home/state への通常アクセスが必要です。親セッションが workspace-only sandbox に制限されている場合は、foreground を使うか、Full Access で Codex を再起動してから background を選んでください。
+
 改善は蓄積され、失敗はロールバックされ、全てが記録されます。
 
 手動コピー、symlink、ユーザースコープの方法は [INSTALL.md](../INSTALL.md)、完全な操作マニュアルは [GUIDE.md](../GUIDE.md) を参照。

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -104,6 +105,228 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
             self.assertFalse((tmpdir / "autoresearch-results/launch.json").exists())
             self.assertFalse((tmpdir / "autoresearch-results/runtime.json").exists())
             self.assertFalse((tmpdir / "autoresearch-results/runtime.log").exists())
+
+    def test_multiline_verify_metadata_does_not_break_results_parser(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+            verify = (
+                "python3 -m py_compile src/app.py && python3 - <<'PY'\n"
+                "from pathlib import Path\n"
+                "print(sum(path.read_text().count('TODO_REMOVE') for path in Path('src').rglob('*.py')))\n"
+                "PY"
+            )
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Remove TODO marker",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "TODO_REMOVE count",
+                "--direction",
+                "lower",
+                "--verify",
+                verify,
+                "--baseline-metric",
+                "1",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline marker count",
+            )
+
+            text = results_path.read_text(encoding="utf-8")
+            self.assertIn('# verify: json:"', text)
+            self.assertNotIn("\nfrom pathlib import Path\n", text)
+            if str(SCRIPTS_DIR) not in sys.path:
+                sys.path.insert(0, str(SCRIPTS_DIR))
+            from autoresearch_artifacts import parse_results_log
+
+            parsed = parse_results_log(results_path)
+            self.assertEqual(parsed.metadata["verify"], verify)
+
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                "deadbee",
+                "--guard",
+                "pass",
+                "--description",
+                "removed marker",
+            )
+
+            resume = self.run_script(
+                "autoresearch_resume_check.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+            )
+            self.assertEqual(resume["decision"], "full_resume")
+
+    def test_record_iteration_rejects_uncommitted_or_stale_trial_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.init_git_repo(Path(tmp) / "repo")
+            src = repo / "src"
+            src.mkdir()
+            app = src / "app.py"
+            app.write_text('VALUE = "TODO_REMOVE"\n', encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "src/app.py"], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "initial"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            baseline_commit = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"],
+                text=True,
+            ).strip()
+
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--repo",
+                str(repo),
+                "--workspace-root",
+                str(repo),
+                "--mode",
+                "loop",
+                "--goal",
+                "Remove marker",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "marker count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--baseline-metric",
+                "1",
+                "--baseline-commit",
+                baseline_commit,
+                "--baseline-description",
+                "baseline marker",
+            )
+
+            app.write_text('VALUE = "DONE"\n', encoding="utf-8")
+            dirty = self.run_script_completed(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                baseline_commit,
+                "--guard",
+                "pass",
+                "--description",
+                "removed marker without committing",
+                cwd=repo,
+            )
+            self.assertNotEqual(dirty.returncode, 0)
+            self.assertIn("uncommitted non-autoresearch changes", dirty.stderr)
+
+            subprocess.run(["git", "-C", str(repo), "add", "src/app.py"], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "remove marker"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            trial_commit = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"],
+                text=True,
+            ).strip()
+
+            generated = src / "__pycache__"
+            generated.mkdir()
+            (generated / "app.cpython-311.pyc").write_bytes(b"cache")
+            generated_dirty = self.run_script_completed(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                trial_commit,
+                "--guard",
+                "pass",
+                "--description",
+                "removed marker with generated guard cache",
+                cwd=repo,
+            )
+            self.assertNotEqual(generated_dirty.returncode, 0)
+            self.assertIn("src/__pycache__", generated_dirty.stderr)
+            shutil.rmtree(generated)
+
+            stale = self.run_script_completed(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                baseline_commit,
+                "--guard",
+                "pass",
+                "--description",
+                "removed marker with stale commit",
+                cwd=repo,
+            )
+            self.assertNotEqual(stale.returncode, 0)
+            self.assertIn("does not match HEAD", stale.stderr)
+
+            recorded = self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                trial_commit,
+                "--guard",
+                "pass",
+                "--description",
+                "removed marker after committing",
+                cwd=repo,
+            )
+            self.assertEqual(recorded["status"], "keep")
 
     def test_init_run_preserves_utf8_paths_in_results_state_and_context_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

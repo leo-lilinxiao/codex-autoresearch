@@ -56,6 +56,8 @@ Tú:    Background, go. Déjalo corriendo toda la noche.
 Codex: Iniciando ejecución en segundo plano — línea base: 47. Iterando.
 ```
 
+Para ejecuciones background, inicia Codex desde una sesión **Full Access** de confianza. El modo background lanza sesiones hijas `codex exec` separadas que necesitan acceso normal al home/state de Codex además del repo objetivo. Si la sesión padre está limitada a un sandbox workspace-only, usa foreground o reinicia Codex con Full Access antes de elegir background.
+
 Cada mejora se acumula. Cada fallo se revierte. Todo queda registrado.
 
 Opciones de copia manual, symlink y alcance de usuario en [INSTALL.md](../INSTALL.md). Manual completo en [GUIDE.md](../GUIDE.md).

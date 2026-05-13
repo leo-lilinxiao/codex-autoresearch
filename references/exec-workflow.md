@@ -148,7 +148,7 @@ Here `<skill-root>` is the directory containing the loaded `SKILL.md`. In the co
 - In that default helper flow, do not manually rename old `autoresearch-results/results.tsv` or `autoresearch-results/state.json` first. `autoresearch_init_run.py` performs the fresh-start archival it owns.
 - The initialized `autoresearch-results/results.tsv` header includes `# mode: exec`, so `autoresearch_resume_check.py` can rediscover the matching scratch state without a manual `--state-path`.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...` and `python3 <skill-root>/scripts/autoresearch_select_parallel_batch.py ...` automatically reuse that scratch state when the workspace JSON state file is absent.
-- Before exiting, run `python3 <skill-root>/scripts/autoresearch_exec_state.py --cleanup` so exec mode removes scratch JSON state and leaves the persistent workspace-owned audit artifacts in place: `autoresearch-results/results.tsv` plus inactive canonical context metadata (`autoresearch-results/context.json` and the repo's git-local pointer).
+- Before exiting, run `python3 <skill-root>/scripts/autoresearch_exec_state.py --cleanup` so exec mode removes scratch JSON state and leaves the persistent workspace-owned audit artifacts in place: `autoresearch-results/results.tsv` plus inactive canonical context metadata (`autoresearch-results/context.json` and the repo-local pointer).
 - Treat that cleanup as the **final serial helper step**. Do not run it in parallel with `autoresearch_record_iteration.py`, `autoresearch_select_parallel_batch.py`, or any other helper that still needs the scratch state.
 - If you override `--state-path` manually, you are responsible for removing that custom scratch file before exit.
 

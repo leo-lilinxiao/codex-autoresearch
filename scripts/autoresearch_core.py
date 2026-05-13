@@ -31,7 +31,7 @@ RUNTIME_STATE_NAME = "runtime.json"
 RUNTIME_LOG_NAME = "runtime.log"
 LESSONS_FILE_NAME = "lessons.md"
 HOOK_CONTEXT_NAME = "context.json"
-POINTER_DIR_NAME = "codex-autoresearch"
+POINTER_DIR_NAME = ".codex-autoresearch"
 POINTER_FILE_NAME = "pointer.json"
 LEGACY_AUTORESEARCH_OWNED_BASENAMES = {
     "research-results.tsv",
@@ -46,6 +46,7 @@ AUTORESEARCH_OWNED_BASENAMES = {
     ARTIFACT_DIR_NAME,
     RESULTS_FILE_NAME,
     STATE_FILE_NAME,
+    POINTER_DIR_NAME,
     LAUNCH_MANIFEST_NAME,
     RUNTIME_STATE_NAME,
     RUNTIME_LOG_NAME,

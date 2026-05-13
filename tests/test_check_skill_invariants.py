@@ -428,7 +428,7 @@ class CheckSkillInvariantsTest(unittest.TestCase):
 
     def test_exec_invariants_resolve_workspace_via_pointer_when_repo_differs(self) -> None:
         """When workspace_root != repo, the checker must resolve artifacts
-        through the git-local pointer instead of assuming repo == workspace."""
+        through the repo-local pointer instead of assuming repo == workspace."""
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp) / "workspace"
             repo = Path(tmp) / "primary-repo"
@@ -507,8 +507,8 @@ class CheckSkillInvariantsTest(unittest.TestCase):
             )
             (artifact_root / "lessons.md").write_text("# lessons\n", encoding="utf-8")
 
-            # write git-local pointer: repo -> workspace
-            pointer_dir = repo / ".git" / "codex-autoresearch"
+            # write repo-local pointer: repo -> workspace
+            pointer_dir = repo / ".codex-autoresearch"
             pointer_dir.mkdir(parents=True, exist_ok=True)
             (pointer_dir / "pointer.json").write_text(
                 json.dumps({
@@ -560,7 +560,7 @@ class CheckSkillInvariantsTest(unittest.TestCase):
             completed = self.run_invariant_check("exec", "--repo", str(repo))
 
             self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("valid git-local pointer and canonical context", completed.stderr)
+            self.assertIn("valid repo-local pointer and canonical context", completed.stderr)
 
 
 if __name__ == "__main__":

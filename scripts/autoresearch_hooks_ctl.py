@@ -19,7 +19,8 @@ from autoresearch_helpers import AutoresearchError, utc_now
 
 MANIFEST_VERSION = 1
 FEATURE_SECTION = "features"
-FEATURE_KEY = "hooks"
+HOOKS_FEATURE_KEY = "hooks"
+GOALS_FEATURE_KEY = "goals"
 MANAGED_DIR_NAME = "autoresearch-hooks"
 SESSION_SCRIPT_NAME = "session_start.py"
 STOP_SCRIPT_NAME = "stop.py"
@@ -173,12 +174,12 @@ def parse_toml_config(text: str) -> dict[str, Any]:
     return payload
 
 
-def parse_feature_value(text: str) -> bool | None:
+def parse_feature_value(text: str, key: str) -> bool | None:
     payload = parse_toml_config(text)
     features = payload.get(FEATURE_SECTION)
     if not isinstance(features, dict):
         return None
-    value = features.get(FEATURE_KEY)
+    value = features.get(key)
     return value if isinstance(value, bool) else None
 
 
@@ -484,7 +485,11 @@ def count_all_hook_groups(payload: dict[str, Any]) -> int:
     return total
 
 
-def write_manifest(*, feature_enabled_by_installer: bool) -> None:
+def write_manifest(
+    *,
+    hooks_feature_enabled_by_installer: bool,
+    goals_feature_enabled_by_installer: bool,
+) -> None:
     managed_scripts = {
         "common": str(common_script_path()),
         "context": str(context_script_path()),
@@ -499,7 +504,9 @@ def write_manifest(*, feature_enabled_by_installer: bool) -> None:
         "installed_at": utc_now(),
         "helper_root_fallback": str(hooks_home()),
         "skill_root_fallback": str(hooks_home()),
-        "feature_enabled_by_installer": feature_enabled_by_installer,
+        "feature_enabled_by_installer": hooks_feature_enabled_by_installer,
+        "hooks_feature_enabled_by_installer": hooks_feature_enabled_by_installer,
+        "goals_feature_enabled_by_installer": goals_feature_enabled_by_installer,
         "managed_scripts": managed_scripts,
     }
     manifest_path().parent.mkdir(parents=True, exist_ok=True)
@@ -537,6 +544,8 @@ def install_managed_scripts() -> None:
 
 def status() -> dict[str, Any]:
     config_text = read_text(config_path())
+    hooks_feature_enabled = parse_feature_value(config_text, HOOKS_FEATURE_KEY) is True
+    goals_feature_enabled = parse_feature_value(config_text, GOALS_FEATURE_KEY) is True
     hooks_payload = normalize_hooks_payload(
         load_json_file(hooks_path(), default={"hooks": {}})
     )
@@ -547,15 +556,25 @@ def status() -> dict[str, Any]:
     hooks_map = hooks_payload.get("hooks", {})
     session_groups = hooks_map.get("SessionStart", []) if isinstance(hooks_map, dict) else []
     stop_groups = hooks_map.get("Stop", []) if isinstance(hooks_map, dict) else []
-    managed_session = any(group_matches_command(group, session_command) for group in session_groups)
+    managed_session = any(
+        group_matches_command(group, session_command) for group in session_groups
+    )
     managed_stop = any(group_matches_command(group, stop_command) for group in stop_groups)
     trust_entries = managed_hook_trust_entries_from_payload(hooks_payload)
     trusted_hashes = trusted_hashes_from_config_text(config_text)
     trusted_keys = {
-        key for key, current_hash in trust_entries.items() if trusted_hashes.get(key) == current_hash
+        key
+        for key, current_hash in trust_entries.items()
+        if trusted_hashes.get(key) == current_hash
     }
     managed_session_trusted = any(":session_start:" in key for key in trusted_keys)
     managed_stop_trusted = any(":stop:" in key for key in trusted_keys)
+    hooks_feature_enabled_by_installer = bool(
+        manifest.get(
+            "hooks_feature_enabled_by_installer",
+            manifest.get("feature_enabled_by_installer"),
+        )
+    )
 
     return {
         "supported": os.name != "nt",
@@ -563,9 +582,16 @@ def status() -> dict[str, Any]:
         "config_path": str(config_path()),
         "hooks_path": str(hooks_path()),
         "managed_dir": str(hooks_home()),
-        "feature_enabled": parse_feature_value(config_text) is True,
-        "feature_enabled_by_installer": bool(manifest.get("feature_enabled_by_installer")),
-        "managed_session_start_installed": managed_session and session_script_path().exists(),
+        "feature_enabled": hooks_feature_enabled,
+        "hooks_feature_enabled": hooks_feature_enabled,
+        "goals_feature_enabled": goals_feature_enabled,
+        "feature_enabled_by_installer": hooks_feature_enabled_by_installer,
+        "hooks_feature_enabled_by_installer": hooks_feature_enabled_by_installer,
+        "goals_feature_enabled_by_installer": bool(
+            manifest.get("goals_feature_enabled_by_installer")
+        ),
+        "managed_session_start_installed": managed_session
+        and session_script_path().exists(),
         "managed_stop_installed": managed_stop and stop_script_path().exists(),
         "managed_session_start_trusted": managed_session and managed_session_trusted,
         "managed_stop_trusted": managed_stop and managed_stop_trusted,
@@ -573,9 +599,12 @@ def status() -> dict[str, Any]:
         "manifest_present": manifest_path().exists(),
         "helper_root_fallback": manifest.get("helper_root_fallback") or str(hooks_home()),
         "skill_root_fallback": manifest.get("skill_root_fallback") or str(hooks_home()),
-        "other_hook_groups_present": count_all_hook_groups(hooks_payload) - int(managed_session) - int(managed_stop),
+        "other_hook_groups_present": count_all_hook_groups(hooks_payload)
+        - int(managed_session)
+        - int(managed_stop),
         "ready_for_future_sessions": (
-            parse_feature_value(config_text) is True
+            hooks_feature_enabled
+            and goals_feature_enabled
             and managed_session
             and managed_stop
             and managed_session_trusted
@@ -588,8 +617,26 @@ def status() -> dict[str, Any]:
 def install() -> dict[str, Any]:
     ensure_supported_platform()
     config_before = read_text(config_path())
-    previous_feature = parse_feature_value(config_before)
-    feature_enabled_by_installer = previous_feature is not True
+    previous_manifest = read_manifest()
+    previous_hooks_feature = parse_feature_value(config_before, HOOKS_FEATURE_KEY)
+    previous_goals_feature = parse_feature_value(config_before, GOALS_FEATURE_KEY)
+    previous_hooks_feature_enabled_by_installer = bool(
+        previous_manifest.get(
+            "hooks_feature_enabled_by_installer",
+            previous_manifest.get("feature_enabled_by_installer"),
+        )
+    )
+    previous_goals_feature_enabled_by_installer = bool(
+        previous_manifest.get("goals_feature_enabled_by_installer")
+    )
+    hooks_feature_enabled_by_installer = (
+        previous_hooks_feature_enabled_by_installer
+        or previous_hooks_feature is not True
+    )
+    goals_feature_enabled_by_installer = (
+        previous_goals_feature_enabled_by_installer
+        or previous_goals_feature is not True
+    )
 
     install_managed_scripts()
 
@@ -632,7 +679,13 @@ def install() -> dict[str, Any]:
     updated_config = set_toml_boolean(
         config_before,
         section=FEATURE_SECTION,
-        key=FEATURE_KEY,
+        key=HOOKS_FEATURE_KEY,
+        value=True,
+    )
+    updated_config = set_toml_boolean(
+        updated_config,
+        section=FEATURE_SECTION,
+        key=GOALS_FEATURE_KEY,
         value=True,
     )
     updated_config = set_toml_hook_trust_state(
@@ -645,7 +698,10 @@ def install() -> dict[str, Any]:
         hooks_path(),
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
     )
-    write_manifest(feature_enabled_by_installer=feature_enabled_by_installer)
+    write_manifest(
+        hooks_feature_enabled_by_installer=hooks_feature_enabled_by_installer,
+        goals_feature_enabled_by_installer=goals_feature_enabled_by_installer,
+    )
 
     current = status()
     current["config_backup"] = config_backup
@@ -657,7 +713,15 @@ def install() -> dict[str, Any]:
 def uninstall() -> dict[str, Any]:
     ensure_supported_platform()
     manifest = read_manifest()
-    feature_enabled_by_installer = bool(manifest.get("feature_enabled_by_installer"))
+    hooks_feature_enabled_by_installer = bool(
+        manifest.get(
+            "hooks_feature_enabled_by_installer",
+            manifest.get("feature_enabled_by_installer"),
+        )
+    )
+    goals_feature_enabled_by_installer = bool(
+        manifest.get("goals_feature_enabled_by_installer")
+    )
 
     payload = normalize_hooks_payload(load_json_file(hooks_path(), default={"hooks": {}}))
     trust_entries = managed_hook_trust_entries_from_payload(payload)
@@ -694,11 +758,18 @@ def uninstall() -> dict[str, Any]:
         config_before,
         keys=set(trust_entries),
     )
-    if feature_enabled_by_installer and count_all_hook_groups(payload) == 0:
+    if hooks_feature_enabled_by_installer and count_all_hook_groups(payload) == 0:
         updated_config = set_toml_boolean(
             updated_config,
             section=FEATURE_SECTION,
-            key=FEATURE_KEY,
+            key=HOOKS_FEATURE_KEY,
+            value=False,
+        )
+    if goals_feature_enabled_by_installer:
+        updated_config = set_toml_boolean(
+            updated_config,
+            section=FEATURE_SECTION,
+            key=GOALS_FEATURE_KEY,
             value=False,
         )
     config_backup = None

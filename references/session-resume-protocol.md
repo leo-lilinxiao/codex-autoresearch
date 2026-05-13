@@ -16,10 +16,10 @@ The only supported normal artifact layout is workspace-owned:
 <workspace_root>/autoresearch-results/context.json
 ```
 
-Each managed git repo also stores a git-local pointer at:
+Each managed git repo also stores a repo-local pointer at:
 
 ```bash
-git rev-parse --git-path codex-autoresearch/pointer.json
+.codex-autoresearch/pointer.json
 ```
 
 Hooks, status, stop, and resume resolve context in this order: current repo pointer, canonical `autoresearch-results/context.json`, then fail with a clear error. Do not walk upward from cwd looking for guessed contexts, and do not infer repo identity from a results path.

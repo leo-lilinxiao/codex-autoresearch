@@ -59,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repo",
         required=True,
-        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
+        help="Primary repo root. Run context is resolved from this repo's repo-local pointer.",
     )
     parser.add_argument("--workspace-root")
     parser.add_argument(
@@ -136,12 +136,26 @@ def compare_metric(current_metric: Decimal, target: Decimal, operator: str) -> b
     raise AutoresearchError(f"Unsupported stop-condition operator: {operator!r}")
 
 
+def metric_alias_pattern(metric_names: list[object]) -> str:
+    aliases = {"metric"}
+    for value in metric_names:
+        normalized = normalized_text(value)
+        if normalized:
+            aliases.add(normalized)
+    parts = [
+        re.escape(alias).replace(r"\ ", r"\s+")
+        for alias in sorted(aliases, key=len, reverse=True)
+    ]
+    return r"(?:current\s+)?(?:" + "|".join(parts) + r")"
+
+
 def parse_stop_condition_rule(
-    stop_condition: str, direction: str
+    stop_condition: str, direction: str, metric_names: list[object] | None = None
 ) -> tuple[str, Decimal, str] | None:
     text = replace_word_numbers(normalized_text(stop_condition))
     if not text:
         return None
+    metric_ref = metric_alias_pattern(metric_names or [])
 
     threshold_operator = "<=" if direction == "lower" else ">="
     threshold_description = (
@@ -151,27 +165,27 @@ def parse_stop_condition_rule(
     )
     patterns: list[tuple[str, str, str]] = [
         (
-            rf"(?:current\s+)?metric\s*(?:==|=)\s*({NUMBER_PATTERN})",
+            rf"{metric_ref}\s*(?:==|=)\s*({NUMBER_PATTERN})",
             "==",
             "current metric == {target}",
         ),
         (
-            rf"(?:current\s+)?metric\s*(?:<=|=<)\s*({NUMBER_PATTERN})",
+            rf"{metric_ref}\s*(?:<=|=<)\s*({NUMBER_PATTERN})",
             "<=",
             "current metric <= {target}",
         ),
         (
-            rf"(?:current\s+)?metric\s*(?:>=|=>)\s*({NUMBER_PATTERN})",
+            rf"{metric_ref}\s*(?:>=|=>)\s*({NUMBER_PATTERN})",
             ">=",
             "current metric >= {target}",
         ),
         (
-            rf"(?:current\s+)?metric\s*<\s*({NUMBER_PATTERN})",
+            rf"{metric_ref}\s*<\s*({NUMBER_PATTERN})",
             "<",
             "current metric < {target}",
         ),
         (
-            rf"(?:current\s+)?metric\s*>\s*({NUMBER_PATTERN})",
+            rf"{metric_ref}\s*>\s*({NUMBER_PATTERN})",
             ">",
             "current metric > {target}",
         ),
@@ -225,7 +239,11 @@ def stop_condition_status(config: dict[str, Any], current_metric: Decimal) -> di
     stop_condition = config.get("stop_condition")
     if not stop_condition:
         return {"configured": False, "satisfied": False, "description": ""}
-    rule = parse_stop_condition_rule(str(stop_condition), direction)
+    rule = parse_stop_condition_rule(
+        str(stop_condition),
+        direction,
+        metric_names=[config.get("metric"), config.get("primary_metric_key")],
+    )
     if rule is None:
         return {
             "configured": True,

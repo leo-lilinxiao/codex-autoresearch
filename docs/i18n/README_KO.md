@@ -56,6 +56,8 @@ Codex: src/**/*.ts에서 47개의 `any`를 발견했습니다.
 Codex: 백그라운드 실행 시작 — 베이스라인: 47. 반복 중.
 ```
 
+background 실행은 신뢰할 수 있는 **Full Access** Codex 세션에서 시작하세요. background는 분리된 `codex exec` 자식 세션을 띄우므로 대상 repo뿐 아니라 Codex 자체 home/state에도 정상 접근이 필요합니다. 부모 세션이 workspace-only sandbox로 제한되어 있다면 foreground를 쓰거나 Full Access로 Codex를 다시 시작한 뒤 background를 선택하세요.
+
 개선은 누적되고, 실패는 롤백되며, 모든 것이 기록됩니다.
 
 수동 복사, symlink, 사용자 범위 설치는 [INSTALL.md](../INSTALL.md), 전체 매뉴얼은 [GUIDE.md](../GUIDE.md) 참조.

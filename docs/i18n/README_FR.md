@@ -56,6 +56,8 @@ Vous:  Background, go. Laisse tourner toute la nuit.
 Codex: Lancement en arrière-plan — référence : 47. Itération en cours.
 ```
 
+Pour les exécutions background, démarrez Codex depuis une session **Full Access** de confiance. Le mode background lance des sessions `codex exec` détachées qui ont besoin de l'accès normal au home/state de Codex en plus du repo cible. Si la session parente est limitée à un sandbox workspace-only, utilisez foreground ou redémarrez Codex en Full Access avant de choisir background.
+
 Chaque amélioration s'accumule. Chaque échec est annulé. Tout est journalisé.
 
 Options de copie manuelle, de symlink et d'installation utilisateur dans [INSTALL.md](../INSTALL.md). Manuel complet dans [GUIDE.md](../GUIDE.md).

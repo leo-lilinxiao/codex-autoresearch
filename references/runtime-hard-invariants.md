@@ -24,7 +24,7 @@ Verify you can still recall:
 - baseline before init,
 - log every completed experiment before the next one starts,
 - helper scripts own authoritative TSV/JSON updates and keep/stop gating,
-- artifact paths come from `workspace_root` + `autoresearch-results/` and the git-local pointer, never from repo-root artifact guessing,
+- artifact paths come from `workspace_root` + `autoresearch-results/` and the repo-local pointer, never from repo-root artifact guessing,
 - the current stop conditions for this run,
 - the current rollback strategy in use,
 - the active pivot/refine escalation thresholds when they matter,
@@ -35,8 +35,10 @@ Verify you can still recall:
 For normal loop execution, the closeout order is:
 
 1. finish the experiment,
-2. run verify and guard,
-3. record the result through the helper,
-4. only then choose the next idea.
+2. create the scoped trial commit(s),
+3. run verify and guard,
+4. remove generated verify/guard byproducts such as cache files,
+5. record the actual clean HEAD commit(s) through the helper,
+6. only then choose the next idea.
 
 Do not treat logging as optional bookkeeping.

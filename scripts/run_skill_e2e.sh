@@ -19,7 +19,7 @@ Modes:
                      and validate artifacts with check_skill_invariants.py.
   multi-repo-smoke   Prepare a disposable workspace with primary + companion repos,
                      run the helper scripts through the workspace-owned artifact
-                     path, and validate canonical context + git-local pointers.
+                     path, and validate canonical context + repo-local pointers.
   runtime-smoke      Prepare a disposable repo, install the skill, exercise the
                      detached runtime launch/status/stop path with a fake Codex,
                      and validate runtime-control artifacts automatically.
@@ -315,7 +315,7 @@ if Path(context["primary_repo"]).resolve() != primary:
     raise SystemExit("canonical context primary_repo mismatch")
 
 for repo in (primary, companion):
-    pointer_path = repo / ".git" / "codex-autoresearch" / "pointer.json"
+    pointer_path = repo / ".codex-autoresearch" / "pointer.json"
     payload = json.loads(pointer_path.read_text(encoding="utf-8"))
     if Path(payload["artifact_root"]).resolve() != artifact_root:
         raise SystemExit(f"pointer artifact_root mismatch for {repo}")

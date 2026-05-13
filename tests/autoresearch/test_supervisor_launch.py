@@ -442,6 +442,69 @@ class AutoresearchSupervisorLaunchTest(AutoresearchScriptsTestBase):
             self.assertEqual(state["supervisor"]["recommended_action"], "stop")
             self.assertEqual(state["supervisor"]["terminal_reason"], "goal_reached")
 
+    def test_supervisor_status_stops_when_named_metric_stop_condition_equals_zero(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmpdir = Path(tmp)
+            results_path = tmpdir / "autoresearch-results/results.tsv"
+            state_path = tmpdir / "autoresearch-results/state.json"
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--goal",
+                "Remove todo markers",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "todo_count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 verify.py",
+                "--stop-condition",
+                "todo_count == 0",
+                "--baseline-metric",
+                "1",
+                "--baseline-commit",
+                "a1b2c3d",
+                "--baseline-description",
+                "baseline marker count",
+            )
+            self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "keep",
+                "--metric",
+                "0",
+                "--commit",
+                "keep000",
+                "--guard",
+                "pass",
+                "--description",
+                "removed final marker",
+            )
+
+            status = self.run_script(
+                "autoresearch_supervisor_status.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--after-run",
+                "--write-state",
+            )
+            self.assertEqual(status["decision"], "stop")
+            self.assertEqual(status["reason"], "goal_reached")
+
     def test_supervisor_status_stops_when_fix_mode_reaches_zero(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)
@@ -1031,6 +1094,7 @@ class AutoresearchSupervisorLaunchTest(AutoresearchScriptsTestBase):
             self.assertIn("Session mode: background", prompt)
             self.assertIn("Do not run the interactive wizard again.", prompt)
             self.assertIn("Stop condition: stop when metric reaches 0", prompt)
+            self.assertIn(f"python3 {SCRIPTS_DIR / 'autoresearch_record_iteration.py'}", prompt)
             self.assertIn("Runtime checklist:", prompt)
             self.assertIn("Record every completed experiment before starting the next one.", prompt)
             self.assertIn("Use helper scripts for authoritative TSV/state updates.", prompt)
@@ -1247,6 +1311,7 @@ class AutoresearchSupervisorLaunchTest(AutoresearchScriptsTestBase):
             )
             self.assertIn(f"Results path: {results_path.resolve()}", normalized)
             self.assertIn(f"State path: {state_path.resolve()}", normalized)
+            self.assertIn(f"python3 {SCRIPTS_DIR / 'autoresearch_record_iteration.py'}", normalized)
             self.assertIn("Runtime checklist:", normalized)
             self.assertIn("Record every completed experiment before starting the next one.", normalized)
 

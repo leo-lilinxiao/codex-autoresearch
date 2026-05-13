@@ -61,6 +61,10 @@ def build_runtime_prompt(
         raise AutoresearchError("Launch config.primary_repo is required.")
     primary_repo = Path(primary_repo_config).expanduser().resolve()
     repo_targets = repo_targets_from_config(primary_repo, config)
+    script_root = Path(__file__).resolve().parent
+    init_script = script_root / "autoresearch_init_run.py"
+    record_script = script_root / "autoresearch_record_iteration.py"
+    supervisor_script = script_root / "autoresearch_supervisor_status.py"
     lines = [
         "$codex-autoresearch",
         "This repo is managed by the autoresearch runtime controller.",
@@ -94,6 +98,11 @@ def build_runtime_prompt(
             f"Results path: {results_path}",
             f"State path: {state_path}",
             "",
+            "Helper scripts:",
+            f"- Initialize artifacts: python3 {init_script}",
+            f"- Record each completed experiment: python3 {record_script}",
+            f"- Check loop status: python3 {supervisor_script}",
+            "",
             "Runtime checklist:",
             *[f"- {item}" for item in RUNTIME_CHECKLIST],
             "",
@@ -117,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repo",
         required=True,
-        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
+        help="Primary repo root. Run context is resolved from this repo's repo-local pointer.",
     )
     parser.add_argument("--workspace-root")
     parser.add_argument(

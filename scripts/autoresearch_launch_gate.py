@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import os
 import subprocess
 from pathlib import Path
@@ -25,11 +26,14 @@ from autoresearch_workspace import default_workspace_artifacts, resolve_workspac
 
 
 def pid_is_zombie(pid: int) -> bool:
-    completed = subprocess.run(
-        ["ps", "-p", str(pid), "-o", "stat="],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "stat="],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
     if completed.returncode != 0:
         return False
     state = completed.stdout.strip().upper()
@@ -51,16 +55,26 @@ def pid_is_alive(pid: int | None) -> bool:
 
 
 def _ps_field(pid: int, field: str) -> str | None:
-    completed = subprocess.run(
-        ["ps", "-p", str(pid), "-o", f"{field}="],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    try:
+        completed = subprocess.run(
+            ["ps", "-p", str(pid), "-o", f"{field}="],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except OSError:
+        return None
     if completed.returncode != 0:
         return None
     value = completed.stdout.strip()
     return value or None
+
+
+def _process_group_id(pid: int) -> int | None:
+    try:
+        return os.getpgid(pid)
+    except (OSError, PermissionError, ProcessLookupError):
+        return None
 
 
 def inspect_process_identity(pid: int | None) -> dict[str, object] | None:
@@ -69,18 +83,22 @@ def inspect_process_identity(pid: int | None) -> dict[str, object] | None:
     pgid_text = _ps_field(pid, "pgid")
     started_at = _ps_field(pid, "lstart")
     command = _ps_field(pid, "command")
-    if pgid_text is None or started_at is None or command is None:
-        return None
-    try:
-        pgid = int(pgid_text)
-    except ValueError:
-        return None
-    return {
-        "pid": pid,
-        "pgid": pgid,
-        "started_at": started_at,
-        "command": command,
-    }
+    pgid = None
+    if pgid_text is not None:
+        try:
+            pgid = int(pgid_text)
+        except ValueError:
+            pgid = None
+    if pgid is None:
+        pgid = _process_group_id(pid)
+    identity: dict[str, object] = {"pid": pid}
+    if pgid is not None:
+        identity["pgid"] = pgid
+    if started_at is not None:
+        identity["started_at"] = started_at
+    if command is not None:
+        identity["command"] = command
+    return identity
 
 
 def normalize_command_text(value: str | None) -> str:
@@ -91,17 +109,52 @@ def expected_runtime_command_text(runtime_payload: dict[str, Any]) -> str:
     stored = runtime_payload.get("process_command")
     if isinstance(stored, str) and stored.strip():
         return normalize_command_text(stored)
+    command = runtime_payload.get("command")
+    if isinstance(command, list) and all(isinstance(part, str) for part in command):
+        return normalize_command_text(" ".join(command))
     return ""
 
 
 def runtime_identity_missing(runtime_payload: dict[str, Any]) -> str | None:
     started_at = runtime_payload.get("process_started_at")
-    if not isinstance(started_at, str) or not started_at.strip():
-        return "process_started_at"
-    command = runtime_payload.get("process_command")
-    if not isinstance(command, str) or not command.strip():
-        return "process_command"
+    has_started_at = isinstance(started_at, str) and bool(started_at.strip())
+    has_command = bool(expected_runtime_command_text(runtime_payload))
+    pgid = runtime_payload.get("pgid")
+    has_pgid = isinstance(pgid, int) and pgid > 0
+    if not has_started_at and not has_command and not has_pgid:
+        return "process_started_at/process_command"
     return None
+
+
+def _parse_ps_lstart_epoch(value: str) -> float | None:
+    cleaned = " ".join(value.split())
+    if not cleaned:
+        return None
+    timezone_suffix = cleaned.rsplit(" ", 1)[-1]
+    if timezone_suffix in {"UTC", "GMT"}:
+        without_timezone = cleaned.rsplit(" ", 1)[0]
+        try:
+            return (
+                datetime.strptime(without_timezone, "%a %b %d %H:%M:%S %Y")
+                .replace(tzinfo=timezone.utc)
+                .timestamp()
+            )
+        except ValueError:
+            return None
+    try:
+        return datetime.strptime(cleaned, "%a %b %d %H:%M:%S %Y").astimezone().timestamp()
+    except ValueError:
+        return None
+
+
+def process_start_times_match(expected: str, current: str) -> bool:
+    if expected == current:
+        return True
+    expected_epoch = _parse_ps_lstart_epoch(expected)
+    current_epoch = _parse_ps_lstart_epoch(current)
+    if expected_epoch is None or current_epoch is None:
+        return False
+    return abs(expected_epoch - current_epoch) <= 2.0
 
 
 def runtime_process_state(runtime_payload: dict[str, Any]) -> dict[str, object]:
@@ -130,10 +183,27 @@ def runtime_process_state(runtime_payload: dict[str, Any]) -> dict[str, object]:
                 "reason": "not_running",
                 "message": f"Runtime process {pid} is not running.",
             }
+        current_pgid = _process_group_id(pid)
+        expected_pgid = runtime_payload.get("pgid")
+        if (
+            isinstance(expected_pgid, int)
+            and expected_pgid > 0
+            and current_pgid is not None
+            and current_pgid != expected_pgid
+        ):
+            return {
+                "alive": True,
+                "matches": False,
+                "reason": "identity_mismatch",
+                "message": (
+                    f"Runtime pid {pid} is alive, but process group changed "
+                    f"({expected_pgid} != {current_pgid})."
+                ),
+            }
         return {
             "alive": True,
-            "matches": False,
-            "reason": "inspection_failed",
+            "matches": True,
+            "reason": "running_identity_unavailable",
             "message": f"Could not verify runtime process identity for pid {pid}.",
         }
 
@@ -149,21 +219,26 @@ def runtime_process_state(runtime_payload: dict[str, Any]) -> dict[str, object]:
             ),
         }
 
-    expected_started_at = runtime_payload.get("process_started_at")
-    if isinstance(expected_started_at, str) and expected_started_at.strip():
-        if current["started_at"] != expected_started_at:
+    expected_pgid = runtime_payload.get("pgid")
+    current_pgid = current.get("pgid")
+    pgid_checked = False
+    if isinstance(expected_pgid, int) and expected_pgid > 0 and isinstance(current_pgid, int):
+        pgid_checked = True
+        if current_pgid != expected_pgid:
             return {
                 "alive": True,
                 "matches": False,
                 "reason": "identity_mismatch",
                 "message": (
-                    f"Runtime pid {pid} is alive, but start time changed "
-                    f"({expected_started_at} != {current['started_at']})."
+                    f"Runtime pid {pid} is alive, but process group changed "
+                    f"({expected_pgid} != {current_pgid})."
                 ),
             }
 
     expected_command = expected_runtime_command_text(runtime_payload)
-    if expected_command and normalize_command_text(str(current["command"])) != expected_command:
+    current_command = current.get("command")
+    command_checked = bool(expected_command and isinstance(current_command, str))
+    if command_checked and normalize_command_text(current_command) != expected_command:
         return {
             "alive": True,
             "matches": False,
@@ -174,15 +249,23 @@ def runtime_process_state(runtime_payload: dict[str, Any]) -> dict[str, object]:
             ),
         }
 
-    expected_pgid = runtime_payload.get("pgid")
-    if isinstance(expected_pgid, int) and expected_pgid > 0 and current["pgid"] != expected_pgid:
+    expected_started_at = runtime_payload.get("process_started_at")
+    current_started_at = current.get("started_at")
+    if (
+        isinstance(expected_started_at, str)
+        and expected_started_at.strip()
+        and isinstance(current_started_at, str)
+        and current_started_at.strip()
+        and not process_start_times_match(expected_started_at, current_started_at)
+        and not (pgid_checked and command_checked)
+    ):
         return {
             "alive": True,
             "matches": False,
             "reason": "identity_mismatch",
             "message": (
-                f"Runtime pid {pid} is alive, but process group changed "
-                f"({expected_pgid} != {current['pgid']})."
+                f"Runtime pid {pid} is alive, but start time changed "
+                f"({expected_started_at} != {current_started_at})."
             ),
         }
 
@@ -451,7 +534,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--repo",
         required=True,
-        help="Primary repo root. Run context is resolved from this repo's git-local pointer.",
+        help="Primary repo root. Run context is resolved from this repo's repo-local pointer.",
     )
     parser.add_argument("--workspace-root")
     parser.add_argument(

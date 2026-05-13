@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from pathlib import Path
 
 from autoresearch_core import print_json
@@ -12,12 +13,17 @@ from autoresearch_helpers import (
     append_description_suffix,
     append_rows,
     evaluate_required_label_gate,
+    format_repo_target_label,
     format_keep_gate_miss_suffix,
+    git_status_entries,
+    has_git_repo,
     improvement,
+    is_autoresearch_owned_artifact,
     make_row,
     normalize_labels,
     parse_decimal,
     parse_metrics_json_output,
+    RepoTarget,
     parse_results_log,
     repo_commit_map_for_targets,
     repo_targets_from_config,
@@ -32,6 +38,63 @@ from autoresearch_runtime_common import DEFAULT_RESULTS_PATH
 
 
 STATUSES = ["keep", "discard", "crash", "no-op", "blocked", "drift", "refine", "pivot", "search"]
+
+
+def git_head(repo: Path) -> str | None:
+    if not has_git_repo(repo):
+        return None
+
+    completed = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip() or None
+
+
+def commits_match_head(recorded_commit: str, head: str) -> bool:
+    value = recorded_commit.strip()
+    if not value or value == "-":
+        return False
+    return head.startswith(value) or value.startswith(head)
+
+
+def validate_trial_commit_provenance(
+    *,
+    repo_targets: list[RepoTarget],
+    primary_repo: Path,
+    repo_commit_map: dict[str, str],
+) -> None:
+    blockers: list[str] = []
+    for target in repo_targets:
+        if not has_git_repo(target.path):
+            continue
+        label = format_repo_target_label(target, primary_repo)
+        dirty_paths: list[str] = []
+        for entry in git_status_entries(target.path):
+            for raw_path in entry.touched_paths:
+                if is_autoresearch_owned_artifact(raw_path):
+                    continue
+                dirty_paths.append(raw_path)
+        if dirty_paths:
+            blockers.append(
+                f"[{label}] uncommitted non-autoresearch changes must be cleaned or committed before recording: "
+                + ", ".join(sorted(set(dirty_paths)))
+            )
+
+        head = git_head(target.path)
+        recorded_commit = repo_commit_map.get(str(target.path.resolve()), "")
+        if head and not commits_match_head(recorded_commit, head):
+            blockers.append(
+                f"[{label}] recorded trial commit {recorded_commit or '-'} does not match HEAD {head}"
+            )
+
+    if blockers:
+        raise AutoresearchError("; ".join(blockers))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -177,6 +240,24 @@ def main() -> int:
                 "[ACCEPTANCE preference] retained result already satisfies final acceptance.",
             )
 
+    primary_repo_config = config.get("primary_repo")
+    if not isinstance(primary_repo_config, str) or not primary_repo_config.strip():
+        raise AutoresearchError("State config.primary_repo is required.")
+    primary_repo = Path(primary_repo_config).expanduser().resolve()
+    repo_targets = repo_targets_from_config(primary_repo, config)
+    repo_commit_map = repo_commit_map_for_targets(
+        repo_targets=repo_targets,
+        primary_commit=args.commit,
+        repo_commit_specs=args.repo_commit,
+        existing=state.get("last_trial_repo_commits") or state.get("last_repo_commits"),
+    )
+    if requires_trial_commit(args.status, args.metric is not None, args.guard):
+        validate_trial_commit_provenance(
+            repo_targets=repo_targets,
+            primary_repo=primary_repo,
+            repo_commit_map=repo_commit_map,
+        )
+
     new_row = make_row(
         iteration=str(next_iteration),
         commit=args.commit,
@@ -188,17 +269,6 @@ def main() -> int:
         labels=normalized_labels,
     )
     append_rows(results_path, [new_row])
-
-    primary_repo_config = config.get("primary_repo")
-    if not isinstance(primary_repo_config, str) or not primary_repo_config.strip():
-        raise AutoresearchError("State config.primary_repo is required.")
-    repo_targets = repo_targets_from_config(Path(primary_repo_config).expanduser().resolve(), config)
-    repo_commit_map = repo_commit_map_for_targets(
-        repo_targets=repo_targets,
-        primary_commit=args.commit,
-        repo_commit_specs=args.repo_commit,
-        existing=state.get("last_trial_repo_commits") or state.get("last_repo_commits"),
-    )
 
     final_payload = apply_status_transition(
         payload,

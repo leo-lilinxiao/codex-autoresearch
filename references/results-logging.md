@@ -65,7 +65,7 @@ context.json
 | `log_path` | `string \| null` | Absolute path to `runtime.log` (background only) |
 | `updated_at` | `string` | ISO 8601 UTC timestamp |
 
-Each managed repo also stores a git-local pointer at `.git/codex-autoresearch/pointer.json` that references back to the workspace-owned `context.json`.
+Each managed repo also stores a repo-local pointer at `.codex-autoresearch/pointer.json` that references back to the workspace-owned `context.json`.
 
 Add a direction comment at the top:
 
@@ -211,7 +211,7 @@ These helper scripts live in the skill bundle. Do not confuse them with the targ
 Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In the common repo-local install this is usually `.agents/skills/codex-autoresearch`, so the exact command becomes `python3 .agents/skills/codex-autoresearch/scripts/...`.
 
 - `python3 <skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root> ...`
-  Initializes `autoresearch-results/results.tsv` and `autoresearch-results/state.json` together from the baseline measurement, writes canonical `context.json`, and writes git-local pointers for every managed repo. Interactive runs record `config.session_mode` explicitly; foreground is the default, while background initialization should pass `--session-mode background`. `execution_policy` is only persisted for paths that actually spawn nested Codex sessions: background managed runs and exec. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to persist companion-repo baseline provenance in JSON state. Runs with structural success criteria may add repeated `--required-keep-label LABEL` flags to protect retained state and repeated `--required-stop-label LABEL` flags so the supervisor only stops when the retained keep also carries those labels.
+  Initializes `autoresearch-results/results.tsv` and `autoresearch-results/state.json` together from the baseline measurement, writes canonical `context.json`, and writes repo-local pointers for every managed repo. Interactive runs record `config.session_mode` explicitly; foreground is the default, while background initialization should pass `--session-mode background`. `execution_policy` is only persisted for paths that actually spawn nested Codex sessions: background managed runs and exec. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to persist companion-repo baseline provenance in JSON state. Runs with structural success criteria may add repeated `--required-keep-label LABEL` flags to protect retained state and repeated `--required-stop-label LABEL` flags so the supervisor only stops when the retained keep also carries those labels.
 - `python3 <skill-root>/scripts/autoresearch_set_session_mode.py --repo <repo> ...`
   Internal/scripted helper that synchronizes an existing interactive run's shared JSON state to `foreground` or `background` before the next iteration. Use it only for scripted recovery flows; the normal human-facing skill entrypoint should handle this sync internally, and background `start` already performs the same sync automatically when it resumes existing results/state.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...`
@@ -234,7 +234,7 @@ In exec mode, the helper scripts keep JSON state in scratch storage by default a
 - In normal loop execution, do that closeout through the bundled helper scripts rather than by hand.
 - Append after every iteration, including crashes, no-ops, refines, pivots, and searches.
 - Never commit the Results directory.
-- Treat `autoresearch-results/` and git-local pointers as autoresearch-owned artifacts: leave them unstaged and ignore them when checking experiment scope.
+- Treat `autoresearch-results/` and repo-local pointers as autoresearch-owned artifacts: leave them unstaged and ignore them when checking experiment scope.
 - Re-read the latest entries before choosing the next idea.
 - The standalone health-check helper reports warnings/blockers as JSON. Append a TSV row only when the runtime explicitly decides to log a blocker or recovery event.
 
