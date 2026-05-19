@@ -490,7 +490,7 @@ If unrelated uncommitted changes exist:
 | loop | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json` |
 | plan | Config block printed inline (ready to paste) |
 | debug | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `debug/{YYMMDD}-{HHMM}-{slug}/` findings |
-| fix | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `fix/{YYMMDD}-{HHMM}-{slug}/` fix log |
+| fix | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`; optional human-readable closeout files belong under `autoresearch-results/fix/{YYMMDD}-{HHMM}-{slug}/` only when requested |
 | security | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `security/{YYMMDD}-{HHMM}-{slug}/` audit report |
 | ship | `autoresearch-results/results.tsv`, `autoresearch-results/lessons.md`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, plus `ship/{YYMMDD}-{HHMM}-{slug}/` checklist and verification |
 | exec | `autoresearch-results/results.tsv`, inactive `autoresearch-results/context.json`, repo-local pointer metadata, JSON lines to stdout, exit code |

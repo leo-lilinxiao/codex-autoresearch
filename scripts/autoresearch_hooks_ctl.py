@@ -94,14 +94,27 @@ def source_helper_script_path(name: str) -> Path:
     return Path(__file__).resolve().with_name(name)
 
 
-def managed_bundle_paths() -> list[Path]:
+def managed_script_pairs() -> list[tuple[Path, Path]]:
     return [
-        common_script_path(),
-        context_script_path(),
-        session_script_path(),
-        stop_script_path(),
-        *(managed_helper_script_path(name) for name in HELPER_BUNDLE_SCRIPT_NAMES),
+        (source_common_script(), common_script_path()),
+        (source_context_script(), context_script_path()),
+        (source_session_script(), session_script_path()),
+        (source_stop_script(), stop_script_path()),
+        *[
+            (source_helper_script_path(name), managed_helper_script_path(name))
+            for name in HELPER_BUNDLE_SCRIPT_NAMES
+        ],
     ]
+
+
+def managed_bundle_paths() -> list[Path]:
+    return [destination_path for _, destination_path in managed_script_pairs()]
+
+
+def files_match(source_path: Path, destination_path: Path) -> bool:
+    if not destination_path.exists():
+        return False
+    return source_path.read_bytes() == destination_path.read_bytes()
 
 
 def source_session_script() -> Path:
@@ -722,16 +735,7 @@ def read_manifest() -> dict[str, Any]:
 
 def install_managed_scripts() -> None:
     hooks_home().mkdir(parents=True, exist_ok=True)
-    for source_path, destination_path in (
-        (source_common_script(), common_script_path()),
-        (source_context_script(), context_script_path()),
-        (source_session_script(), session_script_path()),
-        (source_stop_script(), stop_script_path()),
-        *(
-            (source_helper_script_path(name), managed_helper_script_path(name))
-            for name in HELPER_BUNDLE_SCRIPT_NAMES
-        ),
-    ):
+    for source_path, destination_path in managed_script_pairs():
         shutil.copy2(source_path, destination_path)
         destination_path.chmod(0o755)
 
@@ -767,6 +771,11 @@ def status() -> dict[str, Any]:
     )
     manifest = read_manifest()
     managed_paths = managed_bundle_paths()
+    managed_scripts_present = all(path.exists() for path in managed_paths)
+    managed_scripts_current = all(
+        files_match(source_path, destination_path)
+        for source_path, destination_path in managed_script_pairs()
+    )
     session_command = installed_command(session_script_path())
     stop_command = installed_command(stop_script_path())
     hooks_map = hooks_payload.get("hooks", {})
@@ -792,7 +801,7 @@ def status() -> dict[str, Any]:
         and managed_stop
         and managed_session_trusted
         and managed_stop_trusted
-        and all(path.exists() for path in managed_paths)
+        and managed_scripts_current
     )
     persistent_setup_missing: list[str] = []
     if not goals_feature_enabled:
@@ -807,8 +816,10 @@ def status() -> dict[str, Any]:
         persistent_setup_missing.append("session_start_hook_trust")
     if managed_stop and not managed_stop_trusted:
         persistent_setup_missing.append("stop_hook_trust")
-    if not all(path.exists() for path in managed_paths):
+    if not managed_scripts_present:
         persistent_setup_missing.append("managed_scripts")
+    elif not managed_scripts_current:
+        persistent_setup_missing.append("managed_scripts_stale")
 
     startup_tip_reasons: list[str] = []
     if not current_goals_feature_enabled:
@@ -839,7 +850,8 @@ def status() -> dict[str, Any]:
         "managed_stop_installed": managed_stop and stop_script_path().exists(),
         "managed_session_start_trusted": managed_session and managed_session_trusted,
         "managed_stop_trusted": managed_stop and managed_stop_trusted,
-        "managed_scripts_present": all(path.exists() for path in managed_paths),
+        "managed_scripts_present": managed_scripts_present,
+        "managed_scripts_current": managed_scripts_current,
         "manifest_present": manifest_path().exists(),
         "helper_root_fallback": manifest.get("helper_root_fallback") or str(hooks_home()),
         "skill_root_fallback": manifest.get("skill_root_fallback") or str(hooks_home()),

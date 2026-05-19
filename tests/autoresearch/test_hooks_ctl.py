@@ -104,6 +104,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertTrue(installed["managed_session_start_trusted"])
             self.assertTrue(installed["managed_stop_trusted"])
             self.assertTrue(installed["managed_scripts_present"])
+            self.assertTrue(installed["managed_scripts_current"])
             self.assertTrue(self.installed_hook_path(home, "autoresearch_supervisor_status.py").exists())
 
             config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
@@ -133,6 +134,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertTrue(reinstalled["managed_session_start_trusted"])
             self.assertTrue(reinstalled["managed_stop_trusted"])
             self.assertTrue(reinstalled["goals_feature_enabled_by_installer"])
+            self.assertTrue(reinstalled["managed_scripts_current"])
             hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
             self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
             self.assertEqual(len(hooks_payload["hooks"]["Stop"]), 1)
@@ -148,6 +150,31 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertIn("goals = true", config_text)
             self.assertNotIn("# BEGIN codex-autoresearch hook trust", config_text)
             self.assertNotIn("trusted_hash = \"sha256:", config_text)
+
+    def test_status_detects_stale_managed_scripts_and_reinstall_refreshes_them(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            env = self.hook_env(home)
+
+            installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            self.assertTrue(installed["persistent_setup_ready"])
+            self.assertTrue(installed["managed_scripts_present"])
+            self.assertTrue(installed["managed_scripts_current"])
+
+            stop_path = self.installed_hook_path(home, "stop.py")
+            stop_path.write_text("# stale managed stop hook\n", encoding="utf-8")
+
+            stale = self.run_script("autoresearch_hooks_ctl.py", "status", env=env)
+            self.assertFalse(stale["persistent_setup_ready"])
+            self.assertTrue(stale["managed_scripts_present"])
+            self.assertFalse(stale["managed_scripts_current"])
+            self.assertIn("managed_scripts_stale", stale["persistent_setup_missing"])
+
+            refreshed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            self.assertTrue(refreshed["persistent_setup_ready"])
+            self.assertTrue(refreshed["managed_scripts_current"])
+            self.assertNotIn("managed_scripts_stale", refreshed["persistent_setup_missing"])
 
     def test_repo_flag_is_accepted_and_ignored_for_all_subcommands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1137,6 +1164,8 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
                 str(state_path),
                 "--mode",
                 "loop",
+                "--session-mode",
+                "background",
                 "--goal",
                 "Reduce failures",
                 "--scope",
@@ -1172,6 +1201,69 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             completed.check_returncode()
             payload = json.loads(completed.stdout)
             self.assertEqual(payload["decision"], "block")
+
+    def test_foreground_stop_hook_does_not_continue_background_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            env = self.hook_env(home)
+            self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            hook_path = self.installed_hook_path(home, "stop.py")
+
+            repo = root / "background-repo"
+            repo.mkdir()
+            results_path = self.managed_results_path(repo)
+            state_path = self.managed_state_path(repo)
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--session-mode",
+                "background",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "base111",
+                "--baseline-description",
+                "baseline failures",
+                env=env,
+            )
+            transcript_path = root / "foreground-launcher.jsonl"
+            self.write_transcript_marker(transcript_path)
+
+            completed = self.run_installed_hook(
+                hook_path,
+                cwd=repo,
+                payload={
+                    "cwd": str(repo),
+                    "stop_hook_active": False,
+                    "transcript_path": str(transcript_path),
+                },
+                env=env,
+            )
+            completed.check_returncode()
+            self.assertEqual(completed.stdout, "")
+
+            pointer_payload = json.loads(
+                self.repo_hook_context_path(repo).read_text(encoding="utf-8")
+            )
+            self.assertTrue(pointer_payload["active"])
+            self.assertEqual(pointer_payload["session_mode"], "background")
 
     def test_installed_stop_hook_uses_managed_helper_bundle_without_source_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

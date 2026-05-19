@@ -90,22 +90,17 @@ Run the guard if configured. A command that fails at baseline belongs in the tar
 
 ### Phase 8: Log
 
-Append to `fix-results.tsv` using the generic schema defined in `references/results-logging.md`:
+Record the completed experiment through the bundled helper using the generic schema defined in `references/results-logging.md`:
 
 ```tsv
 iteration	commit	metric	delta	guard	status	description
 ```
 
-## Output Directory
+## Output Artifacts
 
-```text
-fix/{YYMMDD}-{HHMM}-{slug}/
-  fix-results.tsv
-  blocked.md
-  summary.md
-```
+By default, fix mode writes only the normal run artifacts under `autoresearch-results/`.
 
-`blocked.md` must list items that could not be fixed safely within the configured attempts.
+Do not create a repo-root `fix/` directory during normal execution. If the user explicitly asks to save human-readable closeout artifacts, put them under `autoresearch-results/fix/{YYMMDD}-{HHMM}-{slug}/` and leave them unstaged.
 
 ## Web Search for Unfamiliar Errors
 
