@@ -65,6 +65,7 @@ class HookContext:
     opt_in_env: bool
     transcript_marked: bool
     pointer_active: bool | None
+    pointer_session_mode: str | None
 
     @property
     def session_is_autoresearch(self) -> bool:
@@ -219,7 +220,7 @@ def _coalesce_path(
     return None
 
 
-def resolve_artifact_paths(repo: Path) -> tuple[HookArtifactPaths, bool | None]:
+def resolve_artifact_paths(repo: Path) -> tuple[HookArtifactPaths, bool | None, str | None]:
     pointer = load_hook_context_pointer(repo)
     has_env_artifact_paths = any(
         os.environ.get(name)
@@ -236,7 +237,7 @@ def resolve_artifact_paths(repo: Path) -> tuple[HookArtifactPaths, bool | None]:
             state_path=None,
             launch_path=None,
             runtime_path=None,
-        ), None
+        ), None, None
 
     default_artifacts = default_workspace_artifacts(pointer.workspace_root if pointer is not None else repo)
     return HookArtifactPaths(
@@ -280,7 +281,9 @@ def resolve_artifact_paths(repo: Path) -> tuple[HookArtifactPaths, bool | None]:
                 else None
             ),
         ),
-    ), (pointer.active if pointer is not None else None)
+    ), (pointer.active if pointer is not None else None), (
+        pointer.session_mode if pointer is not None else None
+    )
 
 
 def payload_transcript_path(payload: dict[str, object]) -> Path | None:
@@ -353,7 +356,7 @@ def build_context(script_path: str | Path) -> HookContext | None:
     manifest = load_manifest(script_path)
     repo = resolve_repo(cwd)
     transcript_path = payload_transcript_path(payload)
-    artifacts, pointer_active = resolve_artifact_paths(repo)
+    artifacts, pointer_active, pointer_session_mode = resolve_artifact_paths(repo)
 
     return HookContext(
         payload=payload,
@@ -364,4 +367,5 @@ def build_context(script_path: str | Path) -> HookContext | None:
         opt_in_env=env_truthy(HOOK_ACTIVE_ENV),
         transcript_marked=transcript_indicates_autoresearch_session(transcript_path),
         pointer_active=pointer_active,
+        pointer_session_mode=pointer_session_mode,
     )

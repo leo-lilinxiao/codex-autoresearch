@@ -121,22 +121,14 @@ debug/{YYMMDD}-{HHMM}-{slug}/
 
 ### fix
 
-Output directory:
+No extra output directory is required by default. Fix mode uses the normal run artifacts under `autoresearch-results/`:
 
-```text
-fix/{YYMMDD}-{HHMM}-{slug}/
-  fix-results.tsv
-  blocked.md
-  summary.md
-```
+- `results.tsv`
+- `state.json`
+- `context.json`
+- `lessons.md` if extracted
 
-`summary.md` must include:
-
-- baseline error count
-- final error count
-- categories fixed
-- blocked items
-- guard status
+If the user explicitly asks to save human-readable closeout artifacts, write them under `autoresearch-results/fix/{YYMMDD}-{HHMM}-{slug}/`, not repo-root `fix/`.
 
 ### security
 

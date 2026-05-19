@@ -121,7 +121,7 @@ At the start of every invocation, check for prior run artifacts in this order:
 | 2 | Results log | `autoresearch-results/results.tsv` exists and has a baseline row | strong |
 | 3 | Lessons file | `autoresearch-results/lessons.md` exists | moderate |
 | 4 | Git history | Recent commits with `experiment:` prefix | moderate |
-| 5 | Output dirs | `debug/`, `fix/`, `security/`, `ship/` directories with timestamped subdirectories | weak |
+| 5 | Output dirs | Optional mode closeout directories such as `debug/`, `security/`, `ship/`, or `autoresearch-results/fix/` | weak |
 
 If none of these signals are present, proceed with a fresh run (normal wizard flow).
 

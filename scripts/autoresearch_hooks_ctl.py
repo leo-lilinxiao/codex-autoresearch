@@ -17,10 +17,12 @@ from autoresearch_core import print_json
 from autoresearch_helpers import AutoresearchError, utc_now
 
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 FEATURE_SECTION = "features"
 HOOKS_FEATURE_KEY = "hooks"
 GOALS_FEATURE_KEY = "goals"
+HOOKS_FEATURE_DEFAULT_ENABLED = True
+GOALS_FEATURE_DEFAULT_ENABLED = False
 MANAGED_DIR_NAME = "autoresearch-hooks"
 SESSION_SCRIPT_NAME = "session_start.py"
 STOP_SCRIPT_NAME = "stop.py"
@@ -92,14 +94,27 @@ def source_helper_script_path(name: str) -> Path:
     return Path(__file__).resolve().with_name(name)
 
 
-def managed_bundle_paths() -> list[Path]:
+def managed_script_pairs() -> list[tuple[Path, Path]]:
     return [
-        common_script_path(),
-        context_script_path(),
-        session_script_path(),
-        stop_script_path(),
-        *(managed_helper_script_path(name) for name in HELPER_BUNDLE_SCRIPT_NAMES),
+        (source_common_script(), common_script_path()),
+        (source_context_script(), context_script_path()),
+        (source_session_script(), session_script_path()),
+        (source_stop_script(), stop_script_path()),
+        *[
+            (source_helper_script_path(name), managed_helper_script_path(name))
+            for name in HELPER_BUNDLE_SCRIPT_NAMES
+        ],
     ]
+
+
+def managed_bundle_paths() -> list[Path]:
+    return [destination_path for _, destination_path in managed_script_pairs()]
+
+
+def files_match(source_path: Path, destination_path: Path) -> bool:
+    if not destination_path.exists():
+        return False
+    return source_path.read_bytes() == destination_path.read_bytes()
 
 
 def source_session_script() -> Path:
@@ -184,6 +199,11 @@ def parse_feature_value(text: str, key: str) -> bool | None:
         return None
     value = features.get(key)
     return value if isinstance(value, bool) else None
+
+
+def feature_enabled_from_config(text: str, key: str, *, default: bool) -> bool:
+    value = parse_feature_value(text, key)
+    return default if value is None else value
 
 
 def parse_config_string_value(text: str, key: str) -> str | None:
@@ -677,7 +697,6 @@ def count_all_hook_groups(payload: dict[str, Any]) -> int:
 
 def write_manifest(
     *,
-    hooks_feature_enabled_by_installer: bool,
     goals_feature_enabled_by_installer: bool,
 ) -> None:
     managed_scripts = {
@@ -694,8 +713,6 @@ def write_manifest(
         "installed_at": utc_now(),
         "helper_root_fallback": str(hooks_home()),
         "skill_root_fallback": str(hooks_home()),
-        "feature_enabled_by_installer": hooks_feature_enabled_by_installer,
-        "hooks_feature_enabled_by_installer": hooks_feature_enabled_by_installer,
         "goals_feature_enabled_by_installer": goals_feature_enabled_by_installer,
         "managed_scripts": managed_scripts,
     }
@@ -718,24 +735,23 @@ def read_manifest() -> dict[str, Any]:
 
 def install_managed_scripts() -> None:
     hooks_home().mkdir(parents=True, exist_ok=True)
-    for source_path, destination_path in (
-        (source_common_script(), common_script_path()),
-        (source_context_script(), context_script_path()),
-        (source_session_script(), session_script_path()),
-        (source_stop_script(), stop_script_path()),
-        *(
-            (source_helper_script_path(name), managed_helper_script_path(name))
-            for name in HELPER_BUNDLE_SCRIPT_NAMES
-        ),
-    ):
+    for source_path, destination_path in managed_script_pairs():
         shutil.copy2(source_path, destination_path)
         destination_path.chmod(0o755)
 
 
 def status() -> dict[str, Any]:
     config_text = read_text(config_path())
-    hooks_feature_enabled = parse_feature_value(config_text, HOOKS_FEATURE_KEY) is True
-    goals_feature_enabled = parse_feature_value(config_text, GOALS_FEATURE_KEY) is True
+    hooks_feature_enabled = feature_enabled_from_config(
+        config_text,
+        HOOKS_FEATURE_KEY,
+        default=HOOKS_FEATURE_DEFAULT_ENABLED,
+    )
+    goals_feature_enabled = feature_enabled_from_config(
+        config_text,
+        GOALS_FEATURE_KEY,
+        default=GOALS_FEATURE_DEFAULT_ENABLED,
+    )
     config_full_access = parse_config_string_value(config_text, "sandbox_mode") == "danger-full-access"
     launch = current_codex_launch()
     launch_goals = launch["goals_feature_override"]
@@ -755,6 +771,11 @@ def status() -> dict[str, Any]:
     )
     manifest = read_manifest()
     managed_paths = managed_bundle_paths()
+    managed_scripts_present = all(path.exists() for path in managed_paths)
+    managed_scripts_current = all(
+        files_match(source_path, destination_path)
+        for source_path, destination_path in managed_script_pairs()
+    )
     session_command = installed_command(session_script_path())
     stop_command = installed_command(stop_script_path())
     hooks_map = hooks_payload.get("hooks", {})
@@ -773,12 +794,6 @@ def status() -> dict[str, Any]:
     }
     managed_session_trusted = any(":session_start:" in key for key in trusted_keys)
     managed_stop_trusted = any(":stop:" in key for key in trusted_keys)
-    hooks_feature_enabled_by_installer = bool(
-        manifest.get(
-            "hooks_feature_enabled_by_installer",
-            manifest.get("feature_enabled_by_installer"),
-        )
-    )
     persistent_setup_ready = (
         hooks_feature_enabled
         and goals_feature_enabled
@@ -786,7 +801,7 @@ def status() -> dict[str, Any]:
         and managed_stop
         and managed_session_trusted
         and managed_stop_trusted
-        and all(path.exists() for path in managed_paths)
+        and managed_scripts_current
     )
     persistent_setup_missing: list[str] = []
     if not goals_feature_enabled:
@@ -801,8 +816,10 @@ def status() -> dict[str, Any]:
         persistent_setup_missing.append("session_start_hook_trust")
     if managed_stop and not managed_stop_trusted:
         persistent_setup_missing.append("stop_hook_trust")
-    if not all(path.exists() for path in managed_paths):
+    if not managed_scripts_present:
         persistent_setup_missing.append("managed_scripts")
+    elif not managed_scripts_current:
+        persistent_setup_missing.append("managed_scripts_stale")
 
     startup_tip_reasons: list[str] = []
     if not current_goals_feature_enabled:
@@ -825,7 +842,6 @@ def status() -> dict[str, Any]:
         "current_session_goals_feature_enabled": current_goals_feature_enabled,
         "current_session_hooks_feature_enabled": current_hooks_feature_enabled,
         "current_session_full_access": current_full_access,
-        "hooks_feature_enabled_by_installer": hooks_feature_enabled_by_installer,
         "goals_feature_enabled_by_installer": bool(
             manifest.get("goals_feature_enabled_by_installer")
         ),
@@ -834,7 +850,8 @@ def status() -> dict[str, Any]:
         "managed_stop_installed": managed_stop and stop_script_path().exists(),
         "managed_session_start_trusted": managed_session and managed_session_trusted,
         "managed_stop_trusted": managed_stop and managed_stop_trusted,
-        "managed_scripts_present": all(path.exists() for path in managed_paths),
+        "managed_scripts_present": managed_scripts_present,
+        "managed_scripts_current": managed_scripts_current,
         "manifest_present": manifest_path().exists(),
         "helper_root_fallback": manifest.get("helper_root_fallback") or str(hooks_home()),
         "skill_root_fallback": manifest.get("skill_root_fallback") or str(hooks_home()),
@@ -855,18 +872,8 @@ def install() -> dict[str, Any]:
     previous_manifest = read_manifest()
     previous_hooks_feature = parse_feature_value(config_before, HOOKS_FEATURE_KEY)
     previous_goals_feature = parse_feature_value(config_before, GOALS_FEATURE_KEY)
-    previous_hooks_feature_enabled_by_installer = bool(
-        previous_manifest.get(
-            "hooks_feature_enabled_by_installer",
-            previous_manifest.get("feature_enabled_by_installer"),
-        )
-    )
     previous_goals_feature_enabled_by_installer = bool(
         previous_manifest.get("goals_feature_enabled_by_installer")
-    )
-    hooks_feature_enabled_by_installer = (
-        previous_hooks_feature_enabled_by_installer
-        or previous_hooks_feature is not True
     )
     goals_feature_enabled_by_installer = (
         previous_goals_feature_enabled_by_installer
@@ -911,12 +918,14 @@ def install() -> dict[str, Any]:
     )
     hooks_map["Stop"] = stop_groups
 
-    updated_config = set_toml_boolean(
-        config_before,
-        section=FEATURE_SECTION,
-        key=HOOKS_FEATURE_KEY,
-        value=True,
-    )
+    updated_config = config_before
+    if previous_hooks_feature is False:
+        updated_config = set_toml_boolean(
+            updated_config,
+            section=FEATURE_SECTION,
+            key=HOOKS_FEATURE_KEY,
+            value=True,
+        )
     updated_config = set_toml_boolean(
         updated_config,
         section=FEATURE_SECTION,
@@ -934,7 +943,6 @@ def install() -> dict[str, Any]:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
     )
     write_manifest(
-        hooks_feature_enabled_by_installer=hooks_feature_enabled_by_installer,
         goals_feature_enabled_by_installer=goals_feature_enabled_by_installer,
     )
 
@@ -947,14 +955,6 @@ def install() -> dict[str, Any]:
 
 def uninstall() -> dict[str, Any]:
     ensure_supported_platform()
-    manifest = read_manifest()
-    hooks_feature_enabled_by_installer = bool(
-        manifest.get(
-            "hooks_feature_enabled_by_installer",
-            manifest.get("feature_enabled_by_installer"),
-        )
-    )
-
     payload = normalize_hooks_payload(load_json_file(hooks_path(), default={"hooks": {}}))
     trust_entries = managed_hook_trust_entries_from_payload(payload)
     hooks_map = payload.setdefault("hooks", {})
@@ -991,13 +991,6 @@ def uninstall() -> dict[str, Any]:
         keys=set(trust_entries),
         trusted_hashes=set(trust_entries.values()),
     )
-    if hooks_feature_enabled_by_installer and count_all_hook_groups(payload) == 0:
-        updated_config = set_toml_boolean(
-            updated_config,
-            section=FEATURE_SECTION,
-            key=HOOKS_FEATURE_KEY,
-            value=False,
-        )
     config_backup = None
     if updated_config != config_before:
         config_backup = write_text_with_backup(config_path(), updated_config)
