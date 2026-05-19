@@ -107,10 +107,18 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertTrue(self.installed_hook_path(home, "autoresearch_supervisor_status.py").exists())
 
             config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
-            self.assertIn("hooks = true", config_text)
+            self.assertNotIn("hooks =", config_text)
             self.assertIn("goals = true", config_text)
             self.assertNotIn("# BEGIN codex-autoresearch hook trust", config_text)
             self.assertIn("trusted_hash = \"sha256:", config_text)
+            manifest = json.loads(
+                (codex_home / "autoresearch-hooks" / "manifest.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(manifest["version"], 2)
+            self.assertNotIn("feature_enabled_by_installer", manifest)
+            self.assertNotIn("hooks_feature_enabled_by_installer", manifest)
             hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
             self.assertIn("UserPromptSubmit", hooks_payload["hooks"])
             self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
@@ -136,7 +144,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertNotIn("Stop", hooks_payload["hooks"])
             self.assertIn("UserPromptSubmit", hooks_payload["hooks"])
             config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
-            self.assertIn("hooks = true", config_text)
+            self.assertNotIn("hooks =", config_text)
             self.assertIn("goals = true", config_text)
             self.assertNotIn("# BEGIN codex-autoresearch hook trust", config_text)
             self.assertNotIn("trusted_hash = \"sha256:", config_text)
@@ -187,10 +195,10 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertFalse(status["persistent_setup_ready"])
             self.assertTrue(status["startup_tip_needed"])
             self.assertIn("goals_not_enabled", status["startup_tip_reasons"])
-            self.assertIn("hooks_not_enabled", status["startup_tip_reasons"])
+            self.assertNotIn("hooks_not_enabled", status["startup_tip_reasons"])
             self.assertIn("full_access_not_enabled", status["startup_tip_reasons"])
             self.assertIn("goals_feature", status["persistent_setup_missing"])
-            self.assertIn("hooks_feature", status["persistent_setup_missing"])
+            self.assertNotIn("hooks_feature", status["persistent_setup_missing"])
             self.assertIn("session_start_hook", status["persistent_setup_missing"])
             self.assertIn("stop_hook", status["persistent_setup_missing"])
             self.assertEqual(
@@ -220,7 +228,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertTrue(status["current_session_hooks_feature_enabled"])
             self.assertTrue(status["current_session_full_access"])
             self.assertIn("goals_feature", status["persistent_setup_missing"])
-            self.assertIn("hooks_feature", status["persistent_setup_missing"])
+            self.assertNotIn("hooks_feature", status["persistent_setup_missing"])
 
     def test_status_reminds_when_current_launch_omits_goal_flags(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -240,8 +248,35 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
 
             self.assertTrue(status["startup_tip_needed"])
             self.assertIn("goals_not_enabled", status["startup_tip_reasons"])
-            self.assertIn("hooks_not_enabled", status["startup_tip_reasons"])
+            self.assertNotIn("hooks_not_enabled", status["startup_tip_reasons"])
             self.assertNotIn("full_access_not_enabled", status["startup_tip_reasons"])
+
+    def test_status_reminds_when_hooks_are_explicitly_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            env = self.hook_env(home)
+            (codex_home / "config.toml").write_text(
+                "[features]\nhooks = false\ngoals = true\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(
+                hooks_ctl,
+                "parent_process_commands",
+                return_value=[
+                    "python3 /tmp/status.py",
+                    "codex --dangerously-bypass-approvals-and-sandbox",
+                ],
+            ):
+                status = hooks_ctl.status()
+
+            self.assertTrue(status["startup_tip_needed"])
+            self.assertIn("hooks_not_enabled", status["startup_tip_reasons"])
+            self.assertNotIn("goals_not_enabled", status["startup_tip_reasons"])
+            self.assertIn("hooks_feature", status["persistent_setup_missing"])
 
     def test_install_trusts_managed_hooks_at_actual_group_indices(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -364,7 +399,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertTrue(status["managed_session_start_trusted"])
             self.assertTrue(status["managed_stop_trusted"])
 
-    def test_uninstall_turns_hooks_off_but_preserves_goals_when_no_other_hooks_remain(self) -> None:
+    def test_uninstall_preserves_default_hooks_and_goals_when_no_other_hooks_remain(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "home"
@@ -375,7 +410,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertFalse(removed["persistent_setup_ready"])
 
             config_text = (home / ".codex" / "config.toml").read_text(encoding="utf-8")
-            self.assertIn("hooks = false", config_text)
+            self.assertNotIn("hooks =", config_text)
             self.assertIn("goals = true", config_text)
             self.assertNotIn("# BEGIN codex-autoresearch hook trust", config_text)
             self.assertNotIn("trusted_hash = \"sha256:", config_text)
@@ -384,6 +419,61 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertFalse(self.installed_hook_path(home, "session_start.py").exists())
             self.assertFalse(self.installed_hook_path(home, "stop.py").exists())
             self.assertFalse(self.installed_hook_path(home, "autoresearch_supervisor_status.py").exists())
+
+    def test_uninstall_keeps_hooks_enabled_after_use(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            env = self.hook_env(home)
+            (codex_home / "config.toml").write_text(
+                "[features]\nhooks = false\n",
+                encoding="utf-8",
+            )
+
+            installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            self.assertTrue(installed["persistent_setup_ready"])
+
+            config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
+            self.assertIn("hooks = true", config_text)
+
+            removed = self.run_script("autoresearch_hooks_ctl.py", "uninstall", env=env)
+            self.assertFalse(removed["persistent_setup_ready"])
+
+            config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
+            self.assertIn("hooks = true", config_text)
+            self.assertIn("goals = true", config_text)
+
+    def test_uninstall_does_not_disable_hooks_from_legacy_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True)
+            env = self.hook_env(home)
+
+            self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            config_path = codex_home / "config.toml"
+            config_text = config_path.read_text(encoding="utf-8")
+            config_path.write_text(
+                config_text.replace("[features]\n", "[features]\nhooks = true\n", 1),
+                encoding="utf-8",
+            )
+            manifest_path = codex_home / "autoresearch-hooks" / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["version"] = 1
+            manifest["feature_enabled_by_installer"] = True
+            manifest["hooks_feature_enabled_by_installer"] = True
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+            removed = self.run_script("autoresearch_hooks_ctl.py", "uninstall", env=env)
+            self.assertFalse(removed["persistent_setup_ready"])
+
+            config_text = config_path.read_text(encoding="utf-8")
+            self.assertIn("hooks = true", config_text)
+            self.assertNotIn("hooks = false", config_text)
+            self.assertNotIn("trusted_hash = \"sha256:", config_text)
 
     def test_uninstall_preserves_user_enabled_goals(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -405,7 +495,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertFalse(removed["persistent_setup_ready"])
 
             config_text = (codex_home / "config.toml").read_text(encoding="utf-8")
-            self.assertIn("hooks = false", config_text)
+            self.assertNotIn("hooks =", config_text)
             self.assertIn("goals = true", config_text)
 
     def test_reinstall_and_uninstall_preserve_foreign_tables_inside_legacy_trust_markers(self) -> None:

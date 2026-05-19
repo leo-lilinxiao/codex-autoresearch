@@ -17,10 +17,12 @@ from autoresearch_core import print_json
 from autoresearch_helpers import AutoresearchError, utc_now
 
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 FEATURE_SECTION = "features"
 HOOKS_FEATURE_KEY = "hooks"
 GOALS_FEATURE_KEY = "goals"
+HOOKS_FEATURE_DEFAULT_ENABLED = True
+GOALS_FEATURE_DEFAULT_ENABLED = False
 MANAGED_DIR_NAME = "autoresearch-hooks"
 SESSION_SCRIPT_NAME = "session_start.py"
 STOP_SCRIPT_NAME = "stop.py"
@@ -184,6 +186,11 @@ def parse_feature_value(text: str, key: str) -> bool | None:
         return None
     value = features.get(key)
     return value if isinstance(value, bool) else None
+
+
+def feature_enabled_from_config(text: str, key: str, *, default: bool) -> bool:
+    value = parse_feature_value(text, key)
+    return default if value is None else value
 
 
 def parse_config_string_value(text: str, key: str) -> str | None:
@@ -677,7 +684,6 @@ def count_all_hook_groups(payload: dict[str, Any]) -> int:
 
 def write_manifest(
     *,
-    hooks_feature_enabled_by_installer: bool,
     goals_feature_enabled_by_installer: bool,
 ) -> None:
     managed_scripts = {
@@ -694,8 +700,6 @@ def write_manifest(
         "installed_at": utc_now(),
         "helper_root_fallback": str(hooks_home()),
         "skill_root_fallback": str(hooks_home()),
-        "feature_enabled_by_installer": hooks_feature_enabled_by_installer,
-        "hooks_feature_enabled_by_installer": hooks_feature_enabled_by_installer,
         "goals_feature_enabled_by_installer": goals_feature_enabled_by_installer,
         "managed_scripts": managed_scripts,
     }
@@ -734,8 +738,16 @@ def install_managed_scripts() -> None:
 
 def status() -> dict[str, Any]:
     config_text = read_text(config_path())
-    hooks_feature_enabled = parse_feature_value(config_text, HOOKS_FEATURE_KEY) is True
-    goals_feature_enabled = parse_feature_value(config_text, GOALS_FEATURE_KEY) is True
+    hooks_feature_enabled = feature_enabled_from_config(
+        config_text,
+        HOOKS_FEATURE_KEY,
+        default=HOOKS_FEATURE_DEFAULT_ENABLED,
+    )
+    goals_feature_enabled = feature_enabled_from_config(
+        config_text,
+        GOALS_FEATURE_KEY,
+        default=GOALS_FEATURE_DEFAULT_ENABLED,
+    )
     config_full_access = parse_config_string_value(config_text, "sandbox_mode") == "danger-full-access"
     launch = current_codex_launch()
     launch_goals = launch["goals_feature_override"]
@@ -773,12 +785,6 @@ def status() -> dict[str, Any]:
     }
     managed_session_trusted = any(":session_start:" in key for key in trusted_keys)
     managed_stop_trusted = any(":stop:" in key for key in trusted_keys)
-    hooks_feature_enabled_by_installer = bool(
-        manifest.get(
-            "hooks_feature_enabled_by_installer",
-            manifest.get("feature_enabled_by_installer"),
-        )
-    )
     persistent_setup_ready = (
         hooks_feature_enabled
         and goals_feature_enabled
@@ -825,7 +831,6 @@ def status() -> dict[str, Any]:
         "current_session_goals_feature_enabled": current_goals_feature_enabled,
         "current_session_hooks_feature_enabled": current_hooks_feature_enabled,
         "current_session_full_access": current_full_access,
-        "hooks_feature_enabled_by_installer": hooks_feature_enabled_by_installer,
         "goals_feature_enabled_by_installer": bool(
             manifest.get("goals_feature_enabled_by_installer")
         ),
@@ -855,18 +860,8 @@ def install() -> dict[str, Any]:
     previous_manifest = read_manifest()
     previous_hooks_feature = parse_feature_value(config_before, HOOKS_FEATURE_KEY)
     previous_goals_feature = parse_feature_value(config_before, GOALS_FEATURE_KEY)
-    previous_hooks_feature_enabled_by_installer = bool(
-        previous_manifest.get(
-            "hooks_feature_enabled_by_installer",
-            previous_manifest.get("feature_enabled_by_installer"),
-        )
-    )
     previous_goals_feature_enabled_by_installer = bool(
         previous_manifest.get("goals_feature_enabled_by_installer")
-    )
-    hooks_feature_enabled_by_installer = (
-        previous_hooks_feature_enabled_by_installer
-        or previous_hooks_feature is not True
     )
     goals_feature_enabled_by_installer = (
         previous_goals_feature_enabled_by_installer
@@ -911,12 +906,14 @@ def install() -> dict[str, Any]:
     )
     hooks_map["Stop"] = stop_groups
 
-    updated_config = set_toml_boolean(
-        config_before,
-        section=FEATURE_SECTION,
-        key=HOOKS_FEATURE_KEY,
-        value=True,
-    )
+    updated_config = config_before
+    if previous_hooks_feature is False:
+        updated_config = set_toml_boolean(
+            updated_config,
+            section=FEATURE_SECTION,
+            key=HOOKS_FEATURE_KEY,
+            value=True,
+        )
     updated_config = set_toml_boolean(
         updated_config,
         section=FEATURE_SECTION,
@@ -934,7 +931,6 @@ def install() -> dict[str, Any]:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
     )
     write_manifest(
-        hooks_feature_enabled_by_installer=hooks_feature_enabled_by_installer,
         goals_feature_enabled_by_installer=goals_feature_enabled_by_installer,
     )
 
@@ -947,14 +943,6 @@ def install() -> dict[str, Any]:
 
 def uninstall() -> dict[str, Any]:
     ensure_supported_platform()
-    manifest = read_manifest()
-    hooks_feature_enabled_by_installer = bool(
-        manifest.get(
-            "hooks_feature_enabled_by_installer",
-            manifest.get("feature_enabled_by_installer"),
-        )
-    )
-
     payload = normalize_hooks_payload(load_json_file(hooks_path(), default={"hooks": {}}))
     trust_entries = managed_hook_trust_entries_from_payload(payload)
     hooks_map = payload.setdefault("hooks", {})
@@ -991,13 +979,6 @@ def uninstall() -> dict[str, Any]:
         keys=set(trust_entries),
         trusted_hashes=set(trust_entries.values()),
     )
-    if hooks_feature_enabled_by_installer and count_all_hook_groups(payload) == 0:
-        updated_config = set_toml_boolean(
-            updated_config,
-            section=FEATURE_SECTION,
-            key=HOOKS_FEATURE_KEY,
-            value=False,
-        )
     config_backup = None
     if updated_config != config_before:
         config_backup = write_text_with_backup(config_path(), updated_config)
