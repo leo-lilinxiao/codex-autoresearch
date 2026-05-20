@@ -157,10 +157,10 @@ Current best metric: {current_best}
 
 Instructions:
 1. Apply the hypothesis as a single focused change.
-2. Commit the change.
+2. Create the scoped trial commit.
 3. Run the verify command and record the metric.
 4. Run the guard command.
-5. Report back: commit hash, metric value, guard pass/fail, description.
+5. Report back: closeout commit hash, metric value, guard pass/fail, description.
 
 Do NOT modify files outside scope. Do NOT run multiple changes.
 Do NOT ask any questions. Do NOT interact with the user.

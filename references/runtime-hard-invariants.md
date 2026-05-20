@@ -10,10 +10,9 @@ Use this file as the primary execution checklist during active runs. Keep it sho
 4. Do not emit placeholder progress/status messages when there is no new experiment, no new verification result, and no new blocker.
 5. Use bundled helper scripts for authoritative TSV/JSON updates, keep/stop gating, and row/state semantics.
 6. All normal run artifacts are workspace-owned under `autoresearch-results/`: `results.tsv`, `state.json`, `context.json`, and `lessons.md`; background also uses `launch.json`, `runtime.json`, and `runtime.log`.
-7. Lessons are secondary helper-derived output, not a primary runtime invariant.
-8. Stop only on goal reached, manual stop, configured iteration cap, a true blocker, or the documented soft-blocker handoff after strategy exhaustion.
-9. After any context compaction event, re-read `core-principles.md`, this file, and the selected mode workflow before the next iteration.
-10. Every 10 iterations, run the Protocol Fingerprint Check. If any item fails, re-read the loaded runtime docs before continuing.
+7. Stop only on goal reached, manual stop, configured iteration cap, a true blocker, or the documented soft-blocker handoff after strategy exhaustion.
+8. After any context compaction event, re-read `core-principles.md`, this file, and the selected mode workflow before the next iteration.
+9. Every 10 iterations, run the Protocol Fingerprint Check. If any item fails, re-read the loaded runtime docs before continuing.
 
 ## Protocol Fingerprint Check
 
@@ -36,7 +35,8 @@ For normal loop execution, the closeout order is:
 2. create the scoped trial commit(s),
 3. run verify and guard,
 4. remove generated verify/guard byproducts such as cache files,
-5. record the actual clean HEAD commit(s) through the helper,
-6. only then choose the next idea.
+5. decide keep/discard/crash and apply approved rollback for non-kept trials,
+6. record the current clean HEAD commit(s) through the helper,
+7. only then choose the next idea.
 
 Do not treat logging as optional bookkeeping.

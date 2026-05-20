@@ -48,7 +48,7 @@
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-重启 Codex，然后在项目中打开：
+在项目中打开：
 
 ```
 你:    $codex-autoresearch
@@ -65,7 +65,7 @@ Codex: 在 src/**/*.ts 中找到 47 个 `any`。
 Codex: 开始后台运行 -- 基线：47。持续迭代中。
 ```
 
-后台运行请从可信的 **Full Access** Codex 会话启动。如果 Codex 限制在 workspace-only sandbox，请使用 foreground，或先用 Full Access 重启后再选择 background。
+后台运行请从可信的 **Full Access** Codex 会话启动。
 
 改善累积，失败回滚，全程记录。
 
@@ -88,7 +88,7 @@ Codex: 开始后台运行 -- 基线：47。持续迭代中。
                              |     核心循环       |
                              |                   |
                              |  改一个地方       |
-                             |  git commit       |
+                             |  trial commit     |
                              |  跑验证           |
                              |  改善了？保留     |
                              |  变差了？回滚     |
@@ -164,7 +164,6 @@ iteration  commit   metric  delta   status    description
 - **会话恢复** -- 中断的运行从最后一致状态继续
 - **CI/CD 模式** (`exec`) -- 非交互，JSON 输出，用于自动化流水线
 - **双门验证** -- 分开的 verify（改善了吗？）和 guard（其他东西没坏吧？）
-- **会话 hooks** -- 自动安装；跨会话边界保持 Codex 的运行状态
 
 ## FAQ
 
@@ -184,7 +183,7 @@ iteration  commit   metric  delta   status    description
 
 | 文档 | 内容 |
 |-----|------|
-| [INSTALL.md](../INSTALL.md) | 所有安装方式、skill 发现路径、hooks 设置 |
+| [INSTALL.md](../INSTALL.md) | skill installer、手动复制、用户级安装和开发 symlink |
 | [GUIDE.md](../GUIDE.md) | 完整操作手册：模式、配置字段、安全模型、高级用法 |
 | [EXAMPLES.md](../EXAMPLES.md) | 按领域分类的配方：覆盖率、性能、类型、安全等 |
 

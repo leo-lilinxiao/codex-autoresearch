@@ -1,8 +1,8 @@
 interface:
   display_name: "Codex Autoresearch"
-  short_description: "Single-entry autonomous experimentation with foreground or background runs"
+  short_description: "Autonomous improve-verify loops for Codex"
   brand_color: "#2563EB"
-  default_prompt: "Use $codex-autoresearch to scan the repo, confirm the target, then run logged foreground or background experiments."
+  default_prompt: "Use $codex-autoresearch to improve a measurable goal through verified experiments."
 
 policy:
   allow_implicit_invocation: false

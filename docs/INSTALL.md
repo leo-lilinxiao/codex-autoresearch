@@ -29,23 +29,23 @@ In Codex, run:
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Restart Codex after installation.
+Then use `$codex-autoresearch`.
 
-### Option A: Clone into a repository
+### Manual repo-local skill install
 
 ```bash
 git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
 cp -r codex-autoresearch your-project/.agents/skills/codex-autoresearch
 ```
 
-### Option B: Install for all projects (user scope)
+### Manual user-scope skill install
 
 ```bash
 git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
 cp -r codex-autoresearch ~/.agents/skills/codex-autoresearch
 ```
 
-### Option C: Symlink for live development
+### Symlink for live development
 
 ```bash
 git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
@@ -86,38 +86,27 @@ Expected behavior:
 - loads the relevant workflow for the request,
 - and collects any missing fields via the wizard.
 
-## Codex Integration
+## Continuity
 
-Autoresearch includes a small Codex integration for continuity across reopen, resume, stop, and background handoff. The skill prepares it automatically after it scans the repo and before it asks launch questions. You normally do not need to run anything yourself. If you want to preinstall or inspect it manually:
+Autoresearch prepares resume and background handoff support automatically when a run starts. No manual setup is normally needed.
+
+For troubleshooting, you can prepare it directly:
 
 ```bash
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
 ```
 
-Inspect the current state first if you want:
+Or inspect the current state:
 
 ```bash
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py status
 ```
-
-What it does:
-
-- `SessionStart` restores the short runtime checklist when you reopen or resume an autoresearch run.
-- `Stop` lets Codex continue only when the autoresearch run still looks active/resumable.
-
-Important:
-
-- They only attach to conversations that clearly look like `codex-autoresearch` work; unrelated Codex conversations in the same repo are left alone.
-- The recommended launch command above gives both foreground and background runs the intended capabilities from the start.
-- Managed `background` runs keep their workspace-owned Results directory attached automatically.
 
 ## Updating
 
 If installed by copy: re-clone and replace the installed folder.
 
 If installed by symlink: `git pull` in the source repo. Changes are live immediately.
-
-If an update does not appear, restart Codex.
 
 ## Disable Without Deleting
 
@@ -129,4 +118,4 @@ path = "/absolute/path/to/codex-autoresearch/SKILL.md"
 enabled = false
 ```
 
-Restart Codex after changing the config.
+Use `/skills` to verify the skill is disabled.

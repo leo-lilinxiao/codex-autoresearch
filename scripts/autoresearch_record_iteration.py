@@ -90,7 +90,7 @@ def validate_trial_commit_provenance(
         recorded_commit = repo_commit_map.get(str(target.path.resolve()), "")
         if head and not commits_match_head(recorded_commit, head):
             blockers.append(
-                f"[{label}] recorded trial commit {recorded_commit or '-'} does not match HEAD {head}"
+                f"[{label}] recorded commit {recorded_commit or '-'} does not match current HEAD {head}"
             )
 
     if blockers:
@@ -194,7 +194,7 @@ def main() -> int:
 
     if requires_trial_commit(args.status, args.metric is not None, args.guard) and args.commit == "-":
         raise AutoresearchError(
-            f"Status {args.status} must provide --commit to preserve trial provenance."
+            f"Status {args.status} must provide --commit for the current clean HEAD after closeout."
         )
     if args.status == "keep" and not improvement(metric, current_metric, direction):
         raise AutoresearchError("Keep iterations must improve over the retained metric.")

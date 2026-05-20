@@ -21,7 +21,7 @@ All specialized modes must:
 1. load `core-principles.md`,
 2. follow `structured-output-spec.md`,
 3. load `runtime-hard-invariants.md` for active execution,
-4. use `interaction-wizard.md` for every new interactive launch (except `exec` mode),
+4. use `session-resume-protocol.md` and `interaction-wizard.md` for every new interactive launch (except `exec` mode),
 5. load the selected mode workflow reference,
 6. load detailed references such as `autonomous-loop-protocol.md`, `results-logging.md`, `lessons-protocol.md`, `pivot-protocol.md`, `health-check-protocol.md`, `parallel-experiments-protocol.md`, and `web-search-protocol.md` only when their behavior is actually needed,
 7. keep all decisions mechanical where possible,

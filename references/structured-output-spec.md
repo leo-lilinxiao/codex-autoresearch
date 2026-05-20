@@ -83,7 +83,7 @@ Artifact:
 - `autoresearch-results/results.tsv`
 - `autoresearch-results/lessons.md` (if lessons were extracted)
 - `autoresearch-results/state.json` (session state snapshot, not committed to git; see `references/session-resume-protocol.md`)
-- `autoresearch-results/context.json` (canonical workspace-owned run context for hooks, status, and resume)
+- `autoresearch-results/context.json` (canonical workspace-owned run context for resume, status, and control-plane helpers)
 
 ### plan
 
@@ -100,6 +100,8 @@ Required reply sections:
 No output directory required unless the user asks to save artifacts.
 
 ### debug
+
+Debug mode also persists the generic run-control artifacts under `autoresearch-results/`; the debug directory is the investigation report.
 
 Output directory:
 
@@ -131,6 +133,8 @@ No extra output directory is required by default. Fix mode uses the normal run a
 If the user explicitly asks to save human-readable closeout artifacts, write them under `autoresearch-results/fix/{YYMMDD}-{HHMM}-{slug}/`, not repo-root `fix/`.
 
 ### security
+
+Security mode also persists the generic run-control artifacts under `autoresearch-results/`; the security directory is the audit report.
 
 Output directory:
 
@@ -192,6 +196,6 @@ Exit codes: 0 = improved, 1 = no improvement, 2 = hard blocker.
 
 - TSV headers must be written exactly once.
 - When helper-managed artifacts include timestamps (for example lessons entries or runtime/state metadata), they should use UTC.
-- Workspace-owned artifact metadata should use the documented canonical paths. `context.json` and state config fields store absolute paths so hooks and control-plane helpers can resolve the active run without cwd guessing.
+- Workspace-owned artifact metadata should use the documented canonical paths. `context.json` and state config fields store absolute paths so resume and control-plane helpers can resolve the active run without cwd guessing.
 - Final summaries should reference every artifact created.
 - Parallel workers use `[PARALLEL worker-{id}]` prefix.

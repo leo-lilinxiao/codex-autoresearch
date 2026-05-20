@@ -41,7 +41,7 @@ Before using `codex exec` in CI, configure Codex CLI authentication outside the 
 
 | Aspect | Interactive | Exec |
 |--------|------------|------|
-| Wizard | 1-5 rounds | none |
+| Wizard | usually 1-3 rounds | none |
 | Iterations | bounded or unbounded | always bounded (required) |
 | Output | human-readable text | structured JSON |
 | Progress | every 5 iterations + completion | JSON line per iteration |
@@ -61,7 +61,7 @@ Exec mode is still a managed autoresearch run. The machine-readable JSON is a re
 3. Make one focused change.
 4. Create the scoped trial commit.
 5. Run `Verify`, then `Guard` if configured.
-6. Call `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...` with the actual clean HEAD commit.
+6. Decide keep/discard/crash, apply approved rollback for non-kept trials, then call `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...` with the current clean HEAD commit.
 7. Emit the JSON iteration line only after the helper records that row.
 8. Repeat until the iteration cap or target is reached.
 9. Run `python3 <skill-root>/scripts/autoresearch_exec_state.py --cleanup` as the final helper step, then emit the completion JSON.
@@ -75,6 +75,8 @@ This order is mandatory. Do not hand-write iteration JSON from memory. A kept ex
 ```json
 {"iteration": 1, "commit": "abc1234", "metric": 41, "delta": -6, "guard": "pass", "status": "keep", "description": "narrowed auth types"}
 ```
+
+Do not emit setup notes, progress prose, or markdown around these JSON lines.
 
 ### Completion Summary (stdout, last line)
 

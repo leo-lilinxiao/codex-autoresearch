@@ -1177,6 +1177,41 @@ class AutoresearchSupervisorLaunchTest(AutoresearchScriptsTestBase):
             self.assertEqual(Path(gate["launch_path"]).resolve(), self.managed_launch_path(tmpdir).resolve())
             self.assertEqual(Path(gate["runtime_path"]).resolve(), self.managed_runtime_path(tmpdir).resolve())
 
+    def test_launch_gate_reports_fresh_for_clean_repo_without_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.init_git_repo(Path(tmp))
+
+            gate = self.run_script(
+                "autoresearch_launch_gate.py",
+                "--repo",
+                str(repo),
+            )
+
+            self.assertEqual(gate["decision"], "fresh")
+            self.assertEqual(gate["reason"], "fresh_start")
+            self.assertEqual(Path(gate["results_path"]).resolve(), self.managed_results_path(repo).resolve())
+            self.assertFalse((repo / "autoresearch-results").exists())
+
+    def test_launch_gate_does_not_guess_context_when_artifacts_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.init_git_repo(Path(tmp))
+            results_path = repo / "autoresearch-results/results.tsv"
+            results_path.parent.mkdir(parents=True)
+            results_path.write_text(
+                "# metric_direction: lower\n"
+                "iteration\tcommit\tmetric\tdelta\tguard\tstatus\tdescription\n",
+                encoding="utf-8",
+            )
+
+            completed = self.run_script_completed(
+                "autoresearch_launch_gate.py",
+                "--repo",
+                str(repo),
+            )
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("No codex-autoresearch context found", completed.stderr)
+
     def test_launch_gate_repo_subdirectory_resolves_to_actual_repo_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmpdir = Path(tmp)

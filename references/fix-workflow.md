@@ -68,9 +68,9 @@ Rules:
 - fix the implementation rather than muting the signal,
 - do not hide issues with ignore directives unless the user explicitly authorizes that strategy.
 
-### Phase 4: Commit
+### Phase 4: Trial Commit
 
-Commit before verification when the workspace is isolated.
+Create the scoped trial commit before verification when the workspace is isolated.
 
 ### Phase 5: Verify
 
@@ -87,6 +87,8 @@ Run the guard if configured. A command that fails at baseline belongs in the tar
 - unchanged -> discard
 - worse -> discard immediately
 - crash -> recover or discard
+
+For discarded or crashed trials, roll back first, then record the current clean HEAD through the helper.
 
 ### Phase 8: Log
 

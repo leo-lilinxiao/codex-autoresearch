@@ -24,7 +24,7 @@ context.json
 
 ### `context.json` Schema
 
-`context.json` is the canonical run context written by `autoresearch_workspace.py`. It replaces the former `autoresearch-hook-context.json` and serves as the single source of truth for session hooks and control-plane helpers to locate the active run's artifacts.
+`context.json` is the canonical run context written by `autoresearch_workspace.py`. It replaces the former `autoresearch-hook-context.json` and serves as the single source of truth for resume and control-plane helpers to locate the active run's artifacts.
 
 ```json
 {
@@ -103,14 +103,14 @@ iteration	commit	metric	delta	guard	status	description
 | Column | Meaning |
 |--------|---------|
 | `iteration` | Integer main iteration counter starting at `0` for the baseline. Parallel worker detail rows use suffix notation (`5a`, `5b`, `5c`) |
-| `commit` | Short hash for the kept or attempted commit. Use `-` only for meta rows that did not test a committed trial (for example `pivot`, `search`, or a strategy-only `refine`) |
+| `commit` | Short hash for the primary repo's clean HEAD after the iteration is closed out. For `keep`, this is the trial commit. For reverted `discard` or `crash` rows, this is the rollback/restored HEAD. Use `-` only for meta rows that did not test a committed trial (for example `pivot`, `search`, or a strategy-only `refine`) |
 | `metric` | Parsed metric value for that row's attempt or recalibration |
 | `delta` | `metric - retained_metric_before_row` |
 | `guard` | `pass`, `fail`, or `-` |
 | `status` | See Status Values below |
 | `description` | One-sentence explanation of the iteration. Structured keep/stop-gating labels may prefix the sentence as `[labels: foo, bar] ...` |
 
-For multi-repo runs, the TSV `commit` column still records the **primary repo** commit. Per-repo commit provenance for companion repos lives in `state.json` (`state.last_repo_commits` and `state.last_trial_repo_commits`) so the primary audit trail stays compact while the JSON snapshot preserves cross-repo detail.
+For multi-repo runs, the TSV `commit` column still records the **primary repo** closeout commit. Per-repo commit provenance for companion repos lives in `state.json` (`state.last_repo_commits` and `state.last_trial_repo_commits`) so the primary audit trail stays compact while the JSON snapshot preserves cross-repo detail.
 
 ## Metrics And Acceptance Contract
 
@@ -213,7 +213,7 @@ Define `<skill-root>` as the directory that contains the loaded `SKILL.md`. In t
 - `python3 <skill-root>/scripts/autoresearch_init_run.py --repo <primary_repo> --workspace-root <workspace_root> ...`
   Initializes `autoresearch-results/results.tsv` and `autoresearch-results/state.json` together from the baseline measurement, writes canonical `context.json`, and writes repo-local pointers for every managed repo. Interactive runs record `config.session_mode` explicitly; foreground is the default, while background initialization should pass `--session-mode background`. `execution_policy` is only persisted for paths that actually spawn nested Codex sessions: background managed runs and exec. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to persist companion-repo baseline provenance in JSON state. Runs with structural success criteria may add repeated `--required-keep-label LABEL` flags to protect retained state and repeated `--required-stop-label LABEL` flags so the supervisor only stops when the retained keep also carries those labels.
 - `python3 <skill-root>/scripts/autoresearch_set_session_mode.py --repo <repo> ...`
-  Internal/scripted helper that synchronizes an existing interactive run's shared JSON state to `foreground` or `background` before the next iteration. Use it only for scripted recovery flows; the normal human-facing skill entrypoint should handle this sync internally, and background `start` already performs the same sync automatically when it resumes existing results/state.
+  Internal/scripted helper that synchronizes an existing interactive run's shared JSON state to `foreground` or `background` before the next iteration. Use it only for scripted recovery flows; the skill flow and background `start` already perform the same sync when they resume existing results/state.
 - `python3 <skill-root>/scripts/autoresearch_record_iteration.py ...`
   Appends one authoritative main iteration row and updates JSON state atomically. Multi-repo runs may add repeated `--repo-commit PATH=COMMIT` flags to update companion-repo commit provenance while the TSV `commit` column continues to track the primary repo. Repeated `--label LABEL` flags record structured keep/stop-gating labels on the attempted row and retained state.
 - `python3 <skill-root>/scripts/autoresearch_resume_check.py --repo <repo>`

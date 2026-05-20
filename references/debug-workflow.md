@@ -136,6 +136,8 @@ Priority order:
 
 ## Output Directory
 
+Debug mode still uses the shared launch, resume, and runtime-state artifacts under `autoresearch-results/`. The directory below is the human-readable investigation report.
+
 ```text
 debug/{YYMMDD}-{HHMM}-{slug}/
   findings.md
