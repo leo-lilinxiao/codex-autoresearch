@@ -6,13 +6,13 @@ How to get results from codex-autoresearch. Covers installation, the two-phase i
 
 ## Installation
 
-Use the skill installer in Codex:
+Recommended: install with the skill installer:
 
 ```text
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Restart Codex after installation. Or clone and copy into your project:
+Manual copy still works:
 
 ```bash
 git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
@@ -21,10 +21,10 @@ cp -r codex-autoresearch your-project/.agents/skills/codex-autoresearch
 
 Verify: open Codex in the target repo, type `$`, confirm `codex-autoresearch` appears.
 
-See [INSTALL.md](INSTALL.md) for symlink, admin scope, and live-development options.
+See [INSTALL.md](INSTALL.md) for skill installer, manual copy, user-scope, and live-development options.
 
 > [!IMPORTANT]
-> For the full foreground experience, start Codex with Goals, hooks, and Full Access:
+> For the smoothest foreground and background experience, start Codex with Goals, hooks, and Full Access:
 >
 > ```bash
 > codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox
@@ -62,9 +62,9 @@ Codex: I found 47 `any` occurrences across src/**/*.ts.
        Choose a run mode, then reply "go" to start, or tell me what to change.
 ```
 
-The wizard runs for at most 5 rounds. It always asks at least one confirming question, even when it could infer everything.
+The wizard usually finishes in 1 to 3 rounds. It always asks at least one confirming question, even when it could infer everything.
 
-For unattended runs, the wizard may also ask one safety question about rollback or workspace isolation before launch. After you say "go," it stays silent.
+For unattended runs, the wizard may also ask one safety question about rollback or workspace isolation before launch. After you say "go," it does not stop to ask more questions.
 
 ### Phase 2: Execution (fully autonomous)
 
@@ -79,7 +79,7 @@ The only things that stop the loop:
 - A soft blocker handoff occurs after strategy exhaustion
 - A hard blocker appears (verify command broken, repo corrupted, disk full, same crash 5+ times)
 
-This boundary is absolute at the skill level. Everything before "go" can ask. Everything after "go" is silent.
+This boundary is absolute at the skill level. Everything before "go" can ask. Everything after "go" keeps running without new questions.
 
 Once execution begins, keep the runtime contract tiny:
 
@@ -87,23 +87,15 @@ Once execution begins, keep the runtime contract tiny:
 - record every completed experiment before the next one starts
 - use helper scripts for authoritative log/state updates
 
-### Codex Integration
+### Continuity
 
-Autoresearch includes a small Codex integration for continuity across reopen, resume, stop, and background handoff. The skill prepares it automatically after it scans the repo and before it asks launch questions. You normally do not need to run anything yourself. If you want to preinstall it manually:
+Autoresearch prepares resume and background handoff support automatically when a run starts.
+
+For troubleshooting, you can prepare it directly:
 
 ```bash
 python3 /absolute/path/to/codex-autoresearch/scripts/autoresearch_hooks_ctl.py install
 ```
-
-It provides the continuity layer for the interactive skill:
-
-- `SessionStart` restores the short runtime checklist when you reopen or resume an autoresearch run
-- `Stop` only blocks Codex from ending a session when the autoresearch run still appears resumable
-
-These hooks only attach to conversations that clearly look like `codex-autoresearch` work, so unrelated Codex conversations in the same repo are left alone.
-
-- The recommended launch command above gives both foreground and background runs the intended capabilities from the start.
-- Managed `background` runs keep their workspace-owned Results directory attached automatically.
 
 ---
 
@@ -112,7 +104,7 @@ These hooks only attach to conversations that clearly look like `codex-autoresea
 Every iterating mode (loop, debug, fix, security, ship) shares the same cycle:
 
 ```
-  Pick hypothesis  -->  Edit files  -->  git commit  -->  Run verify + guard
+  Pick hypothesis  -->  Edit files  -->  trial commit  -->  Run verify + guard
   (consult lessons,                                            |
    apply perspectives,                                     improved?
    filter by environment)                                 /         \
@@ -132,7 +124,7 @@ Every iterating mode (loop, debug, fix, security, ship) shares the same cycle:
 
 1. **Hypothesis** -- one focused idea based on what worked, what failed, what is untried
 2. **Edit** -- change files within the declared scope only
-3. **Commit** -- `git commit` before verification (so revert is always safe)
+3. **Trial commit** -- create a scoped experiment commit before verification when the workspace is safe to isolate
 4. **Verify** -- run the verify command, extract the metric value
 5. **Guard** -- if set, run the guard command to check for regressions
 6. **Decide** -- metric improved and guard passed = keep; otherwise revert
@@ -586,7 +578,7 @@ You do not need to do anything to enable this. It runs automatically as part of 
 
 ### Interactive Run Modes
 
-The public human workflow now stays on a single entrypoint: `$codex-autoresearch`.
+Use `$codex-autoresearch` for interactive runs.
 
 1. Start the skill and describe the goal naturally.
 2. Answer the confirmation questions.
@@ -595,7 +587,7 @@ The public human workflow now stays on a single entrypoint: `$codex-autoresearch
 5. In **foreground**, Codex keeps the loop in the current session. `autoresearch-results/results.tsv`, `autoresearch-results/state.json`, `autoresearch-results/context.json`, and lessons are created.
 6. In **background**, Codex writes `autoresearch-results/launch.json` and starts the detached runtime controller automatically.
    The two modes share the same loop protocol and repo/scope semantics, but they are mutually exclusive for a given workspace/run. Do not keep both modes active against the same Results directory at once.
-7. If you resume an existing interactive run in the other mode, continue through the same `$codex-autoresearch` entrypoint. The shared state must be synchronized to the chosen mode before continuing; scripted background `start` performs that sync automatically before it relaunches.
+7. If you resume an existing interactive run in the other mode, continue through `$codex-autoresearch`; shared state is synchronized before the run continues.
 8. For a new interactive run, the default workspace root comes from the launch context. If you started Codex inside a git repo, that repo root is the default workspace root. If you started Codex outside a git repo, the current launch directory is the default workspace root.
 9. Single-repo runs are still the default. In that case the declared scope applies only to the primary repo, while run artifacts stay in that launch-context workspace under `./autoresearch-results/`.
 10. Codex should not silently widen the workspace root to a parent directory just because sibling repos, old `autoresearch-results/`, or a broader folder layout exist. If a wider shared workspace is truly intended, the confirmation summary should make that explicit and show the resulting Results directory before launch.
@@ -603,8 +595,8 @@ The public human workflow now stays on a single entrypoint: `$codex-autoresearch
    Script-level entrypoints represent this with repeated `--companion-repo-scope PATH=SCOPE` flags.
    The TSV `commit` column remains the primary repo commit; companion-repo commit provenance lives in `autoresearch-results/state.json`.
 12. Each background runtime cycle launches a non-interactive `codex exec` session with the runtime prompt supplied on stdin.
-   Background launch manifests carry an `execution_policy`; this skill now defaults to `danger_full_access`, so detached sessions run with `--dangerously-bypass-approvals-and-sandbox` unless you explicitly opt back into the sandboxed `workspace_write` path.
-   Start background runs from a trusted Full Access Codex session; if Codex is restricted to workspace-only sandboxing, choose foreground or restart with Full Access.
+   Background launch manifests default to `danger_full_access`, so detached sessions run with `--dangerously-bypass-approvals-and-sandbox` unless you explicitly choose the sandboxed `workspace_write` path.
+   Start background runs from a trusted Full Access Codex session.
 13. Before each background detached session or relaunch, the runtime controller runs `autoresearch_health_check.py` and `autoresearch_commit_gate.py` so integrity and scope safety are enforced at the control-plane boundary across all managed repos.
 14. If background `codex exec` itself cannot be launched, the runtime moves to `needs_human` instead of silently looking idle.
 15. If an explicit stop request cannot actually terminate the detached runner, the runtime also moves to `needs_human` instead of pretending the run is fully stopped.
@@ -649,7 +641,9 @@ This data filters infeasible hypotheses (e.g., no GPU optimization without a GPU
 
 ## CI/CD Mode (exec)
 
-Non-interactive mode for automation pipelines. Differences from interactive mode:
+Use `exec` only for CI or scripted automation. Most interactive work should use `$codex-autoresearch` with foreground or background mode. In `exec`, there is no wizard; the automation prompt must provide the run configuration upfront.
+
+Differences from interactive mode:
 
 - No wizard -- all config provided upfront in the `codex exec` prompt or via environment variables
 - Always bounded (Iterations field is mandatory)
@@ -672,7 +666,7 @@ See `references/exec-workflow.md` for full details and CI integration examples.
 
 - Confirm the folder is at `.agents/skills/codex-autoresearch` or `~/.agents/skills/codex-autoresearch`
 - Confirm `SKILL.md` exists at the root of that folder
-- Restart Codex after installation changes
+- Confirm `/skills` lists `codex-autoresearch`
 
 ### Codex starts without asking
 
@@ -684,7 +678,7 @@ This should not happen after you say "go." If it does, report it as a bug. The t
 
 ### How do I see runtime status or stop a run?
 
-Use the same `$codex-autoresearch` entry and ask for status or stop, but note that these are background-run controls. Foreground runs stay in the active session and therefore do not use `autoresearch_runtime_ctl.py` status/stop files.
+Use `$codex-autoresearch` and ask for background status or stop. Foreground runs stay in the active session.
 
 ### The verify command fails on the first run
 

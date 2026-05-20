@@ -48,7 +48,7 @@
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Codex를 다시 시작한 뒤 프로젝트에서 열고:
+프로젝트에서 열고:
 
 ```
 당신:  $codex-autoresearch
@@ -65,7 +65,7 @@ Codex: src/**/*.ts에서 47개의 `any`를 발견했습니다.
 Codex: 백그라운드 실행 시작 — 베이스라인: 47. 반복 중.
 ```
 
-background 실행은 신뢰할 수 있는 **Full Access** Codex 세션에서 시작하세요. Codex가 workspace-only sandbox로 제한되어 있다면 foreground를 쓰거나 Full Access로 다시 시작한 뒤 background를 선택하세요.
+background 실행은 신뢰할 수 있는 **Full Access** Codex 세션에서 시작하세요.
 
 개선은 누적되고, 실패는 롤백되며, 모든 것이 기록됩니다.
 
@@ -88,7 +88,7 @@ background 실행은 신뢰할 수 있는 **Full Access** Codex 세션에서 시
                                         |    핵심 루프       |
                                         |                   |
                                         |  하나 수정        |
-                                        |  git commit       |
+                                        |  trial commit     |
                                         |  검증 실행        |
                                         |  개선? 유지       |
                                         |  악화? 롤백       |
@@ -164,7 +164,6 @@ iteration  commit   metric  delta   status    description
 - **세션 재개** — 중단된 실행은 마지막 일관된 상태에서 재개
 - **CI/CD 모드** (`exec`) — 비대화형, JSON 출력, 자동화 파이프라인용
 - **이중 게이트 검증** — verify(개선되었나?)와 guard(다른 것이 깨지지 않았나?)를 분리
-- **세션 hooks** — 자동 설치; 세션 경계를 넘어 Codex 상태 유지
 
 ## FAQ
 
@@ -184,7 +183,7 @@ iteration  commit   metric  delta   status    description
 
 | 문서 | 내용 |
 |-----|------|
-| [INSTALL.md](../INSTALL.md) | 모든 설치 방법, skill 발견 경로, hooks 설정 |
+| [INSTALL.md](../INSTALL.md) | skill installer, 수동 복사, 사용자 범위 설치, 개발용 symlink |
 | [GUIDE.md](../GUIDE.md) | 전체 운영 매뉴얼: 모드, 설정 필드, 안전 모델, 고급 사용법 |
 | [EXAMPLES.md](../EXAMPLES.md) | 도메인별 레시피: 커버리지, 성능, 타입, 보안 등 |
 

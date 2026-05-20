@@ -22,7 +22,7 @@ Each managed git repo also stores a repo-local pointer at:
 .codex-autoresearch/pointer.json
 ```
 
-Hooks, status, stop, and resume resolve context in this order: current repo pointer, canonical `autoresearch-results/context.json`, then fail with a clear error. Do not walk upward from cwd looking for guessed contexts, and do not infer repo identity from a results path.
+Status, stop, resume, and control-plane helpers resolve context in this order: current repo pointer, canonical `autoresearch-results/context.json`, then fail with a clear error. Do not walk upward from cwd looking for guessed contexts, and do not infer repo identity from a results path.
 
 ## JSON State File
 
@@ -101,7 +101,7 @@ Write protocol: write to a uniquely named temporary file in the same directory, 
 
 `config.session_mode` is the authoritative interactive-mode marker. It distinguishes foreground runs from background managed runs. Foreground runs resume from `results.tsv` plus `state.json`. Background runs also require a confirmed `launch.json` in the same Results directory.
 
-If an existing interactive run switches from foreground to background or back again, synchronize `state.json` to the chosen mode before continuing. The human-facing skill flow should do this internally when it resumes in the other mode; scripted background `autoresearch_runtime_ctl.py start` performs the same sync automatically before it relaunches nested Codex sessions, and the bundled `autoresearch_set_session_mode.py` helper remains an internal/scripted recovery escape hatch rather than a normal operator step.
+If an existing interactive run switches from foreground to background or back again, synchronize `state.json` to the chosen mode before continuing. The skill flow handles this internally; scripted background `autoresearch_runtime_ctl.py start` performs the same sync automatically before it relaunches nested Codex sessions, and `autoresearch_set_session_mode.py` remains an internal/scripted recovery helper.
 
 `config.workspace_root`, `config.artifact_root`, `config.primary_repo`, `config.repos`, and `config.verify_cwd` are required for new runs. `config.repos` is the authoritative managed-repo list: one primary repo plus any companion repos, each with its own scope. `config.scope` remains the primary repo's scope for compact prompts.
 
@@ -124,6 +124,8 @@ At the start of every invocation, check for prior run artifacts in this order:
 | 5 | Output dirs | Optional mode closeout directories such as `debug/`, `security/`, `ship/`, or `autoresearch-results/fix/` | weak |
 
 If none of these signals are present, proceed with a fresh run (normal wizard flow).
+
+For a clean repo with no repo-local pointer and no prior run-control artifacts, `autoresearch_launch_gate.py --repo <primary_repo>` returns `fresh` instead of requiring manual recovery.
 
 ## Helper Script
 

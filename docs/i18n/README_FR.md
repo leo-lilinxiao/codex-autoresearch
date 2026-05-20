@@ -48,7 +48,7 @@ Inspiré par [autoresearch de Karpathy](https://github.com/karpathy/autoresearch
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Redémarrez Codex, ouvrez votre projet et lancez-vous :
+Ouvrez votre projet et lancez-vous :
 
 ```
 Vous:  $codex-autoresearch
@@ -65,7 +65,7 @@ Vous:  Background, go. Laisse tourner toute la nuit.
 Codex: Lancement en arrière-plan — référence : 47. Itération en cours.
 ```
 
-Pour les exécutions background, démarrez Codex depuis une session **Full Access** de confiance. Si Codex est limité à un sandbox workspace-only, utilisez foreground ou redémarrez en Full Access avant de choisir background.
+Pour les exécutions background, démarrez Codex depuis une session **Full Access** de confiance.
 
 Chaque amélioration s'accumule. Chaque échec est annulé. Tout est journalisé.
 
@@ -88,7 +88,7 @@ Vous dites une phrase  →  Codex analyse et confirme  →  Vous dites "go"
                                                   |    La boucle      |
                                                   |                   |
                                                   |  modifier un élém.|
-                                                  |  git commit       |
+                                                  |  trial commit     |
                                                   |  lancer verify    |
                                                   |  amélioré ? garder|
                                                   |  dégradé ? revert |
@@ -164,7 +164,6 @@ Détails complets dans [GUIDE.md](../GUIDE.md) :
 - **Reprise de session** — les exécutions interrompues reprennent depuis le dernier état cohérent
 - **Mode CI/CD** (`exec`) — non interactif, sortie JSON, pour les pipelines d'automatisation
 - **Double vérification** — verify (y a-t-il amélioration ?) et guard (rien n'est cassé ?) séparés
-- **Session hooks** — installés automatiquement ; maintiennent Codex sur la bonne voie entre les sessions
 
 ## FAQ
 
@@ -184,7 +183,7 @@ C'est le plus efficace quand l'objectif et la métrique sont clairs — augmente
 
 | Doc | Contenu |
 |-----|---------|
-| [INSTALL.md](../INSTALL.md) | Toutes les méthodes d'installation, chemins de découverte des skills, configuration des hooks |
+| [INSTALL.md](../INSTALL.md) | Skill installer, copie manuelle, installation utilisateur et symlink de développement |
 | [GUIDE.md](../GUIDE.md) | Manuel complet : modes, champs de configuration, modèle de sécurité, utilisation avancée |
 | [EXAMPLES.md](../EXAMPLES.md) | Recettes par domaine : couverture, performance, types, sécurité, etc. |
 

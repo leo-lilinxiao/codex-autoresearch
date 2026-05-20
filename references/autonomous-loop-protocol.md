@@ -254,9 +254,9 @@ Rules:
 - do not edit guard artifacts merely to satisfy the guard,
 - do not broaden scope mid-iteration. If a change requires out-of-scope files, abandon the hypothesis, log the limitation, and try a different approach that stays within scope.
 
-## Phase 5: Commit
+## Phase 5: Trial Commit
 
-Commit before verification when the workspace is safe to isolate.
+Create the scoped trial commit before verification when the workspace is safe to isolate.
 
 Recommended sequence:
 
@@ -355,6 +355,7 @@ git reset --hard HEAD~1
 - Use `git reset --hard HEAD~1` only when the run is isolated in a dedicated experiment branch/worktree and that destructive rollback was explicitly approved before launch.
 - Otherwise use `git revert --no-edit HEAD`.
 - Never roll back unrelated user changes or autoresearch-owned artifacts.
+- After rollback, record the result with the current clean HEAD. The description carries the failed hypothesis; the `commit` field records the closeout state the next iteration will start from.
 
 The results log (`autoresearch-results/results.tsv`) serves as the true audit trail for all experiments, including discarded ones.
 
@@ -374,7 +375,7 @@ Append the outcome to the results log defined in `references/results-logging.md`
 Always log:
 
 - iteration number,
-- commit hash or `-`,
+- closeout commit hash or `-`,
 - metric,
 - delta vs the retained metric before the row,
 - guard outcome,

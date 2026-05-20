@@ -86,6 +86,8 @@ def main() -> int:
         return 0
     if context.pointer_session_mode == "background" and not context.opt_in_env:
         return 0
+    if context.opt_in_env:
+        return 0
 
     supervisor = run_supervisor(context)
     if supervisor is None:

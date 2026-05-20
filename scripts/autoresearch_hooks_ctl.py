@@ -491,9 +491,9 @@ def managed_hook_trust_entries_from_payload(payload: dict[str, Any]) -> dict[str
         if not isinstance(groups, list):
             continue
         for group_index, group in enumerate(groups):
-            if not group_matches_command(group, command):
-                continue
             if not isinstance(group, dict):
+                continue
+            if not group_is_managed_autoresearch(group, {command}):
                 continue
             current_hash = command_hook_hash_for_group(event_name, group)
             if current_hash is None:
@@ -665,12 +665,7 @@ def group_is_managed_autoresearch(group: Any, commands: set[str]) -> bool:
     hook = hooks[0]
     if not isinstance(hook, dict) or hook.get("type") != "command":
         return False
-    if hook.get("command") in commands:
-        return True
-    return hook.get("statusMessage") in {
-        SESSION_STATUS_MESSAGE,
-        STOP_STATUS_MESSAGE,
-    }
+    return hook.get("command") in commands
 
 
 def remove_managed_groups(groups: list[Any], commands: set[str]) -> tuple[list[Any], int]:
@@ -695,10 +690,7 @@ def count_all_hook_groups(payload: dict[str, Any]) -> int:
     return total
 
 
-def write_manifest(
-    *,
-    goals_feature_enabled_by_installer: bool,
-) -> None:
+def write_manifest() -> None:
     managed_scripts = {
         "common": str(common_script_path()),
         "context": str(context_script_path()),
@@ -713,7 +705,6 @@ def write_manifest(
         "installed_at": utc_now(),
         "helper_root_fallback": str(hooks_home()),
         "skill_root_fallback": str(hooks_home()),
-        "goals_feature_enabled_by_installer": goals_feature_enabled_by_installer,
         "managed_scripts": managed_scripts,
     }
     manifest_path().parent.mkdir(parents=True, exist_ok=True)
@@ -738,6 +729,20 @@ def install_managed_scripts() -> None:
     for source_path, destination_path in managed_script_pairs():
         shutil.copy2(source_path, destination_path)
         destination_path.chmod(0o755)
+
+
+def remove_managed_bundle_files() -> int:
+    removed = 0
+    for script_path in (*managed_bundle_paths(), manifest_path()):
+        if script_path.exists():
+            script_path.unlink()
+            removed += 1
+    if hooks_home().exists():
+        try:
+            hooks_home().rmdir()
+        except OSError:
+            pass
+    return removed
 
 
 def status() -> dict[str, Any]:
@@ -842,9 +847,6 @@ def status() -> dict[str, Any]:
         "current_session_goals_feature_enabled": current_goals_feature_enabled,
         "current_session_hooks_feature_enabled": current_hooks_feature_enabled,
         "current_session_full_access": current_full_access,
-        "goals_feature_enabled_by_installer": bool(
-            manifest.get("goals_feature_enabled_by_installer")
-        ),
         "managed_session_start_installed": managed_session
         and session_script_path().exists(),
         "managed_stop_installed": managed_stop and stop_script_path().exists(),
@@ -869,16 +871,7 @@ def status() -> dict[str, Any]:
 def install() -> dict[str, Any]:
     ensure_supported_platform()
     config_before = read_text(config_path())
-    previous_manifest = read_manifest()
     previous_hooks_feature = parse_feature_value(config_before, HOOKS_FEATURE_KEY)
-    previous_goals_feature = parse_feature_value(config_before, GOALS_FEATURE_KEY)
-    previous_goals_feature_enabled_by_installer = bool(
-        previous_manifest.get("goals_feature_enabled_by_installer")
-    )
-    goals_feature_enabled_by_installer = (
-        previous_goals_feature_enabled_by_installer
-        or previous_goals_feature is not True
-    )
 
     install_managed_scripts()
 
@@ -942,9 +935,7 @@ def install() -> dict[str, Any]:
         hooks_path(),
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
     )
-    write_manifest(
-        goals_feature_enabled_by_installer=goals_feature_enabled_by_installer,
-    )
+    write_manifest()
 
     current = status()
     current["config_backup"] = config_backup
@@ -995,14 +986,7 @@ def uninstall() -> dict[str, Any]:
     if updated_config != config_before:
         config_backup = write_text_with_backup(config_path(), updated_config)
 
-    for script_path in (*managed_bundle_paths(), manifest_path()):
-        if script_path.exists():
-            script_path.unlink()
-    if hooks_home().exists():
-        try:
-            hooks_home().rmdir()
-        except OSError:
-            pass
+    remove_managed_bundle_files()
 
     current = status()
     current["config_backup"] = config_backup

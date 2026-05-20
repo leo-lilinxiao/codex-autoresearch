@@ -131,6 +131,8 @@ Do not report purely theoretical issues without code evidence.
 
 ## Output Directory
 
+Security mode still uses the shared launch, resume, and runtime-state artifacts under `autoresearch-results/`. The directory below is the human-readable audit report.
+
 ```text
 security/{YYMMDD}-{HHMM}-{slug}/
   overview.md

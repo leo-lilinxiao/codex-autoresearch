@@ -48,7 +48,7 @@ Inspirado en [autoresearch de Karpathy](https://github.com/karpathy/autoresearch
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Reinicia Codex, abre tu proyecto y adelante:
+Abre tu proyecto y adelante:
 
 ```
 Tú:    $codex-autoresearch
@@ -65,7 +65,7 @@ Tú:    Background, go. Déjalo corriendo toda la noche.
 Codex: Iniciando ejecución en segundo plano — línea base: 47. Iterando.
 ```
 
-Para ejecuciones background, inicia Codex desde una sesión **Full Access** de confianza. Si Codex está limitado a un sandbox workspace-only, usa foreground o reinicia con Full Access antes de elegir background.
+Para ejecuciones background, inicia Codex desde una sesión **Full Access** de confianza.
 
 Cada mejora se acumula. Cada fallo se revierte. Todo queda registrado.
 
@@ -88,7 +88,7 @@ Dices una frase  →  Codex analiza y confirma  →  Dices "go"
                                             |    El bucle       |
                                             |                   |
                                             |  modificar algo   |
-                                            |  git commit       |
+                                            |  trial commit     |
                                             |  ejecutar verify  |
                                             |  ¿mejoró? guardar |
                                             |  ¿empeoró? revert |
@@ -164,7 +164,6 @@ Detalles completos en [GUIDE.md](../GUIDE.md):
 - **Reanudación de sesión** — las ejecuciones interrumpidas continúan desde el último estado consistente
 - **Modo CI/CD** (`exec`) — no interactivo, salida JSON, para pipelines de automatización
 - **Verificación de doble puerta** — verify (¿mejoró?) y guard (¿se rompió algo?) separados
-- **Session hooks** — instalados automáticamente; mantienen a Codex en curso entre sesiones
 
 ## FAQ
 
@@ -184,7 +183,7 @@ Es más fuerte cuando el objetivo y la métrica están claros — subir cobertur
 
 | Doc | Contenido |
 |-----|-----------|
-| [INSTALL.md](../INSTALL.md) | Todos los métodos de instalación, rutas de descubrimiento de skills, configuración de hooks |
+| [INSTALL.md](../INSTALL.md) | Skill installer, copia manual, instalación de usuario y symlink de desarrollo |
 | [GUIDE.md](../GUIDE.md) | Manual completo: modos, campos de configuración, modelo de seguridad, uso avanzado |
 | [EXAMPLES.md](../EXAMPLES.md) | Recetas por dominio: cobertura, rendimiento, tipos, seguridad, etc. |
 

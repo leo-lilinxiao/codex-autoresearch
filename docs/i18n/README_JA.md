@@ -48,7 +48,7 @@
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Codex を再起動してから、プロジェクトで開きます：
+プロジェクトで開きます：
 
 ```
 あなた: $codex-autoresearch
@@ -65,7 +65,7 @@ Codex:  src/**/*.ts に 47 個の `any` が見つかりました。
 Codex:  background 実行を開始 — ベースライン：47。反復中。
 ```
 
-background 実行は、信頼できる **Full Access** の Codex セッションから開始してください。Codex が workspace-only sandbox に制限されている場合は、foreground を使うか、Full Access で再起動してから background を選んでください。
+background 実行は、信頼できる **Full Access** の Codex セッションから開始してください。
 
 改善は蓄積され、失敗はロールバックされ、全てが記録されます。
 
@@ -88,7 +88,7 @@ background 実行は、信頼できる **Full Access** の Codex セッション
                                     |    コアループ      |
                                     |                   |
                                     |  1つ変更する      |
-                                    |  git commit       |
+                                    |  trial commit     |
                                     |  検証を実行       |
                                     |  改善？ → 保持    |
                                     |  悪化？ → 元に戻す|
@@ -164,7 +164,6 @@ iteration  commit   metric  delta   status    description
 - **セッション再開** — 中断された実行は最後の一貫した状態から再開
 - **CI/CD モード** (`exec`) — 非対話、JSON 出力、自動化パイプライン向け
 - **二重ゲート検証** — verify（改善したか？）と guard（他に壊れていないか？）を分離
-- **セッション hooks** — 自動インストール；セッション境界を越えて Codex の状態を維持
 
 ## FAQ
 
@@ -184,7 +183,7 @@ iteration  commit   metric  delta   status    description
 
 | ドキュメント | 内容 |
 |------------|------|
-| [INSTALL.md](../INSTALL.md) | 全インストール方法、skill 発見パス、hooks セットアップ |
+| [INSTALL.md](../INSTALL.md) | skill installer、手動コピー、ユーザースコープ、開発用 symlink |
 | [GUIDE.md](../GUIDE.md) | 完全な操作マニュアル：モード、設定フィールド、安全モデル、高度な使い方 |
 | [EXAMPLES.md](../EXAMPLES.md) | 分野別レシピ：カバレッジ、パフォーマンス、型、セキュリティなど |
 

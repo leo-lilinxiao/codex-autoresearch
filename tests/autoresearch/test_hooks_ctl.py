@@ -120,6 +120,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertEqual(manifest["version"], 2)
             self.assertNotIn("feature_enabled_by_installer", manifest)
             self.assertNotIn("hooks_feature_enabled_by_installer", manifest)
+            self.assertNotIn("goals_feature_enabled_by_installer", manifest)
             hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
             self.assertIn("UserPromptSubmit", hooks_payload["hooks"])
             self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
@@ -133,7 +134,6 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertTrue(reinstalled["persistent_setup_ready"])
             self.assertTrue(reinstalled["managed_session_start_trusted"])
             self.assertTrue(reinstalled["managed_stop_trusted"])
-            self.assertTrue(reinstalled["goals_feature_enabled_by_installer"])
             self.assertTrue(reinstalled["managed_scripts_current"])
             hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
             self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
@@ -344,7 +344,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertIn(":session_start:1:0", config_text)
             self.assertIn(":stop:0:0", config_text)
 
-    def test_install_replaces_moved_managed_hooks_by_status_message(self) -> None:
+    def test_install_preserves_foreign_hooks_with_autoresearch_status_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "home"
@@ -362,7 +362,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
                                     "hooks": [
                                         {
                                             "type": "command",
-                                            "command": "python3 /old/home/.codex/autoresearch-hooks/session_start.py",
+                                            "command": "python3 /tmp/user-session-hook.py",
                                             "timeout": 5,
                                             "statusMessage": "codex-autoresearch SessionStart hook",
                                         }
@@ -374,7 +374,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
                                     "hooks": [
                                         {
                                             "type": "command",
-                                            "command": "python3 /old/home/.codex/autoresearch-hooks/stop.py",
+                                            "command": "python3 /tmp/user-stop-hook.py",
                                             "timeout": 10,
                                             "statusMessage": "codex-autoresearch Stop hook",
                                         }
@@ -391,19 +391,19 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
 
             installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
             self.assertTrue(installed["persistent_setup_ready"])
-            self.assertEqual(installed["other_hook_groups_present"], 0)
 
             hooks_payload = json.loads((codex_home / "hooks.json").read_text(encoding="utf-8"))
-            self.assertEqual(len(hooks_payload["hooks"]["SessionStart"]), 1)
-            self.assertEqual(len(hooks_payload["hooks"]["Stop"]), 1)
-            self.assertIn(
-                str(self.installed_hook_path(home, "session_start.py")),
-                hooks_payload["hooks"]["SessionStart"][0]["hooks"][0]["command"],
-            )
-            self.assertIn(
-                str(self.installed_hook_path(home, "stop.py")),
-                hooks_payload["hooks"]["Stop"][0]["hooks"][0]["command"],
-            )
+            session_commands = [
+                group["hooks"][0]["command"]
+                for group in hooks_payload["hooks"]["SessionStart"]
+            ]
+            stop_commands = [
+                group["hooks"][0]["command"] for group in hooks_payload["hooks"]["Stop"]
+            ]
+            self.assertIn("python3 /tmp/user-session-hook.py", session_commands)
+            self.assertIn("python3 /tmp/user-stop-hook.py", stop_commands)
+            self.assertEqual(len(session_commands), 2)
+            self.assertEqual(len(stop_commands), 2)
 
     def test_status_reads_hook_trust_with_toml_parser(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -516,7 +516,6 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
 
             installed = self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
             self.assertTrue(installed["persistent_setup_ready"])
-            self.assertFalse(installed["goals_feature_enabled_by_installer"])
 
             removed = self.run_script("autoresearch_hooks_ctl.py", "uninstall", env=env)
             self.assertFalse(removed["persistent_setup_ready"])
@@ -1143,7 +1142,7 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
             self.assertEqual(state_payload["supervisor"]["last_exit_kind"], "stagnated")
             self.assertEqual(state_payload["supervisor"]["stagnation_count"], 3)
 
-    def test_stop_hook_uses_background_opt_in_and_workspace_paths(self) -> None:
+    def test_background_stop_hook_allows_runtime_controller_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             home = root / "home"
@@ -1199,8 +1198,86 @@ class AutoresearchHooksCtlTest(AutoresearchScriptsTestBase):
                 env=hook_env,
             )
             completed.check_returncode()
-            payload = json.loads(completed.stdout)
-            self.assertEqual(payload["decision"], "block")
+            self.assertEqual(completed.stdout, "")
+
+            pointer_payload = json.loads(
+                self.repo_hook_context_path(repo).read_text(encoding="utf-8")
+            )
+            self.assertTrue(pointer_payload["active"])
+            self.assertEqual(pointer_payload["session_mode"], "background")
+
+    def test_background_stop_hook_ignores_active_followup_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            home = root / "home"
+            env = self.hook_env(home)
+            self.run_script("autoresearch_hooks_ctl.py", "install", env=env)
+            hook_path = self.installed_hook_path(home, "stop.py")
+
+            repo = root / "stagnated-background"
+            repo.mkdir()
+            results_path = self.managed_results_path(repo)
+            state_path = self.managed_state_path(repo)
+
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--mode",
+                "loop",
+                "--session-mode",
+                "background",
+                "--goal",
+                "Reduce failures",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "failure count",
+                "--direction",
+                "lower",
+                "--verify",
+                "pytest -q",
+                "--baseline-metric",
+                "10",
+                "--baseline-commit",
+                "base111",
+                "--baseline-description",
+                "baseline failures",
+                env=env,
+            )
+
+            hook_env = dict(env)
+            hook_env["AUTORESEARCH_HOOK_ACTIVE"] = "1"
+            hook_env["AUTORESEARCH_HOOK_RESULTS_PATH"] = str(results_path)
+            hook_env["AUTORESEARCH_HOOK_STATE_PATH"] = str(state_path)
+            hook_env["AUTORESEARCH_HOOK_LAUNCH_PATH"] = str(self.managed_launch_path(repo))
+            hook_env["AUTORESEARCH_HOOK_RUNTIME_PATH"] = str(self.managed_runtime_path(repo))
+
+            first = self.run_installed_hook(
+                hook_path,
+                cwd=repo,
+                payload={"cwd": str(repo), "stop_hook_active": False},
+                env=hook_env,
+            )
+            first.check_returncode()
+            self.assertEqual(first.stdout, "")
+
+            second = self.run_installed_hook(
+                hook_path,
+                cwd=repo,
+                payload={"cwd": str(repo), "stop_hook_active": True},
+                env=hook_env,
+            )
+            second.check_returncode()
+            self.assertEqual(second.stdout, "")
+
+            pointer_payload = json.loads(
+                self.repo_hook_context_path(repo).read_text(encoding="utf-8")
+            )
+            self.assertTrue(pointer_payload["active"])
+            self.assertEqual(pointer_payload["session_mode"], "background")
 
     def test_foreground_stop_hook_does_not_continue_background_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

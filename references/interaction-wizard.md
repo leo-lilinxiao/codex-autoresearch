@@ -23,7 +23,7 @@ When this file mentions `<skill-root>`, it means the directory containing the lo
 9. The user should never see raw field names (Goal, Scope, Metric, Direction, Verify, Guard). Translate everything into natural conversation.
 10. After the user approves the summary, follow the chosen run mode directly from the same skill entrypoint. Foreground stays in the current session; background persists the confirmed launch manifest and starts the runtime controller. Do not tell the user to switch to a different wrapper command.
 11. End the confirmation summary with a short runtime checklist that reinforces execution order: baseline first, then initialize artifacts, and always log a completed experiment before starting the next one.
-12. After the initial repo scan, check `python3 <skill-root>/scripts/autoresearch_hooks_ctl.py status`. If the managed integration is missing, stale, disabled, or untrusted, install or update it before clarification continues. Treat this as internal preparation; keep setup details out of the user-facing summary unless a setup failure blocks launch. Use model-visible goal tools when they are actually available.
+12. After the launch gate allows a fresh or confirmed interactive launch, check `python3 <skill-root>/scripts/autoresearch_hooks_ctl.py status`. If setup is missing, stale, disabled, or untrusted, run `python3 <skill-root>/scripts/autoresearch_hooks_ctl.py install` before clarification continues. Treat this as internal preparation; keep setup details out of the user-facing summary unless a setup failure blocks launch. Use model-visible goal tools when they are actually available.
 13. Capture the first status response's `startup_tip_needed` value before any install/update. If true, show one product-facing startup tip in the confirmation summary: "For the smoothest long-running runs, start Codex with `codex --enable goals --enable hooks --dangerously-bypass-approvals-and-sandbox`." Do not expose status field names or claim to have detected the exact shell command.
 
 ## Clarification Protocol
@@ -32,7 +32,9 @@ When this file mentions `<skill-root>`, it means the directory containing the lo
 
 Read the repo to understand what exists -- source files, training scripts, config files, test suites, build systems, CI configs, etc. Check manifest files (`package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, etc.) to understand the stack before asking about it.
 
-Immediately after this scan, run the integration check from the global rules. If setup work is needed, do it silently before asking the next clarification question. Do not infer current-session goal-tool availability from saved integration state; use model-visible goal tools when they are actually available. If the first status says `startup_tip_needed: true`, keep that decision even if install later updates persistent files, mention the tip once in the confirmation summary, then continue the normal wizard.
+After the primary repo is known, run `python3 <skill-root>/scripts/autoresearch_launch_gate.py --repo <primary_repo>` and follow `session-resume-protocol.md`: resume when it is safe, use the mini-wizard when confirmation is needed, or continue the normal wizard only for a fresh launch.
+
+When the flow continues into a fresh or confirmed interactive launch, run the setup check from the global rules. If setup work is needed, do it silently before asking the next clarification question. Do not infer current-session goal-tool availability from saved setup state; use model-visible goal tools when they are actually available. Keep the first startup-tip decision from the initial status check, mention the tip once in the confirmation summary when needed, then continue the normal wizard.
 
 When model-visible goal tools are available, call `get_goal` before the confirmation summary. If an existing official goal cannot be reused for the proposed autoresearch objective, include that conflict in the summary before the user chooses foreground.
 
@@ -59,6 +61,7 @@ Rules:
 - Do not silently widen `workspace_root` to a parent directory just because nearby sibling repos, old `autoresearch-results/`, or a broader filesystem layout exist. Only widen to a broader shared workspace when the user explicitly confirms that intent.
 - Do not replace the structured summary with a single-line "foreground or background?" prompt. The user should see what you inferred from the repo before they are asked to approve launch.
 - If the chosen `workspace_root` is outside the launch context or outside the primary repo, call that out explicitly in the confirmation summary and show the resulting `Results directory`.
+- If clarification changes the `workspace_root`, rerun the launch gate with the confirmed workspace root before the final summary.
 - When the user explicitly describes multiple goals or says they cannot prioritize into a single metric, suggest `verify_format=metrics_json` with a primary metric for the TSV plus acceptance criteria on the others. If the repo scan reveals a verify script that outputs structured multi-metric data, mention it as an option but let the user decide whether they want multi-metric tracking or just a single primary metric. Do not proactively suggest multi-metric when the user's goal is clearly single-metric.
 
 ### Step 3: Confirm (Structured Format)
@@ -100,7 +103,7 @@ Before launching, present a structured confirmation summary. The user should be 
 7. Keep the base template minimal. Add optional blocks only when they are genuinely needed.
 8. Only show "Required keep labels" and/or "Required stop labels" when the goal truly has structural success requirements beyond the numeric target.
 9. Keep the runtime checklist short. It exists to reinforce execution order, not to restate the whole protocol.
-10. Do not include integration setup details in the normal confirmation summary. Mention them only when a setup failure blocks the selected run mode.
+10. Do not include setup details in the normal confirmation summary. Mention them only when a setup failure blocks the selected run mode.
 11. When the run tracks multiple metrics, show the additional thresholds in plain language (e.g., "Also keeping: hard_conflicts == 0") rather than exposing internal field names. Omit this line entirely for single-metric runs.
 12. Always show the `Results directory`. If it is the default `./autoresearch-results/` under the launch context, the relative form is fine. If it lives outside the launch context or outside the primary repo, show the absolute path and make that widening explicit before launch.
 13. If the startup tip is shown, keep it outside the confirmed run config so users do not confuse it with an internal requirement for this specific run.
@@ -112,7 +115,7 @@ The user replies "go", "start", "launch", or corrects something. No field names,
 When the user replies with launch approval (`go`, `start`, `launch`, or an equivalent clear confirmation):
 
 1. Require an explicit run-mode choice: **foreground** or **background**.
-2. By handoff time, the managed integration check should already be complete. Keep setup details out of the user-facing handoff unless a setup failure blocks the selected run mode.
+2. By handoff time, the setup check should already be complete. Keep setup details out of the user-facing handoff unless a setup failure blocks the selected run mode.
 3. If the user chose **foreground**, keep the loop in the current Codex session:
    - when model-visible goal tools are available, align the official Codex goal before initialization: call `get_goal`, reuse a matching non-complete current goal, or call `create_goal` with the confirmed objective when no goal exists
    - if an existing official goal cannot be reused, do not create another goal; surface that conflict in the confirmation summary before launch and let the user resolve it there
@@ -175,7 +178,6 @@ Use this appendix only when you need help choosing the shortest useful question 
 
 - "I can test multiple ideas at the same time using parallel experiments. Want me to try up to 3 hypotheses per round? (I detected {N} GPUs/NPUs -- each experiment would need how many?)"
 - "If I get stuck, can I search the web for solutions? (results are always verified mechanically before applying)"
-- "Should I remember lessons from this run for future runs?"
 
 ### Debug-Specific
 
@@ -225,7 +227,6 @@ The wizard internally maps the conversation to these fields (the user never sees
 - Rollback (optional) -- ask only if destructive rollback may be needed for unattended execution; otherwise default to non-destructive revert
 - Parallel (optional) -- ask if environment supports it (CPU >= 4, RAM >= 8GB)
 - Web search (optional) -- ask if user wants web search when stuck
-- Lessons (optional) -- enabled by default, ask only if user wants to disable
 
 ### plan
 
@@ -258,7 +259,8 @@ The wizard internally maps the conversation to these fields (the user never sees
 - Metric -- checklist readiness score (or another mechanical pass-count score)
 - Direction -- `higher`
 - Verify -- Codex proposes a command or script that evaluates the checklist and emits the readiness score
-- Run mode -- ask: "Dry run first, or ship directly?"
+- Run mode -- foreground or background
+- Ship action -- ask "Dry run first, or ship directly?" only when an external ship action is in scope
 - Monitor -- ask how long to monitor after ship when relevant
 
 ### exec

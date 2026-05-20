@@ -25,6 +25,9 @@ from autoresearch_resume_check import evaluate_resume_state
 from autoresearch_workspace import default_workspace_artifacts, resolve_workspace_root
 
 
+MISSING_CONTEXT_PREFIX = "No codex-autoresearch context found for repo "
+
+
 def pid_is_zombie(pid: int) -> bool:
     try:
         completed = subprocess.run(
@@ -571,25 +574,49 @@ def main() -> int:
             artifact_root / RUNTIME_STATE_NAME,
         )
     else:
-        context = require_context_for_repo(repo)
-        workspace_root = resolve_context_workspace_root(
-            repo=repo,
-            context=context,
-            raw_workspace_root=args.workspace_root,
-        )
-        defaults = default_workspace_artifacts(context.workspace_root)
-        state_default = context.state_path
-        launch_path = resolve_repo_relative(
-            workspace_root,
-            args.launch_path,
-            context.launch_path or defaults.launch_path,
-        )
-        runtime_path = resolve_repo_relative(
-            workspace_root,
-            args.runtime_path,
-            context.runtime_path or defaults.runtime_path,
-        )
-        results_path = context.results_path
+        try:
+            context = require_context_for_repo(repo)
+        except AutoresearchError as exc:
+            if not str(exc).startswith(MISSING_CONTEXT_PREFIX):
+                raise
+            workspace_root = (
+                resolve_workspace_root(repo, args.workspace_root)
+                if args.workspace_root is not None
+                else repo.resolve()
+            )
+            defaults = default_workspace_artifacts(workspace_root)
+            prior_control_artifacts = (
+                defaults.results_path,
+                defaults.state_path,
+                defaults.launch_path,
+                defaults.runtime_path,
+                defaults.context_path,
+            )
+            if any(path.exists() for path in prior_control_artifacts):
+                raise
+            state_default = defaults.state_path
+            launch_path = resolve_repo_relative(workspace_root, args.launch_path, defaults.launch_path)
+            runtime_path = resolve_repo_relative(workspace_root, args.runtime_path, defaults.runtime_path)
+            results_path = defaults.results_path
+        else:
+            workspace_root = resolve_context_workspace_root(
+                repo=repo,
+                context=context,
+                raw_workspace_root=args.workspace_root,
+            )
+            defaults = default_workspace_artifacts(context.workspace_root)
+            state_default = context.state_path
+            launch_path = resolve_repo_relative(
+                workspace_root,
+                args.launch_path,
+                context.launch_path or defaults.launch_path,
+            )
+            runtime_path = resolve_repo_relative(
+                workspace_root,
+                args.runtime_path,
+                context.runtime_path or defaults.runtime_path,
+            )
+            results_path = context.results_path
     decision = evaluate_launch_context(
         results_path=results_path,
         state_path_arg=args.state_path,

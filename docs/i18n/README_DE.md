@@ -48,7 +48,7 @@ Inspiriert von [Karpathys autoresearch](https://github.com/karpathy/autoresearch
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Starten Sie Codex neu, öffnen Sie Ihr Projekt und legen Sie los:
+Öffnen Sie Ihr Projekt und legen Sie los:
 
 ```
 Du:    $codex-autoresearch
@@ -65,7 +65,7 @@ Du:    Background, go. Lass es über Nacht laufen.
 Codex: Starte Hintergrundlauf — Baseline: 47. Iteriere.
 ```
 
-Starten Sie Background-Läufe aus einer vertrauenswürdigen **Full Access** Codex-Sitzung. Wenn Codex auf einen workspace-only sandbox beschränkt ist, nutzen Sie foreground oder starten Sie mit Full Access neu, bevor Sie background wählen.
+Starten Sie Background-Läufe aus einer vertrauenswürdigen **Full Access** Codex-Sitzung.
 
 Jede Verbesserung baut auf. Jeder Fehlschlag wird zurückgesetzt. Alles wird protokolliert.
 
@@ -88,7 +88,7 @@ Du sagst einen Satz  →  Codex scannt & bestätigt  →  Du sagst "go"
                                                |   Die Schleife    |
                                                |                   |
                                                |  eine Sache ändern|
-                                               |  git commit       |
+                                               |  trial commit     |
                                                |  verify ausführen |
                                                |  besser? behalten |
                                                |  schlechter? rev. |
@@ -164,7 +164,6 @@ Details in [GUIDE.md](../GUIDE.md):
 - **Sitzungswiederaufnahme** — unterbrochene Läufe setzen beim letzten konsistenten Zustand fort
 - **CI/CD-Modus** (`exec`) — nicht-interaktiv, JSON-Ausgabe, für Automatisierungspipelines
 - **Doppelte Prüfung** — getrenntes verify (hat es sich verbessert?) und guard (ist etwas kaputtgegangen?)
-- **Session hooks** — automatisch installiert; halten Codex über Sitzungsgrenzen hinweg auf Kurs
 
 ## FAQ
 
@@ -184,7 +183,7 @@ Am stärksten ist es, wenn Ziel und Metrik klar sind — Abdeckung erhöhen, Feh
 
 | Dok | Inhalt |
 |-----|--------|
-| [INSTALL.md](../INSTALL.md) | Alle Installationsmethoden, Skill-Erkennungspfade, Hooks-Einrichtung |
+| [INSTALL.md](../INSTALL.md) | Skill Installer, manuelles Kopieren, User-Scope-Installation und Entwicklungs-Symlink |
 | [GUIDE.md](../GUIDE.md) | Vollständiges Handbuch: Modi, Konfigurationsfelder, Sicherheitsmodell, erweiterte Nutzung |
 | [EXAMPLES.md](../EXAMPLES.md) | Rezepte nach Domäne: Abdeckung, Performance, Typen, Sicherheit usw. |
 

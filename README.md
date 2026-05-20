@@ -43,12 +43,13 @@ Inspired by [Karpathy's autoresearch](https://github.com/karpathy/autoresearch),
 >
 > Use this before starting autoresearch for the smoothest foreground and background experience.
 
+Install in Codex:
+
 ```text
-# Install in Codex (recommended)
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-Restart Codex, open your project, and go:
+Open your project and go:
 
 ```
 You:   $codex-autoresearch
@@ -67,9 +68,9 @@ Codex: Starting background run — baseline: 47. Iterating.
 
 Each improvement stacks. Each failure reverts. Everything is logged.
 
-For background runs, start Codex from a trusted **Full Access** session. If Codex is restricted to workspace-only sandboxing, use foreground mode or restart with Full Access before choosing background.
+For background runs, start Codex from a trusted **Full Access** session.
 
-See [INSTALL.md](docs/INSTALL.md) for manual copy, symlink, and user-scope options. See [GUIDE.md](docs/GUIDE.md) for the full manual.
+See [INSTALL.md](docs/INSTALL.md) for skill installer, manual copy, user-scope, and development symlink options. See [GUIDE.md](docs/GUIDE.md) for the full manual.
 
 ## How It Works
 
@@ -88,7 +89,7 @@ You say one sentence  →  Codex scans & confirms  →  You say "go"
                                               |    The Loop       |
                                               |                   |
                                               |  modify one thing |
-                                              |  git commit       |
+                                              |  trial commit     |
                                               |  run verify       |
                                               |  improved? keep   |
                                               |  worse? revert    |
@@ -164,7 +165,6 @@ These are covered in detail in [GUIDE.md](docs/GUIDE.md):
 - **Session resume** — interrupted runs pick up from the last consistent state
 - **CI/CD mode** (`exec`) — non-interactive, JSON output, for automation pipelines
 - **Dual-gate verification** — separate verify (did it improve?) and guard (did anything break?)
-- **Session hooks** — auto-installed; keep Codex on track across session boundaries
 
 ## FAQ
 
@@ -184,7 +184,7 @@ It's strongest when the goal and metric are clear — push coverage up, push err
 
 | Doc | What it covers |
 |-----|---------------|
-| [INSTALL.md](docs/INSTALL.md) | All installation methods, skill discovery paths, hooks setup |
+| [INSTALL.md](docs/INSTALL.md) | Skill installer, manual copy, user-scope, and development install options |
 | [GUIDE.md](docs/GUIDE.md) | Full operator's manual: modes, config fields, safety model, advanced usage |
 | [EXAMPLES.md](docs/EXAMPLES.md) | Recipes by domain: coverage, performance, types, security, etc. |
 

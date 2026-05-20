@@ -44,7 +44,8 @@ If type or target is missing, collect:
 
 - shipment type,
 - target artifact or destination,
-- run mode,
+- run mode (foreground or background),
+- dry-run preference and explicit ship-action approval when external side effects are possible,
 - monitoring duration.
 
 ## Generic Launch Contract
@@ -136,6 +137,7 @@ In addition to the ship-specific output directory, ship mode still writes the ge
 - `autoresearch-results/results.tsv`
 - `autoresearch-results/lessons.md`
 - `autoresearch-results/state.json`
+- `autoresearch-results/context.json`
 
 ## Output Directory
 

@@ -306,7 +306,7 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
                 cwd=repo,
             )
             self.assertNotEqual(stale.returncode, 0)
-            self.assertIn("does not match HEAD", stale.stderr)
+            self.assertIn("does not match current HEAD", stale.stderr)
 
             recorded = self.run_script(
                 "autoresearch_record_iteration.py",
@@ -327,6 +327,98 @@ class AutoresearchResultsRowsTest(AutoresearchScriptsTestBase):
                 cwd=repo,
             )
             self.assertEqual(recorded["status"], "keep")
+
+    def test_record_iteration_accepts_discard_after_revert_closeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self.init_git_repo(Path(tmp) / "repo")
+            src = repo / "src"
+            src.mkdir()
+            app = src / "app.py"
+            app.write_text('VALUE = "BASELINE"\n', encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "src/app.py"], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "initial"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            baseline_commit = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"],
+                text=True,
+            ).strip()
+
+            results_path = repo / "autoresearch-results/results.tsv"
+            state_path = repo / "autoresearch-results/state.json"
+            self.run_script(
+                "autoresearch_init_run.py",
+                "--repo",
+                str(repo),
+                "--workspace-root",
+                str(repo),
+                "--mode",
+                "loop",
+                "--goal",
+                "Reduce marker count",
+                "--scope",
+                "src/**/*.py",
+                "--metric-name",
+                "marker count",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 -c pass",
+                "--baseline-metric",
+                "1",
+                "--baseline-commit",
+                baseline_commit,
+                "--baseline-description",
+                "baseline marker",
+            )
+
+            app.write_text('VALUE = "WORSE TODO TODO"\n', encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "src/app.py"], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "worse trial"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo), "revert", "--no-edit", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            closeout_commit = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"],
+                text=True,
+            ).strip()
+
+            recorded = self.run_script(
+                "autoresearch_record_iteration.py",
+                "--results-path",
+                str(results_path),
+                "--state-path",
+                str(state_path),
+                "--status",
+                "discard",
+                "--metric",
+                "2",
+                "--commit",
+                closeout_commit,
+                "--guard",
+                "fail",
+                "--description",
+                "reverted worse marker trial",
+                cwd=repo,
+            )
+            self.assertEqual(recorded["status"], "discard")
+
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["state"]["current_metric"], 1)
+            self.assertEqual(state["state"]["last_trial_metric"], 2)
+            self.assertEqual(state["state"]["last_trial_commit"], closeout_commit)
+            self.assertEqual(state["state"]["consecutive_discards"], 1)
 
     def test_init_run_preserves_utf8_paths_in_results_state_and_context_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
