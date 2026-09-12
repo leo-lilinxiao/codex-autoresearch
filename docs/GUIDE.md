@@ -24,6 +24,8 @@ Codex scans the repository and confirms seven values before writing:
 
 You also choose foreground or background and may set an iteration limit.
 
+Choices and approval already given carry forward. Codex asks about missing launch decisions, then continues without repeated confirmation. Requests for status, history, or a report go directly to the requested result.
+
 Autoresearch requires a clean named branch. Commit or stash existing changes before launch. Scope entries are path prefixes, not globs: use `src` rather than `src/**/*.ts`.
 
 ## Metric Output
@@ -63,7 +65,7 @@ Foreground stays in the current Codex task. After you approve the run, the skill
 
 Each iteration:
 
-1. Codex reads the validated status and previous experiments.
+1. Codex uses the measured results and previous experiments to choose a hypothesis.
 2. Codex changes one coherent thing inside scope.
 3. The control script creates a trial commit.
 4. It runs verify and, for an improvement, the guard.
@@ -89,10 +91,11 @@ Use the skill itself for control:
 ```text
 $codex-autoresearch show the background status
 $codex-autoresearch stop the background run
+$codex-autoresearch resume the background run
 $codex-autoresearch resume with this direction: focus on parser allocation
 ```
 
-The foreground task does not need to poll the controller.
+Resume continues the existing configuration. Add a direction when you want to steer the strategy. The foreground task does not need to poll the controller.
 
 ## Run States
 

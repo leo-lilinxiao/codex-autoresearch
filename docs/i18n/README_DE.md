@@ -30,6 +30,8 @@ $codex-autoresearch error_count aus `python3 scripts/score.py` auf 0 senken
 
 Vor dem ersten Schreibzugriff bestätigt Codex Ziel, Bereich, Ausgangswert, Zielwert, Messbefehl, optionalen Guard und foreground/background.
 
+Bereits getroffene Entscheidungen und erteilte Zustimmung gelten weiter. Nach dem Start laufen die Experimente ohne erneute Bestätigung jeder Iteration. Ein gestoppter Hintergrundlauf lässt sich mit „resume“ mit den bisherigen Einstellungen fortsetzen; eine neue Richtung ist optional.
+
 ## Schleife
 
 ```text

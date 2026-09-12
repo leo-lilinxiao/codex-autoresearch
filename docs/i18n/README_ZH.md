@@ -30,6 +30,8 @@ $codex-autoresearch 把 `python3 scripts/score.py` 的 error_count 降到 0
 
 Codex 会在首次写入前确认：目标、可修改范围、当前值、目标值、指标命令、可选 guard，以及 foreground 或 background。
 
+Codex 会沿用你已经给出的选择和授权。启动后会持续实验，不会逐轮要求确认；后台停止后，说“恢复”即可继续原配置，也可以补充新的方向。
+
 ## 工作方式
 
 ```text

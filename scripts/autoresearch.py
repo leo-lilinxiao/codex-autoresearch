@@ -141,7 +141,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     resume_parser = subparsers.add_parser("resume", help="Resume a stopped or blocked run.")
     add_repo_argument(resume_parser)
-    resume_parser.add_argument("--note", required=True)
+    resume_parser.add_argument(
+        "--note",
+        default="Continue the confirmed experiment.",
+        help="Optional new direction or explanation of what changed.",
+    )
 
     archive_parser = subparsers.add_parser(
         "archive", help="Archive the current run before starting a different one."
@@ -723,6 +727,12 @@ def finish_iteration(args: argparse.Namespace) -> dict[str, Any]:
         events.append(stopped)
         status = "stopped"
 
+    if run["mode"] == "background":
+        instruction = "Iteration recorded. Exit this worker now."
+    elif status == "active":
+        instruction = "Continue with the next experiment using the recorded evidence."
+    else:
+        instruction = f"Run is {status}. Stop experimenting and report the result."
     return {
         "status": status,
         "iteration": iteration,
@@ -731,7 +741,7 @@ def finish_iteration(args: argparse.Namespace) -> dict[str, Any]:
         "retained_metric": decimal_json(retained_metric),
         "target": run["target"],
         "head": head,
-        "instruction": "Iteration recorded. Exit this worker now." if run["mode"] == "background" else "Continue with the next distinct experiment unless complete.",
+        "instruction": instruction,
     }
 
 
@@ -901,20 +911,23 @@ def worker_prompt(repo: Path, script: Path, run: dict[str, Any], state: RunState
         else f"JSON key {run['metric']['json_key']}"
     )
     guard = run["guard"] or "none"
+    limit = "none" if run["max_iterations"] is None else str(run["max_iterations"])
     return f"""You are one background iteration worker for a codex-autoresearch run.
+The experiment is already approved. Use the confirmed configuration below.
 
 Repository: {repo}
 Control script: {script}
 Goal: {run['goal']}
 Current metric: {decimal_json(state.metric)}
 Target: {run['target']} ({run['metric']['direction']} is better)
+Iteration limit: {limit}
 Verify command: {run['metric']['command']} ({metric_parser})
 Guard command: {guard}
 Allowed paths: {', '.join(run['scope'])}
 
 Rules:
 1. Run `{python_command} {script_command} status --repo {repo_argument}` and inspect the repository and prior events.
-2. Choose one focused, evidence-based experiment that differs from previous discarded attempts.
+2. Choose one coherent hypothesis from the code and prior results. Keep the evaluation method fixed.
 3. Modify only allowed paths. Do not commit, revert, or edit autoresearch-results yourself.
 4. Finalize exactly once with `{python_command} {script_command} finish --repo {repo_argument} --description <short-description>`.
 5. If and only if no experiment is possible without external input or an environment change, leave the repo clean and run `{python_command} {script_command} block --repo {repo_argument} --reason <precise-reason>`.

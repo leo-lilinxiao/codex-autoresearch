@@ -1,21 +1,26 @@
-# Workflow
+# Experiment Workflow
 
-Read this reference for every `$codex-autoresearch` invocation.
+## Start A Run
 
-## Fresh Run
+1. Locate the Git repository and run `status --repo <repo>`. Only `not_initialized` is fresh; handle existing runs below.
+2. Inspect the relevant code and commands. Establish a repeatable baseline and choose the configuration below.
+3. Show the conditions in one concise confirmation. Reuse choices and authorization already given; ask only for missing launch decisions.
+4. If foreground work remains, check that Goal tools are available and that no different unfinished Goal conflicts with this run. Surface a conflict before writing run artifacts.
+5. Initialize or launch with the approved values.
 
-1. Locate the Git root and check for an existing run with `status`. Only `not_initialized` is fresh.
-2. Read the relevant source, tests, project commands, and current Git status.
-3. Find a metric that directly represents the requested outcome. Prefer a project-owned scoring command over output scraping.
-4. Make parsing explicit:
-   - scalar: the final non-empty stdout line is a finite number;
-   - JSON: the final non-empty stdout line is an object and `--metric-key` names one finite numeric field.
-5. Choose repo-relative scope prefixes. Use `src`, `tests/api`, or a file path; never pass globs or absolute paths.
-6. Pick a target that means the user's goal is achieved. The baseline alone is not a target.
-7. Select a guard only if it passes before any edits and protects behavior not already represented by the metric.
-8. Ask for one confirmation before initialization. Do not turn each inferred field into a separate question when the repo already answers it.
+Configuration:
 
-Use this confirmation shape:
+- Goal: the user's intended research or engineering outcome.
+- Scope: repository-relative file or directory prefixes; no globs. Initialization requires a clean named branch and a working Git identity.
+- Verify: a repeatable command whose final non-empty stdout line is a finite number, or a JSON object with one explicit `--metric-key`.
+- Direction and target: lower or higher, and the number that means the user's goal is reached.
+- Guard: optional pass/fail command protecting behavior outside the metric; it must pass at baseline.
+- Mode: foreground with a Codex Goal, or background with a detached controller. Include the Goal and background Full Access policy in the corresponding launch confirmation.
+- Iteration limit: only when requested.
+
+The verify command must exit zero when measurement succeeds, even if the result is poor. Verify and guard must emit UTF-8 and leave Git-visible project files unchanged; ignored build output is fine. Stabilize datasets, evaluation, and per-experiment compute budgets so comparisons remain meaningful. Keep measurement and guard behavior fixed during experiments.
+
+A useful confirmation is:
 
 ```text
 Goal: ...
@@ -23,64 +28,73 @@ Scope: ...
 Metric: ... (baseline ..., target ..., lower/higher is better)
 Verify: ...
 Guard: ... / none
-Mode: foreground / background
-Rollback: failed trials are reverted with Git
+Mode: foreground (Codex Goal) / background (Full Access)
+Stop: target ..., iteration limit ..., or user stop
+Failed trials are committed and reverted.
 ```
 
-If the target, scope, or external side effects are ambiguous, ask about those. Do not ask users to choose internal protocol details.
+An explicit request to execute a fully specified experiment is approval; no special keyword is required. Obtain any missing launch approval, including the mode, before writing project files, initializing artifacts, or creating a Goal or controller. If measurement needs setup, include that work in the approval.
 
 ## Foreground
 
-After approval:
+Initialize once:
 
-1. Run `init` and surface any failure verbatim.
-2. If initialization reports `complete`, do not create a Goal.
-3. Otherwise reuse a matching official Goal or create one whose objective names codex-autoresearch, the run id, metric, and target.
-4. Follow `experiment.md` until the event status is terminal.
-5. Keep normal Codex progress updates concise. The event log is the detailed audit trail.
+```bash
+python3 <control> init \
+  --repo <repo> --goal <goal> --scope <path> \
+  --metric-name <name> --direction <lower|higher> \
+  --verify <command> [--metric-key <key>] --target <number> \
+  [--guard <command>] [--max-iterations <n>]
+```
 
-An Escape interruption pauses official Goal execution. On a resumed task, validate the run with `status` before continuing. Do not create a second Goal for the same run.
+If initialization returns `complete`, report the measured result without creating a Goal. Otherwise reuse the matching unfinished Goal or call `create_goal`. Its objective identifies codex-autoresearch, the run id, metric, target, and any iteration limit, and requires the experiment workflow while run status is active.
 
-## Background
+Use Codex's native Goal controls for pause, resume, and clear. Follow the available Goal tool contract; do not create a replacement for a paused or blocked Goal.
 
-After approval, run `launch` once. The detached controller owns continuation; the foreground task should return control to the user after the launch receipt.
+## Run Experiments
 
-Use the same skill entry for controls:
+Launch approval covers subsequent experiments within the agreed scope, evaluation, stopping conditions, and permissions. For an approved foreground run, continue while status is `active`, including after partial improvements or discarded hypotheses. Answer side questions without abandoning the run unless the user pauses it or changes direction. Ask again only when a new decision falls outside the agreement.
 
-- "status" -> `status --repo <repo>`
-- "stop" -> `stop --repo <repo>`
-- "resume with this direction" -> `resume --repo <repo> --note <direction>`
+Use the validated status at entry or resume. Within an uninterrupted loop, the latest `finish` result supplies the current status and metric; consult earlier events as needed.
 
-Read `background.md` before launching or controlling a detached run.
+1. Choose one coherent hypothesis from code, results, and relevant research. Pursue promising directions, learn from failed attempts, and change approach when the evidence warrants it.
+2. Modify only the approved scope. Keep the experiment independently measurable and reversible.
+3. Finalize with a description of the hypothesis:
 
-## Read-Only Views
+   ```bash
+   python3 <control> finish --repo <repo> --description <hypothesis>
+   ```
 
-For any initialized run:
+`finish` validates scope and Git provenance, commits the trial, measures it, runs the guard on an improvement, keeps or reverts the trial, and appends the result. Use those measurements for progress and completion; additional checks should answer an unresolved question. Interpret that evidence before choosing the next experiment. Use the returned `status` to decide whether more experiments may run; `outcome` describes only the trial's keep/discard decision.
 
-- "show history" -> `history --repo <repo>`
-- "export TSV" -> `history --repo <repo> --format tsv`
-- "generate an HTML report" -> `report --repo <repo>`
+| Status | Next action |
+|---|---|
+| `active` | Continue from the retained result with another hypothesis. |
+| `complete` | Mark the matching foreground Goal complete and report the result. |
+| `stopped` | End experiments and report the stopping reason and best retained result. If the foreground Goal is still active, direct the user to its native pause controls; do not mark it complete or blocked merely because a limit was reached. |
+| `blocked` | Report the external dependency and what must change to resume. |
+| `error` | Inspect diagnostics and the validated repository state before recovery. |
 
-Each command validates `run.json` and the complete `events.jsonl` before rendering. The HTML file is a replaceable snapshot under `autoresearch-results/report.html`, not state and never a recovery source.
+Normal failed hypotheses and failing guards are discarded. Block only when meaningful progress requires unavailable information, credentials, data, hardware, or another external change. For foreground, satisfy the Goal tool's blocking conditions before calling `block --repo <repo> --reason <reason>` and marking the Goal blocked.
 
-## Existing Run
+Keep progress updates brief and substantive. When stopping, report baseline, best retained metric, experiment count, and useful findings. The event log contains the detailed history.
 
-Always trust validated events, not conversational memory.
+## Resume Or Change A Run
 
-- `active` foreground: continue in the current/resumed Goal task.
-- `active` background with runtime `running`: report status; do not launch another controller.
-- `active` background with runtime `orphaned`: report whether the recorded worker is still alive. Never resume or archive while an orphaned worker is alive. Once no worker remains, `stop` can close the event state before resume.
-- `blocked`: after the external cause changes, run `resume --repo <repo> --note <what-changed>`. A foreground run then continues through the same official Goal; a background run starts a new controller.
-- `error`: resume with the same command only when status reports a consistent repository and no unreverted trial. Otherwise recover Git manually and archive the run.
-- `stopped`: a user-stopped background run may resume with a note. A run stopped by its iteration limit must be archived and started again with a newly confirmed limit.
-- `complete`: report the result; archive before a different goal.
+Run `status` to validate the saved configuration and history.
 
-If the user wants a different goal, stop a live background controller first. For an active foreground run, ask the user to clear the old official Goal with `/goal clear`; the control script cannot own TUI Goal state. Then ask before running `archive`. Archiving is explicit because it changes the active run, though it preserves all prior artifacts.
+- An active foreground run continues with its matching Goal after any native pause is lifted.
+- An active background run with a running controller needs no relaunch.
+- A user-stopped run can resume with `resume --repo <repo>`. Add `--note <direction>` when the user supplies a new direction.
+- For `blocked` or `error`, first resolve the cause. Resume requires consistent Git state and no unreverted trial; record what changed with `--note`.
+- A completed run or a run at its iteration limit needs archiving before a new experiment.
 
-If initialization failed before `run.json` was written, surface `init-error.json` and its command logs. Archive that failed attempt explicitly before retrying.
+For a new goal, stop a live background run first; clear a conflicting foreground Goal through Codex controls. `archive --repo <repo>` preserves prior artifacts. Include archiving in the new-run confirmation, and carry it out without an extra question when already authorized.
 
-## Suitable Tasks
+## Errors
 
-Autoresearch fits any task with a repeatable numeric outcome: failing test count, coverage, benchmark latency, warnings, binary size, reproducible security findings, or a project-owned score.
+A failed command is not a completed experiment. Inspect its error, logs, and `status`; correct an invalid invocation when possible within the approved task. Do not continue experiments while status is terminal or Git ownership is uncertain.
 
-Do not force it onto one-shot edits, subjective design review, deployment, publishing, or tasks whose success cannot be measured repeatedly. First help the user define a reproducible metric, then start a run.
+`run.json` is immutable configuration and `events.jsonl` is the append-only state history. Unknown schemas, invalid or partial events, malformed metrics, Git drift, and rollback failures must remain visible errors. Never repair these files by guessing from logs or summaries.
+
+A failed initialization can leave `init-error.json` and logs without `run.json`. Inspect the cause and archive that attempt before retrying. If a trial was not reverted, recover Git explicitly and archive it before a new run. Background process recovery is covered in [Background](background.md).

@@ -30,6 +30,8 @@ $codex-autoresearch reduza error_count de `python3 scripts/score.py` para 0
 
 Antes da primeira escrita, Codex confirma objetivo, escopo, linha de base, meta, comando de métrica, guard opcional e foreground/background.
 
+O Codex mantém as escolhas e autorizações já fornecidas. Após iniciar, continua os experimentos sem pedir confirmação a cada iteração. Para retomar uma execução em segundo plano interrompida, basta pedir para retomar; uma nova direção é opcional.
+
 ## Ciclo
 
 ```text

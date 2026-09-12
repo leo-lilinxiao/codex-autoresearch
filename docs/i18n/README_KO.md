@@ -30,6 +30,8 @@ $codex-autoresearch `python3 scripts/score.py`의 error_count를 0으로 줄여�
 
 첫 쓰기 전에 목표, 수정 범위, 기준값, 목표값, 측정 명령, 선택적 guard, foreground/background를 확인합니다.
 
+이미 전달한 선택과 승인은 유지됩니다. 시작 후에는 실험마다 재확인을 요청하지 않습니다. 중지한 백그라운드 실행은 "재개"로 기존 설정을 이어갈 수 있으며, 새 방향을 덧붙여도 됩니다.
+
 ## 동작 방식
 
 ```text

@@ -1,48 +1,29 @@
-# Background Runtime
+# Background Runs
 
-Read this only for detached runs.
+Launch with the configuration approved in [Workflow](workflow.md), using `launch` instead of `init` and adding `--execution-policy <danger-full-access|workspace-write>`.
 
-## Architecture
+`danger-full-access` is the default because experiments create Git commits and reverts. Use `workspace-write` when the user chooses it; restricted Git writes cause a visible error.
 
-`launch` validates the baseline, writes the run configuration, and starts one detached controller. The controller starts one `codex exec` worker at a time. Each worker completes exactly one experiment through `finish` or records one genuine blocker through `block`, then exits.
+After launch, return the run id, baseline, results path, and controller status. Wait or monitor when the user requests it.
 
-```text
-Codex TUI -> detached controller -> worker 1 -> worker 2 -> ... -> terminal event
-```
-
-The controller reads the append-only event log after every worker. It launches another worker only when the previous worker exited successfully, produced exactly one valid iteration, and the run remains active. It does not poll a second background service or use Codex hooks.
-
-## Permissions
-
-`danger-full-access` is the default because `finish` must write Git commits and reverts. Confirm this policy before launch. `workspace-write` is available only when the user explicitly chooses it; sandbox policy may prevent writes under `.git`, causing a visible error rather than an automatic fallback.
-
-Background workers never create official Codex Goals. Goal continuation is a foreground feature; the controller is the background continuation mechanism.
-
-## Lifecycle
-
-- `status` validates the full event history and reports controller/worker PIDs.
-- `stop` writes a run-scoped request. The controller terminates the active worker process tree and records `stopped` only after the repository is back at a validated boundary.
-- `resume --note ...` appends the new direction and starts one new controller. It rejects completed runs, dirty repos, commit drift, and duplicate live controllers.
-- An unexpected worker exit, missing event, invalid event pattern, dead controller, or controller exception is observable in `runtime.log` and becomes `error` or `orphaned`; it is never treated as progress. A live orphaned worker blocks stop/resume/archive until it exits or the user terminates it explicitly.
-
-The foreground task should not tail the run after launch unless the user explicitly asks. Report these paths instead:
+## Controller And Workers
 
 ```text
-autoresearch-results/events.jsonl
-autoresearch-results/runtime.json
-autoresearch-results/runtime.log
-autoresearch-results/logs/
+Codex task -> detached controller -> worker 1 -> worker 2 -> ... -> terminal state
 ```
 
-## Worker Contract
+The controller starts one `codex exec` worker at a time with the confirmed goal, metric, stopping conditions, scopes, and control-script path. Each worker uses the supplied contract to complete one experiment through `finish`, or record an actionable external blocker through `block`, then exits. Launch approval already covers these experiments.
 
-Workers receive the confirmed goal, current metric, target, scope, prior event history, and exact control-script path. They may inspect and edit the repository, but they must not:
+Workers do not create Goals, start controllers, ask launch questions, manually commit or revert, or edit run artifacts. The controller validates the resulting events and starts another worker only if the preceding worker succeeded and the run remains active.
 
-- ask the sleeping user a question;
-- launch another controller;
-- create a Goal;
-- commit or revert directly;
-- edit run artifacts;
-- perform more than one finalized experiment.
+## Controls
 
-If a worker returns without a valid iteration or blocker event, the controller stops with a precise contract error. This prevents silent early exits and accidental infinite relaunch loops.
+- `status --repo <repo>`: validated experiment status and controller/worker PIDs.
+- `stop --repo <repo>`: request a stop; the controller terminates the worker process tree before checking the repository boundary.
+- `resume --repo <repo> [--note <direction>]`: continue the confirmed experiment, optionally with new guidance.
+
+A simple request to continue does not require a new strategy. For an error or blocker, resolve its cause before resuming.
+
+If the controller is gone but its worker is alive, report the worker PID and log path. Do not resume or archive until that worker exits or is explicitly terminated. Once no worker remains, `stop` can close an orphaned active run before resume.
+
+Missing worker events, unexpected exits, invalid state, or controller failures stop continuation with diagnostics. Full worker output is in `autoresearch-results/logs/`; controller events are in `runtime.log`. Use these to explain failures rather than inferring success from process exit alone.

@@ -56,7 +56,7 @@ Codex: Baseline: 5
        Target: 0 (lower is better)
        Scope: src/
        Verify: python3 scripts/score.py, JSON key error_count
-       Guard: python3 -m pytest -q
+       Guard: none
        Run in foreground or background?
 
 You:   Background. Go.
@@ -109,6 +109,8 @@ Before the first write, Codex shows:
 - an optional iteration limit.
 
 Initialization requires a clean named Git branch. One run manages one repository.
+
+Codex reuses choices and approval you have already given. Once the experiment is confirmed, it keeps working without asking you to approve each iteration.
 
 ## Results
 
@@ -206,7 +208,7 @@ Each iteration creates or reverts a Git commit. Restricted sandboxes may block w
 
 **Can I stop and resume?**
 
-Yes. Interrupt or pause a foreground Goal. For background, invoke `$codex-autoresearch` and ask for status, stop, or resume with a new direction.
+Yes. Interrupt or pause a foreground Goal. For background, invoke `$codex-autoresearch` and ask for status, stop, or resume. A new direction is optional; "resume" continues the confirmed experiment.
 
 **Can it run without Git or across several repos?**
 

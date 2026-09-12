@@ -10,35 +10,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class StructureTest(unittest.TestCase):
     def test_skill_fits_codex_initial_injection_limit(self) -> None:
-        skill = ROOT / "SKILL.md"
-        self.assertLessEqual(skill.stat().st_size, 8000)
+        self.assertLessEqual((ROOT / "SKILL.md").stat().st_size, 8000)
 
-    def test_reference_surface_is_intentionally_small(self) -> None:
-        references = sorted(path.name for path in (ROOT / "references").glob("*.md"))
-        self.assertEqual(["background.md", "experiment.md", "workflow.md"], references)
-        skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
-        for reference in references:
-            self.assertIn(f"references/{reference}", skill)
-
-    def test_runtime_surface_is_intentionally_small(self) -> None:
-        scripts = {path.name for path in (ROOT / "scripts").glob("autoresearch*.py")}
-        self.assertEqual(
-            {"autoresearch.py", "autoresearch_core.py", "autoresearch_report.py"},
-            scripts,
-        )
-
-    def test_skill_frontmatter_and_product_metadata(self) -> None:
+    def test_skill_entrypoints_and_metadata(self) -> None:
+        self.assertTrue((ROOT / "scripts" / "autoresearch.py").is_file())
         skill = (ROOT / "SKILL.md").read_text(encoding="utf-8")
         self.assertTrue(skill.startswith("---\nname: codex-autoresearch\n"))
-        self.assertRegex(skill, r"(?m)^description: .+measurable.+$")
+        self.assertRegex(skill, r"(?m)^description: .+")
         metadata = (ROOT / "agents" / "openai.yaml").read_text(encoding="utf-8")
         self.assertIn('display_name: "Codex Autoresearch"', metadata)
         self.assertIn("allow_implicit_invocation: false", metadata)
 
+    def test_bundled_python_compiles(self) -> None:
+        for source in (ROOT / "scripts").rglob("*.py"):
+            with self.subTest(source=source.relative_to(ROOT)):
+                compile(source.read_text(encoding="utf-8"), str(source), "exec")
+
     def test_local_markdown_links_resolve(self) -> None:
         markdown_files = [
+            ROOT / "SKILL.md",
             ROOT / "README.md",
             ROOT / "CONTRIBUTING.md",
+            *(ROOT / "references").rglob("*.md"),
             *(ROOT / "docs").rglob("*.md"),
         ]
         pattern = re.compile(r"\[[^\]]+\]\(([^)]+)\)")

@@ -62,7 +62,7 @@ Open Codex in the target repository, type `$`, and select `codex-autoresearch`. 
 
 1. inspect the repository without editing it;
 2. propose a metric, target, scope, guard, and run mode;
-3. wait for approval before creating `autoresearch-results/`.
+3. obtain any missing launch approval before creating `autoresearch-results/`.
 
 The skill does not modify Codex configuration.
 

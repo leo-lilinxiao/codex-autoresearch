@@ -117,6 +117,7 @@ class AutoresearchTest(unittest.TestCase):
         )
         self.assertEqual("keep", result["outcome"])
         self.assertEqual("complete", result["status"])
+        self.assertNotIn("continue", result["instruction"].lower())
         status = self.status()
         self.assertEqual(0, status["metric"]["current"])
         self.assertEqual(3, status["event_count"])
@@ -136,6 +137,7 @@ class AutoresearchTest(unittest.TestCase):
             ).stdout
         )
         self.assertEqual("discard", result["outcome"])
+        self.assertIn("continue", result["instruction"].lower())
         self.assertEqual(3, result["retained_metric"])
         self.assertEqual("3\n", (self.repo / "src" / "value.txt").read_text(encoding="utf-8"))
         subjects = self.git("log", "-2", "--format=%s").stdout
@@ -611,8 +613,20 @@ class AutoresearchTest(unittest.TestCase):
             ).stdout
         )
         self.assertEqual("stopped", result["status"])
+        self.assertNotIn("continue", result["instruction"].lower())
         self.assertEqual(2, self.status()["metric"]["current"])
         self.assertIn("stopped", self.cli("history", "--repo", str(self.repo)).stdout)
+
+    def test_resume_defaults_to_existing_experiment_and_rejects_empty_note(self) -> None:
+        self.init()
+        self.cli("block", "--repo", str(self.repo), "--reason", "test data unavailable")
+        invalid = self.cli("resume", "--repo", str(self.repo), "--note", " ", check=False)
+        self.assertNotEqual(0, invalid.returncode)
+        self.assertEqual("blocked", self.status()["status"])
+        resumed = json.loads(self.cli("resume", "--repo", str(self.repo)).stdout)
+        self.assertEqual("active", resumed["status"])
+        self.assertTrue(resumed["note"])
+        self.assertEqual(resumed["note"], self.status()["last_event"]["note"])
 
     def test_background_controller_runs_multiple_real_helper_iterations(self) -> None:
         fake = Path(self.temp.name) / "fake-codex"

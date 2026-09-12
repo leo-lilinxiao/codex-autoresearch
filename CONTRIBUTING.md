@@ -9,7 +9,6 @@ Read the architecture and design rules below before changing code or protocol.
 ```text
 SKILL.md
 ├── references/workflow.md
-├── references/experiment.md
 └── references/background.md
 
 scripts/autoresearch.py         CLI and detached controller
@@ -35,6 +34,7 @@ Do not introduce a second state snapshot or reconstruct events from logs. Logs e
 - Record full command/controller diagnostics before returning an error.
 - Keep the initial `SKILL.md` below Codex's 8,000-byte selected-skill prompt limit.
 - Keep references one level from `SKILL.md` and avoid duplicated rules.
+- Load references when needed; keep each decision rule in one place. Preserve prior user authorization and let Codex choose hypotheses from evidence.
 - Preserve one repository, one metric, one target, and one finalized experiment per iteration.
 - Do not add custom Codex hooks. Foreground continuity belongs to official Goals; background continuity belongs to the controller.
 - The background controller owns each worker process tree and must terminate it before stopping or failing.
@@ -58,11 +58,6 @@ The skill gate runs strict unit tests plus deterministic foreground and backgrou
 
 ## Pull Requests
 
-Keep changes focused and explain:
+Keep changes focused. Explain the user-visible behavior, the reason for the change, and the relevant validation.
 
-1. which product invariant changed;
-2. why the existing owner could not express it;
-3. how failure remains observable;
-4. which deterministic and real-model paths were tested.
-
-If model behavior changes, update `SKILL.md`, the relevant reference, user documentation, and tests in the same pull request. If architecture changes, update the Architecture, Sources Of Truth, and Design Rules sections here too.
+Keep protocol and user documentation aligned with behavioral changes. Test meaningful runtime contracts and evaluate model behavior with representative requests; avoid tests that freeze prose or file counts. If architecture changes, update the Architecture, Sources Of Truth, and Design Rules sections here too.

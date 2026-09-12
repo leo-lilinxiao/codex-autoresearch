@@ -6,7 +6,7 @@ These examples show the user prompt and the measurement contract Codex should co
 
 ```text
 $codex-autoresearch
-Reduce `python3 scripts/score.py` error_count to 0. Keep pytest passing.
+Reduce `python3 scripts/score.py` error_count to 0 without changing the evaluation.
 ```
 
 ```text
@@ -15,10 +15,10 @@ Verify: python3 scripts/score.py
 Metric parser: JSON key error_count
 Direction: lower
 Target: 0
-Guard: python3 -m pytest -q
+Guard: none
 ```
 
-The score script should exit zero and report a numeric count even before the defects are fixed.
+The score script should exit zero and report a numeric count even before the defects are fixed. Add a separate regression guard only if it already passes at baseline.
 
 ## Remove Type Errors
 
@@ -149,7 +149,13 @@ Later:
 $codex-autoresearch show status
 ```
 
-If blocked, provide a direction with resume:
+After a user stop, continue with:
+
+```text
+$codex-autoresearch resume
+```
+
+You can also supply a new direction. If blocked, first resolve the reported cause:
 
 ```text
 $codex-autoresearch resume; generated files are authoritative, do not edit them
