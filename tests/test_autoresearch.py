@@ -4,6 +4,8 @@ import csv
 import io
 import json
 import os
+import shlex
+import signal
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "autoresearch.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 import autoresearch as autoresearch_runtime
+import autoresearch_core
 
 
 class AutoresearchTest(unittest.TestCase):
@@ -785,6 +788,55 @@ class AutoresearchTest(unittest.TestCase):
         stopped = json.loads(self.cli("stop", "--repo", str(self.repo)).stdout)
         self.assertEqual("stopped", stopped["status"])
         self.assertEqual("stopped", self.status()["status"])
+
+    @unittest.skipIf(os.name == "nt", "POSIX detached process groups")
+    def test_background_stop_terminates_detached_measurement(self) -> None:
+        fake = Path(self.temp.name) / "fake-codex-measurement"
+        ready = Path(self.temp.name) / "measurement-pid"
+        sleeper = (
+            "import os, signal, time\n"
+            "from pathlib import Path\n"
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+            f"Path({str(ready)!r}).write_text(str(os.getpid()), encoding='utf-8')\n"
+            "time.sleep(60)\n"
+        )
+        command = shlex.join([sys.executable, "-c", sleeper])
+        fake.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            f"sys.path.insert(0, {str(ROOT / 'scripts')!r})\n"
+            "from autoresearch_core import run_command\n"
+            "sys.stdin.read()\n"
+            f"run_command(command={command!r}, cwd=Path.cwd(), timeout_seconds=120, "
+            f"log_path=Path({str(Path(self.temp.name) / 'measurement.json')!r}))\n",
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
+        unrelated = subprocess.Popen(
+            [sys.executable, "-c", "import time\ntime.sleep(60)"], start_new_session=True
+        )
+        measurement_pid = None
+        try:
+            self.init("--codex-bin", str(fake), mode="launch")
+            deadline = time.monotonic() + 5
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(ready.exists(), "measurement did not start")
+            measurement_pid = int(ready.read_text(encoding="utf-8"))
+            stopped = json.loads(self.cli("stop", "--repo", str(self.repo)).stdout)
+            self.assertEqual("stopped", stopped["status"])
+            process = autoresearch_core._posix_process_table().get(measurement_pid)
+            self.assertTrue(process is None or process[2].startswith("Z"))
+            self.assertIsNone(unrelated.poll(), "cleanup killed an unrelated process")
+        finally:
+            if measurement_pid is not None:
+                try:
+                    os.kill(measurement_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            unrelated.kill()
+            unrelated.wait(timeout=5)
 
     def test_controller_error_terminates_active_worker(self) -> None:
         fake = Path(self.temp.name) / "fake-codex-controller-error"
