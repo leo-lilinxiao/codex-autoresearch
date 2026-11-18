@@ -86,6 +86,7 @@ Tabelle und HTML-Bericht werden aus validierten Ereignissen erzeugt. Der HTML-Sc
 - Ein Lauf verwaltet ein Repository, eine Metrik und einen Zielwert.
 - Jedes Experiment wird committed; Fehlschläge werden mit `git revert` rückgängig gemacht.
 - Änderungen außerhalb des Bereichs, Git-Drift, ungültige Metriken, Befehlsfehler, Timeouts und Rollback-Fehler stoppen mit Log-Pfad.
+- Bis zum Ende belegt der Lauf sein Checkout: Änderungen im Bereich werden mit dem aktuellen Experiment committed. Zum Weiterarbeiten einen separaten `git worktree` nutzen.
 - `complete` wird nur gesetzt, wenn die behaltene Metrik den Zielwert erreicht.
 
 ## Voraussetzungen

@@ -86,6 +86,7 @@ La tabla y el informe HTML se generan desde eventos validados. La instantánea H
 - Cada ejecución gestiona un repositorio, una métrica y una meta.
 - Cada experimento se confirma; los fallos se revierten con `git revert`.
 - Cambios fuera de alcance, deriva Git, métricas inválidas, fallos de comandos, tiempos agotados y errores de rollback detienen el proceso con una ruta de log.
+- Mientras se ejecuta, el proceso ocupa este checkout: los cambios dentro del alcance se confirman con el experimento actual. Para seguir trabajando, usa un `git worktree` aparte.
 - Solo se marca `complete` cuando la métrica conservada alcanza la meta.
 
 ## Requisitos

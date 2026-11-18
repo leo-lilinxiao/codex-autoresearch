@@ -86,6 +86,7 @@ Le tableau et le rapport HTML sont générés à partir des événements validé
 - Une exécution gère un dépôt, une mesure et une cible.
 - Chaque expérience est commitée ; un échec est annulé avec `git revert`.
 - Les modifications hors périmètre, dérives Git, mesures invalides, échecs de commande, timeouts et rollbacks impossibles arrêtent l'exécution avec un chemin de log.
+- Tant qu'elle tourne, l'exécution occupe ce checkout : les modifications dans le périmètre sont commitées avec l'expérience en cours. Pour continuer à travailler, utilisez un `git worktree` séparé.
 - Le statut devient `complete` uniquement lorsque la mesure conservée atteint la cible.
 
 ## Prérequis

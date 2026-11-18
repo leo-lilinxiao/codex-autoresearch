@@ -86,6 +86,7 @@ A tabela e o relatório HTML são gerados a partir de eventos validados. O snaps
 - Cada execução gerencia um repositório, uma métrica e uma meta.
 - Cada experimento vira commit; falhas são revertidas com `git revert`.
 - Alterações fora do escopo, desvio Git, métricas inválidas, falhas de comando, timeout e erro de rollback interrompem com caminho de log.
+- Enquanto roda, a execução ocupa este checkout: alterações dentro do escopo entram no commit do experimento atual. Para continuar trabalhando, use um `git worktree` separado.
 - O estado só vira `complete` quando a métrica mantida atinge a meta.
 
 ## Requisitos

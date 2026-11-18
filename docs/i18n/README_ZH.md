@@ -2,35 +2,35 @@
 
 [English](../../README.md) | **中文**
 
-面向 Codex 的自主、可度量实验循环。
+给 Codex 用的实验助手：自动尝试改进，用数字验证结果。
 
-告诉 Codex 你想达到的数值目标。它会先扫描仓库并向你确认，然后不断执行：修改一个点、验证、保留改进、回滚失败，直到达到目标。
+告诉 Codex 你想把哪个数字推到多少。它会先看一遍仓库，跟你确认方案，然后围绕一个假设修改、测量，保留改进、回滚失败，持续实验直到达标。
 
-适用于测试失败数、覆盖率、类型错误、告警数、延迟、产物体积、可复现的安全问题，以及任何可以被命令稳定测量的结果。
+只要能用命令稳定测出来的数字都可以：失败的测试数、覆盖率、类型错误、告警数、延迟、产物体积、可复现的安全问题，等等。
 
 ## 快速开始
 
-在 Codex 中安装：
+在 Codex 里安装：
 
 ```text
 $skill-installer install https://github.com/leo-lilinxiao/codex-autoresearch
 ```
 
-建议用 Full Access 打开一个干净的 Git 仓库：
+建议在一个干净的 Git 仓库里，用 Full Access 打开 Codex：
 
 ```bash
 codex --dangerously-bypass-approvals-and-sandbox
 ```
 
-然后调用：
+然后直接说：
 
 ```text
 $codex-autoresearch 把 `python3 scripts/score.py` 的 error_count 降到 0
 ```
 
-Codex 会在首次写入前确认：目标、可修改范围、当前值、目标值、指标命令、可选 guard，以及 foreground 或 background。
+动手之前，Codex 会先跟你确认：目标、可以改哪些路径、当前值和目标值、用什么命令测、要不要 guard，以及在前台还是后台跑。
 
-Codex 会沿用你已经给出的选择和授权。启动后会持续实验，不会逐轮要求确认；后台停止后，说“恢复”即可继续原配置，也可以补充新的方向。
+你已经说过的，它不会再问。确认之后就一直跑下去，不会每轮都来找你；后台停下以后，说一句“恢复”就按原来的配置继续，也可以顺便给个新方向。
 
 ## 工作方式
 
@@ -43,32 +43,32 @@ Codex 会沿用你已经给出的选择和授权。启动后会持续实验，�
                               记录并继续
 ```
 
-Codex 负责分析和改代码；控制脚本负责 Git 边界、测量、回滚和状态。
+Codex 负责想办法、改代码；控制脚本负责记账：提交、测量、回滚，以及每次实验的记录。
 
 ## 前台与后台
 
 | | Foreground | Background |
 |---|---|---|
-| 运行位置 | 当前 Codex 任务 | 独立 controller |
-| 持续运行 | Codex 官方 Goal | 每轮一个 `codex exec` worker |
-| 适合 | 实时观察和指导 | 长时间或通宵运行 |
+| 运行位置 | 当前 Codex 任务 | 独立的 controller |
+| 靠什么持续 | Codex 的 Goal | 每轮启动一个新的 `codex exec` worker |
+| 适合 | 边看边调方向 | 长时间或通宵跑 |
 | 控制 | Goal 的暂停/恢复 | 用 `$codex-autoresearch` 查询、停止、恢复 |
 
-Foreground 由 Codex 官方 Goal 持续运行。Background 不创建 Goal，由 controller 负责持续运行。安装不会修改 Codex 配置。
+两种模式规则一样，区别只在于谁让循环一直转下去：前台靠 Codex 的 Goal，后台靠一个独立的 controller。安装不会改动你的 Codex 配置。
 
 ## 结果文件
 
-所有文件位于未提交的 `autoresearch-results/`：
+运行记录都放在 `autoresearch-results/` 里，不会被提交：
 
 | 文件 | 用途 |
 |---|---|
-| `run.json` | 不可变的已确认配置 |
-| `events.jsonl` | 仅追加的基线、实验和终止记录 |
-| `logs/` | 完整的指标、guard 和 worker 输出 |
+| `run.json` | 你确认过的配置，之后不再改动 |
+| `events.jsonl` | 基线、每次实验和结束记录，只追加不修改 |
+| `logs/` | 指标、guard 和 worker 的完整输出 |
 | `runtime.json` | 后台进程状态 |
-| `runtime.log` | 后台 controller 事件 |
+| `runtime.log` | 后台 controller 做过什么 |
 
-`events.jsonl` 是运行状态的唯一事实来源。缺失、损坏或矛盾的状态会直接报错，不会从旧文件或对话内容里猜测恢复。
+`events.jsonl` 是唯一的事实来源。它缺了、坏了或者前后对不上，都会直接报错，不会拿旧文件或聊天记录去猜。
 
 ## 查看运行结果
 
@@ -78,15 +78,16 @@ $codex-autoresearch 将实验历史导出为 TSV
 $codex-autoresearch 生成 HTML 报告
 ```
 
-历史表格和 HTML 都从验证后的事件动态生成。HTML 快照写入 `autoresearch-results/report.html`，不参与运行状态或恢复。
+历史表格和 HTML 报告都是从事件记录现生成的。HTML 写在 `autoresearch-results/report.html`，只是一份快照，跟运行状态和恢复都没关系。
 
 ## 可靠性边界
 
-- 新运行要求一个干净、具名的 Git 分支。
-- 一次运行只管理一个仓库、一个主指标和一个目标值。
-- 每个实验都会创建提交；失败实验使用 `git revert`。
-- 超出范围的修改、分支或 HEAD 漂移、错误指标、命令失败、超时和回滚失败都会停止运行并给出日志路径。
-- 只有保留指标达到已确认目标时，状态才会变为 `complete`。
+- 开始新的运行，需要一个干净、有名字的 Git 分支。
+- 一次运行只管一个仓库、一个指标、一个目标值。
+- 每次实验都会提交；没变好或没过 guard 的实验，会用 `git revert` 回滚。
+- 超出 scope 的修改、分支或 HEAD 漂移、指标无效、命令报错、超时和回滚失败，都会停止运行并给出诊断信息。
+- 运行期间别动这个工作目录：在 scope 内改的东西会被并进当前实验一起提交。想同时继续开发，另开一个 `git worktree`。
+- 只有保留下来的结果真的达到目标，状态才会变成 `complete`。
 
 ## 要求
 
@@ -94,6 +95,6 @@ $codex-autoresearch 生成 HTML 报告
 - Python 3.11+
 - Git
 
-安装方式见[安装文档](../INSTALL.md)，完整行为见[用户指南](../GUIDE.md)，常用场景见[示例](../EXAMPLES.md)。
+怎么安装看[安装文档](../INSTALL.md)，详细用法看[用户指南](../GUIDE.md)，常见场景看[示例](../EXAMPLES.md)。
 
 MIT License。项目灵感来自 [Karpathy 的 autoresearch](https://github.com/karpathy/autoresearch)。
