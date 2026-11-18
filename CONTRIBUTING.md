@@ -36,10 +36,10 @@ Do not introduce a second state snapshot or reconstruct events from logs. Logs e
 - Keep references one level from `SKILL.md` and avoid duplicated rules.
 - Load references when needed. Keep each decision rule in one place. Preserve prior user authorization and let Codex choose hypotheses from evidence.
 - Preserve one repository, one metric, one target, and one finalized experiment per iteration.
-- A trial verify failure or timeout is recorded as `crash` after successful cleanup and rollback. Three consecutive crashes stop the run. Baseline, state, encoding, cleanup, and rollback failures remain errors.
+- A trial verify failure or timeout is recorded as `crash` after successful cleanup and rollback. Three consecutive crashes stop the run. Baseline, state, invalid measured output, cleanup, and rollback failures remain errors. Timed-out output is retained for diagnostics, not parsed as a metric.
 - A guard timeout discards the trial. Crash counts are derived from events and reset by a measured trial or resume.
 - Do not add custom Codex hooks. Foreground continuity belongs to official Goals. Background continuity belongs to the controller.
-- The background controller owns each worker process tree and must terminate it before stopping or failing.
+- A background stop takes effect between experiments. Controller failures and command timeouts must still clean up their process trees, including descendants in separate sessions.
 - Do not add compatibility branches for unreleased schemas. A schema change must fail clearly and require an explicit fresh run.
 
 ## Validate

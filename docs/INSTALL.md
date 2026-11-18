@@ -68,7 +68,7 @@ The skill does not modify Codex configuration.
 
 ## Update
 
-Finish or stop an active run before updating. If the new version reports an unsupported run format, archive the old run before starting a new one. Archiving preserves its files without converting them.
+Finish or stop an active run and wait for its processes to exit before updating. If the new version reports an unsupported run format, archive the old run before starting a new one. Archiving preserves its files without converting them.
 
 - Skill installer: move the existing `codex-autoresearch` directory outside the skills directories as a backup, then run the installation command again. The installer does not overwrite an existing installation.
 - Copied install: replace the installed `codex-autoresearch` directory with a fresh checkout.

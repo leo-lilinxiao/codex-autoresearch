@@ -212,7 +212,7 @@ Every experiment makes or reverts a Git commit, and restricted sandboxes may blo
 
 **Can I stop and resume?**
 
-Yes. In the foreground, interrupt or pause the Goal. In the background, ask `$codex-autoresearch` for status, stop, or resume. Just saying "resume" continues the same experiment. You can add a new direction if you like.
+Yes. In the foreground, interrupt or pause the Goal. In the background, ask `$codex-autoresearch` for status, stop, or resume. A background stop lets the current experiment finish first. Just saying "resume" continues the same experiment. You can add a new direction if you like.
 
 **Can it run without Git or across several repos?**
 

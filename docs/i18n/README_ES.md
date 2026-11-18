@@ -56,6 +56,8 @@ Codex decide las hipótesis y modifica el código. El script de control posee lo
 
 Foreground continúa mediante el Goal oficial. Background no crea un Goal. El controller mantiene la ejecución. La instalación no cambia la configuración de Codex.
 
+Al detener una ejecución en segundo plano, el experimento actual termina y registra su resultado antes de salir.
+
 ## Resultados
 
 Los archivos no confirmados viven en `autoresearch-results/`:

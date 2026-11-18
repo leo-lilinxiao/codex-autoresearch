@@ -19,7 +19,7 @@ Workers do not create Goals, start controllers, ask launch questions, manually c
 ## Controls
 
 - `status --repo <repo>`: validated experiment status and controller/worker PIDs.
-- `stop --repo <repo>`: request a stop. The controller terminates the worker process tree before checking the repository boundary.
+- `stop --repo <repo>`: request a stop after the current experiment. Tell the user it is still finishing. Before archiving or resuming, wait until `status` reports a terminal run and neither controller nor worker is alive. Report the actual result, which may be `complete`, `stopped`, `blocked`, or `error`.
 - `resume --repo <repo> [--note <direction>]`: continue the confirmed experiment, optionally with new guidance.
 
 A simple request to continue does not require a new strategy. For an error or blocker, resolve its cause before resuming.

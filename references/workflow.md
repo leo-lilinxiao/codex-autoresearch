@@ -4,7 +4,7 @@
 
 1. Locate the Git repository and run `status --repo <repo>`. Only `not_initialized` is fresh. Handle existing runs below.
 2. Inspect the relevant code and commands. Establish a repeatable baseline and choose the configuration below.
-3. Show the conditions in one concise confirmation. Reuse explicit choices and authorization already given. If the user has not chosen foreground or background, ask and wait for their answer. The execution mode is a user decision, not an implementation default.
+3. Show the conditions in one concise confirmation. Reuse explicit choices and authorization already given, and ask only for what is missing.
 4. If foreground work remains, check that Goal tools are available and that no different unfinished Goal conflicts with this run. Surface a conflict before writing run artifacts.
 5. Initialize or launch with the approved values.
 
@@ -89,7 +89,7 @@ Run `status` to validate the saved configuration and history.
 - For `blocked` or `error`, first resolve the cause. Resume requires consistent Git state and no unreverted trial. Record what changed with `--note`.
 - A completed run or a run at its iteration limit needs archiving before a new experiment.
 
-For a new goal, stop a live background run first. Clear a conflicting foreground Goal through Codex controls. `archive --repo <repo>` preserves prior artifacts. Include archiving in the new-run confirmation, and carry it out without an extra question when already authorized.
+For a new goal, stop a live background run first and wait for its controller and worker to exit. Clear a conflicting foreground Goal through Codex controls. `archive --repo <repo>` preserves prior artifacts. Include archiving in the new-run confirmation, and carry it out without an extra question when already authorized.
 
 ## Errors
 

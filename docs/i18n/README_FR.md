@@ -56,6 +56,8 @@ Codex choisit les hypothèses et modifie le code. Le script de contrôle possèd
 
 Foreground continue grâce au Goal officiel. Background n'utilise pas de Goal. Le controller assure la continuité. L'installation ne modifie aucun réglage Codex.
 
+Un arrêt en arrière-plan laisse l'expérience en cours se terminer et enregistrer son résultat avant de quitter.
+
 ## Résultats
 
 Les fichiers non commités se trouvent dans `autoresearch-results/` :

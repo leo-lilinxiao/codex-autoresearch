@@ -161,9 +161,9 @@ def write_text_atomic(path: Path, text: str) -> None:
             temporary.unlink()
 
 
-def append_json_line(path: Path, payload: dict[str, Any]) -> None:
+def append_json_lines(path: Path, payloads: Iterable[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = (json_text(payload) + "\n").encode("utf-8")
+    data = "".join(json_text(payload) + "\n" for payload in payloads).encode("utf-8")
     descriptor = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o644)
     try:
         offset = 0
@@ -215,10 +215,10 @@ def require_exact_keys(
     if missing or unknown:
         details = []
         if missing:
-            details.append("missing " + ", ".join(missing))
+            details.append("Missing " + ", ".join(missing))
         if unknown:
-            details.append("unknown " + ", ".join(unknown))
-        raise AutoresearchError(f"Invalid schema in {source}: {', '.join(details)}")
+            details.append("Unknown " + ", ".join(unknown))
+        raise AutoresearchError(f"Invalid schema in {source}. " + ". ".join(details))
 
 
 RUN_KEYS = {
@@ -623,22 +623,31 @@ def load_context(repo: Path | str) -> tuple[Paths, dict[str, Any], list[dict[str
     return paths, run, events, state
 
 
+def append_events(
+    paths: Paths,
+    run: dict[str, Any],
+    events: list[dict[str, Any]],
+    *field_sets: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Batch related events into one append."""
+    new_events: list[dict[str, Any]] = []
+    for fields in field_sets:
+        seq = len(events) + len(new_events)
+        event = {
+            "schema_version": SCHEMA_VERSION,
+            "run_id": run["run_id"],
+            "seq": seq,
+            "time": utc_now(),
+            **fields,
+        }
+        validate_event(event, run_id=run["run_id"], expected_seq=seq, source="new event")
+        new_events.append(event)
+    append_json_lines(paths.events, new_events)
+    return new_events
+
+
 def append_event(paths: Paths, run: dict[str, Any], events: list[dict[str, Any]], **fields: Any) -> dict[str, Any]:
-    event = {
-        "schema_version": SCHEMA_VERSION,
-        "run_id": run["run_id"],
-        "seq": len(events),
-        "time": utc_now(),
-        **fields,
-    }
-    validate_event(
-        event,
-        run_id=run["run_id"],
-        expected_seq=len(events),
-        source="new event",
-    )
-    append_json_line(paths.events, event)
-    return event
+    return append_events(paths, run, events, fields)[0]
 
 
 def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -923,11 +932,11 @@ def run_command(
         )
         details = []
         if encoding_errors:
-            details.append("output was not valid UTF-8")
+            details.append("Output was not valid UTF-8")
         if termination_error is not None:
-            details.append(f"process-tree termination failed: {termination_error}")
-        suffix = f". {', '.join(details)}" if details else ""
-        error_type = CommandTimeout if termination_error is None and not encoding_errors else AutoresearchError
+            details.append(f"Process-tree termination failed: {termination_error}")
+        suffix = "".join(f". {detail}" for detail in details)
+        error_type = CommandTimeout if termination_error is None else AutoresearchError
         raise error_type(
             f"Command timed out after {timeout_seconds}s: {command}{suffix}. "
             f"Full output: {log_path}"
@@ -948,8 +957,6 @@ def run_command(
             f"Command produced non-UTF-8 output ({', '.join(encoding_errors)}): {command}. "
             f"Raw output is base64-encoded in {log_path}"
         )
-    if stdout is None or stderr is None:
-        raise AutoresearchError(f"Command output decoder returned an invalid state: {log_path}")
     return CommandResult(
         command=command,
         returncode=process.returncode,

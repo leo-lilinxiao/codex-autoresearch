@@ -56,6 +56,8 @@ Codex verantwortet Hypothesen und Codeänderungen. Das Kontrollskript verantwort
 
 Foreground wird durch das offizielle Goal fortgesetzt. Background erstellt kein Goal. Der Controller setzt den Lauf fort. Die Installation ändert keine Codex-Einstellungen.
 
+Beim Stoppen eines Hintergrundlaufs wird das aktuelle Experiment zuerst abgeschlossen und protokolliert.
+
 ## Ergebnisse
 
 Nicht eingecheckte Dateien liegen unter `autoresearch-results/`:
