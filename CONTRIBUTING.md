@@ -25,7 +25,7 @@ The user documentation is [README.md](README.md), [Installation](docs/INSTALL.md
 - Immutable run configuration: `autoresearch-results/run.json`
 - Runtime state and audit: `autoresearch-results/events.jsonl`
 
-Do not introduce a second state snapshot or reconstruct events from logs. Logs explain failures; they are not state. Generated history and reports are disposable projections of validated events.
+Do not introduce a second state snapshot or reconstruct events from logs. Logs explain failures. They are not state. Generated history and reports are disposable projections of validated events.
 
 ## Design Rules
 
@@ -34,9 +34,11 @@ Do not introduce a second state snapshot or reconstruct events from logs. Logs e
 - Record full command/controller diagnostics before returning an error.
 - Keep the initial `SKILL.md` below Codex's 8,000-byte selected-skill prompt limit.
 - Keep references one level from `SKILL.md` and avoid duplicated rules.
-- Load references when needed; keep each decision rule in one place. Preserve prior user authorization and let Codex choose hypotheses from evidence.
+- Load references when needed. Keep each decision rule in one place. Preserve prior user authorization and let Codex choose hypotheses from evidence.
 - Preserve one repository, one metric, one target, and one finalized experiment per iteration.
-- Do not add custom Codex hooks. Foreground continuity belongs to official Goals; background continuity belongs to the controller.
+- A trial verify failure or timeout is recorded as `crash` after successful cleanup and rollback. Three consecutive crashes stop the run. Baseline, state, encoding, cleanup, and rollback failures remain errors.
+- A guard timeout discards the trial. Crash counts are derived from events and reset by a measured trial or resume.
+- Do not add custom Codex hooks. Foreground continuity belongs to official Goals. Background continuity belongs to the controller.
 - The background controller owns each worker process tree and must terminate it before stopping or failing.
 - Do not add compatibility branches for unreleased schemas. A schema change must fail clearly and require an explicit fresh run.
 
@@ -60,4 +62,4 @@ The skill gate runs strict unit tests plus deterministic foreground and backgrou
 
 Keep changes focused. Explain the user-visible behavior, the reason for the change, and the relevant validation.
 
-Keep protocol and user documentation aligned with behavioral changes. Test meaningful runtime contracts and evaluate model behavior with representative requests; avoid tests that freeze prose or file counts. If architecture changes, update the Architecture, Sources Of Truth, and Design Rules sections here too.
+Keep protocol and user documentation aligned with behavioral changes. Test meaningful runtime contracts and evaluate model behavior with representative requests. Avoid tests that freeze prose or file counts. If architecture changes, update the Architecture, Sources Of Truth, and Design Rules sections here too.

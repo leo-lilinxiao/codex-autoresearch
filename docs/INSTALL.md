@@ -2,10 +2,10 @@
 
 ## Requirements
 
-- a current Codex CLI release with Skills and Goals;
-- Python 3.11 or newer;
-- Git;
-- a configured Git author and committer identity;
+- a current Codex CLI release with Skills and Goals.
+- Python 3.11 or newer.
+- Git and system process tools (`ps` on macOS/Linux or `taskkill` on Windows).
+- a configured Git author and committer identity.
 - a clean, named branch for each new run.
 
 Full Access is recommended because autoresearch creates and reverts Git commits:
@@ -60,13 +60,15 @@ Edits in your checkout are visible through the symlink.
 
 Open Codex in the target repository, type `$`, and select `codex-autoresearch`. If it's installed correctly, Codex should:
 
-1. look through the repository without editing it;
-2. propose a metric, target, scope, guard, and run mode;
-3. ask for any missing choices or approval before creating `autoresearch-results/`.
+1. Look through the repository without editing it.
+2. Propose a metric, target, scope, guard, and run mode.
+3. Ask for any missing choices or approval before creating `autoresearch-results/`.
 
 The skill does not modify Codex configuration.
 
 ## Update
+
+Finish or stop an active run before updating. If the new version reports an unsupported run format, archive the old run before starting a new one. Archiving preserves its files without converting them.
 
 - Skill installer: move the existing `codex-autoresearch` directory outside the skills directories as a backup, then run the installation command again. The installer does not overwrite an existing installation.
 - Copied install: replace the installed `codex-autoresearch` directory with a fresh checkout.

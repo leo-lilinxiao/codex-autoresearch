@@ -24,7 +24,7 @@ Codex looks through the repository and confirms seven things before it changes a
 
 You also pick foreground or background, and you can set an iteration limit.
 
-Codex won't ask again about anything you've already decided. It asks only for what's missing, then keeps going without checking in after every experiment. Asking for status, history, or a report just shows you that; it doesn't start anything.
+Codex won't ask again about anything you've already decided. It asks only for what's missing, then keeps going without checking in after every experiment. Asking for status, history, or a report just shows you that. It doesn't start anything.
 
 You need a clean, named branch, so commit or stash your changes first. Scope entries are paths, not globs: write `src`, not `src/**/*.ts`.
 
@@ -57,7 +57,7 @@ Verify: python3 scripts/score.py       -> JSON error_count
 Guard:  python3 -m pytest -q          -> exit code 0
 ```
 
-The guard is optional, but if you set one, it must pass before the run starts. An improvement that fails the guard is rolled back. A command timeout stops the run with diagnostics.
+The guard is optional, but if you set one, it must pass before the run starts. An improvement that fails the guard is rolled back. A guard timeout also counts as a failure.
 
 Keep the verify script and its data out of the scope, so experiments can't change how they are measured.
 
@@ -86,9 +86,9 @@ The chain looks like this:
 your Codex task -> controller -> one worker at a time
 ```
 
-Background defaults to Full Access so workers can commit and revert. You can choose `workspace-write` instead, but if the sandbox blocks writes to `.git`, the run stops; it won't quietly switch permissions.
+Background defaults to Full Access so workers can commit and revert. You can choose `workspace-write` instead, but if the sandbox blocks writes to `.git`, the run stops. It won't quietly switch permissions.
 
-Workers use your Codex configuration; `--model` overrides the model for the run.
+Workers use your Codex configuration. `--model` overrides the model for the run.
 
 Leave the run's checkout alone until it stops. Anything you edit inside the scope gets committed with the current experiment, so if you want to keep working, use a separate `git worktree`.
 
@@ -108,14 +108,14 @@ Resume picks up the same experiment. Add a direction if you want to steer it. Yo
 | Status | Meaning |
 |---|---|
 | `not_initialized` | No run yet |
-| `initialization_failed` | Setup failed; read the diagnostics and archive before retrying |
+| `initialization_failed` | Setup failed. Read the diagnostics and archive before retrying |
 | `active` | More experiments can run |
 | `complete` | The kept result reached the target |
 | `stopped` | You stopped it, or it hit the iteration limit |
 | `blocked` | It needs something from outside, such as credentials or data |
-| `error` | A command, Git, the run record, or a worker went wrong |
+| `error` | A runtime check failed, or three experiments crashed in a row |
 
-An idea that doesn't improve the metric is a `discard`. A failed measurement is an `error`. Neither makes the run `blocked`.
+An idea that doesn't improve the metric is a `discard`. If a trial's verify command exits nonzero or times out, it is rolled back and recorded as `crash`, then the next experiment can run. Three crashes in a row stop the run with `error`. A measured trial or an explicit resume resets that count. Neither a discard nor a crash makes the run `blocked`.
 
 In the background, `orphaned` means the record says the run is active but its controller is gone. Check the worker PID and runtime log that status reports. If no worker is still alive, `stop` closes the run. If one is, let it finish or kill it before you stop, resume, or archive.
 
@@ -135,7 +135,7 @@ autoresearch-results/
 
 `run.json` holds the settings you confirmed and never changes. `events.jsonl` records everything that happened and is only ever appended to. The logs keep the full output of every command and worker.
 
-Please don't edit these files. If one is damaged or doesn't add up, the run stops instead of trying to rebuild it. To start a different goal, ask the skill to archive the current run first; old runs stay under `autoresearch-results/archive/`.
+Please don't edit these files. If one is damaged or doesn't add up, the run stops instead of trying to rebuild it. To start a different goal, ask the skill to archive the current run first. Old runs stay under `autoresearch-results/archive/`.
 
 If the current run is still active, stop it first (background) or clear its Goal with `/goal clear` (foreground). Then ask the skill to archive it and start the new goal.
 
@@ -149,7 +149,7 @@ $codex-autoresearch export experiment history as TSV
 $codex-autoresearch generate an HTML report
 ```
 
-History prints a table straight from the event log. Ask for TSV when you want the data in a spreadsheet or script. The HTML report is one self-contained file, `autoresearch-results/report.html`, with the metric over time, the keep/discard timeline, commits, and links to the logs.
+History prints a table straight from the event log. Ask for TSV when you want the data in a spreadsheet or script. The HTML report is one self-contained file, `autoresearch-results/report.html`, with the metric over time, experiment outcomes, commits, and links to the logs. A crashed trial has no metric, so its retained value stays unchanged.
 
 None of these change `events.jsonl`, so you can delete or regenerate the report any time. It's a snapshot, though: run the command again to include newer experiments.
 
@@ -175,9 +175,10 @@ The extra revert commit is the price of rolling back without rewriting history: 
 Errors tell you exactly which rule was broken and, for commands, where the full log is. `status` also shows the expected and actual Git state and any changed files. Fix the cause, then resume.
 
 - Bad metric output: make the last line a number, or name one JSON key.
-- Verify exits nonzero: inspect the command log and fix the cause. Exit 0 only when measurement succeeds, even if the result is poor.
+- Verify exits nonzero: inspect the command log before the next experiment. At baseline, this prevents launch. During a run, the trial is recorded as `crash`. Exit 0 only when measurement succeeds, even if the result is poor.
+- Three consecutive crashes: inspect the failed trials and their logs, address the cause, then resume.
 - Baseline guard fails: fix the code first, or choose a different guard.
-- Dirty or out-of-scope files: put them back; don't widen the scope just to make the error go away.
+- Dirty or out-of-scope files: put them back. Don't widen the scope just to make the error go away.
 - Command creates files: change it so measuring leaves the repository untouched.
 - Worker records nothing: read its worker log. The controller stops instead of blindly starting another worker.
 - Controller disappears: check in `status` whether the controller and worker are still alive before you recover.

@@ -95,17 +95,17 @@ Codex decides what to try and writes the code. A small control script does the b
 | Best for | Watching and steering live | Long or overnight runs |
 | Control | Codex Goal pause/resume | Ask `$codex-autoresearch` for status, stop, or resume |
 
-Both modes follow the same rules. What differs is what keeps the loop going: in the foreground, a Codex Goal in your current task; in the background, a separate controller that starts a fresh worker for each experiment. A run uses one mode at a time.
+Both modes follow the same rules. What differs is what keeps the loop going: in the foreground, a Codex Goal in your current task. In the background, a separate controller that starts a fresh worker for each experiment. A run uses one mode at a time.
 
 ## What Gets Confirmed
 
 Before it changes anything, Codex shows you:
 
-- the goal and numeric target;
-- repository-relative paths it may change;
-- the command that measures the metric, and how to read its output;
-- an optional regression guard;
-- foreground or background mode;
+- the goal and numeric target.
+- repository-relative paths it may change.
+- the command that measures the metric, and how to read its output.
+- an optional regression guard.
+- foreground or background mode.
 - an optional iteration limit.
 
 You need a clean, named Git branch to start, and each run covers one repository.
@@ -118,8 +118,8 @@ Everything the run records goes in `autoresearch-results/`, which is never commi
 
 | Path | Purpose |
 |---|---|
-| `run.json` | The settings you confirmed; never changes |
-| `events.jsonl` | Every baseline, experiment, stop, and completion, in order; only appended to |
+| `run.json` | The settings you confirmed. Never changes |
+| `events.jsonl` | Every baseline, experiment, stop, and completion, in order. Only appended to |
 | `logs/` | Full metric, guard, and background worker output |
 | `runtime.json` | Background process state |
 | `runtime.log` | What the background controller did |
@@ -165,8 +165,9 @@ The report goes to `autoresearch-results/report.html`. It's only a snapshot, so 
 ## Safety Model
 
 - Every experiment is a Git commit.
-- If it doesn't improve the metric or fails the guard, it is rolled back with `git revert`.
-- Edits outside the scope, a switched branch or moved HEAD, invalid metric output, command errors, timeouts, and commands that leave files behind stop the run with diagnostics.
+- If it doesn't improve the metric or fails the guard, it is rolled back with `git revert`. A guard timeout counts as a failure.
+- If the verify command exits nonzero or times out, the trial is rolled back and recorded as `crash`. A single crash does not stop the run. Three consecutive crashes do.
+- Edits outside the scope, a switched branch or moved HEAD, invalid metric output, failed cleanup or rollback, and commands that leave files behind stop the run with diagnostics. Baseline measurement must succeed before a run starts.
 - Leave the run's checkout alone until it stops: anything you edit inside the scope gets committed with the current experiment. To keep working, use a separate `git worktree`.
 - The results folder is never staged.
 - A run is `complete` only when the kept result actually reaches the target.
@@ -211,7 +212,7 @@ Every experiment makes or reverts a Git commit, and restricted sandboxes may blo
 
 **Can I stop and resume?**
 
-Yes. In the foreground, interrupt or pause the Goal. In the background, ask `$codex-autoresearch` for status, stop, or resume. Just saying "resume" continues the same experiment; you can add a new direction if you like.
+Yes. In the foreground, interrupt or pause the Goal. In the background, ask `$codex-autoresearch` for status, stop, or resume. Just saying "resume" continues the same experiment. You can add a new direction if you like.
 
 **Can it run without Git or across several repos?**
 

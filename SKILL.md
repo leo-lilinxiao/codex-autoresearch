@@ -1,6 +1,6 @@
 ---
 name: codex-autoresearch
-description: "Run repeated, measured Git experiments toward a numeric target; keep improvements and revert failures. Use for autonomous optimization or managing an autoresearch run, not one-shot edits."
+description: "Run repeated, measured Git experiments toward a numeric target. Keep improvements and revert failures. Use for autonomous optimization or managing an autoresearch run, not one-shot edits."
 metadata:
   short-description: "Run measurable autonomous experiments"
 ---
@@ -15,7 +15,7 @@ Codex chooses hypotheses and makes code changes. The control script owns measure
 
 ## Respond To The Request
 
-Resolve `<control>` to this skill's own `scripts/autoresearch.py`; do not assume it is installed in the target repository.
+Resolve `<control>` to this skill's own `scripts/autoresearch.py`. Do not assume it is installed in the target repository.
 
 For a status or results request, run the corresponding command directly:
 
@@ -36,9 +36,9 @@ Before starting or resuming an experiment, read the applicable workflow unless i
 ## Experiment Boundary
 
 - One run owns one Git repository, one numeric metric, one confirmed target, and approved path scopes.
-- For a new foreground run, initialize successfully before creating its Goal; the Goal identifies the returned run id. If initialization reports `complete`, no Goal is needed.
+- For a new foreground run, initialize successfully before creating its Goal. The Goal identifies the returned run id. If initialization reports `complete`, no Goal is needed.
 - Use `finish` to finalize each coherent experiment. Do not manually commit, revert, or edit run artifacts during an active run.
-- Only a verified target can mean `complete`; an iteration limit, error, or external blocker has its own status.
+- Only a verified target can mean `complete`. An iteration limit, error, or external blocker has its own status.
 - Validate state through the control script on entry or resume. Use recorded experiments rather than guessing from conversation.
 - Surface command and state errors with their diagnostic paths. Never bypass validation, fabricate metrics, or reconstruct missing events.
 

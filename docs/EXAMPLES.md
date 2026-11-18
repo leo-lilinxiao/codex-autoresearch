@@ -1,6 +1,6 @@
 # Examples
 
-Each example shows what you type and the setup Codex should confirm with you. Usually you only write the prompt; Codex finds the commands in your repository.
+Each example shows what you type and the setup Codex should confirm with you. Usually you only write the prompt. Codex finds the commands in your repository.
 
 ## Fix Failing Cases
 
@@ -52,7 +52,7 @@ Target: 90
 Guard: python3 -m pytest -q
 ```
 
-Coverage is the metric; the full test suite is the guard.
+Coverage is the metric. The full test suite is the guard.
 
 ## Reduce Latency
 
@@ -156,7 +156,7 @@ $codex-autoresearch resume
 You can also give it a new direction. If the run is blocked, fix the reported cause first:
 
 ```text
-$codex-autoresearch resume; generated files are authoritative, do not edit them
+$codex-autoresearch resume with this direction: generated files are authoritative, do not edit them
 ```
 
 ## Review A Run
@@ -165,7 +165,7 @@ $codex-autoresearch resume; generated files are authoritative, do not edit them
 $codex-autoresearch show experiment history
 ```
 
-The history table shows the baseline, every kept or discarded experiment with its numbers and description, and how the run ended. For something you can share:
+The history table shows the baseline, every kept, discarded, or crashed experiment, and how the run ended. Crashed trials have no metric and link to their command logs in the HTML report. For something you can share:
 
 ```text
 $codex-autoresearch generate an HTML report
@@ -189,7 +189,7 @@ import json
 print(json.dumps({"error_count": error_count, "passed": passed}))
 ```
 
-With JSON, you name the metric key, such as `error_count`. The other fields are only for diagnosis; they never quietly turn into extra pass/fail rules.
+With JSON, you name the metric key, such as `error_count`. The other fields are only for diagnosis. They never quietly turn into extra pass/fail rules.
 
 The median of several runs, for noisy measurements:
 

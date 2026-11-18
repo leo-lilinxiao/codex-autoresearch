@@ -30,7 +30,7 @@ $codex-autoresearch réduire error_count de `python3 scripts/score.py` à 0
 
 Avant toute écriture, Codex confirme l'objectif, le périmètre, la mesure initiale, la cible, la commande, le guard facultatif et le mode foreground/background.
 
-Codex conserve vos choix et autorisations déjà donnés. Une fois lancé, il poursuit les expériences sans demander de confirmation à chaque itération. Pour reprendre une exécution en arrière-plan arrêtée, demandez simplement « reprendre » ; une nouvelle direction est facultative.
+Codex conserve vos choix et autorisations déjà donnés. Une fois lancé, il poursuit les expériences sans demander de confirmation à chaque itération. Pour reprendre une exécution en arrière-plan arrêtée, demandez simplement « reprendre ». Une nouvelle direction est facultative.
 
 ## Boucle
 
@@ -54,7 +54,7 @@ Codex choisit les hypothèses et modifie le code. Le script de contrôle possèd
 | Usage | Observation et pilotage | Exécutions longues ou nocturnes |
 | Contrôle | Pause/reprise du Goal | Status/stop/resume via `$codex-autoresearch` |
 
-Foreground continue grâce au Goal officiel. Background n'utilise pas de Goal ; le controller assure la continuité. L'installation ne modifie aucun réglage Codex.
+Foreground continue grâce au Goal officiel. Background n'utilise pas de Goal. Le controller assure la continuité. L'installation ne modifie aucun réglage Codex.
 
 ## Résultats
 
@@ -68,7 +68,7 @@ Les fichiers non commités se trouvent dans `autoresearch-results/` :
 | `runtime.json` | État du processus background |
 | `runtime.log` | Cycle de vie du controller |
 
-`events.jsonl` est l'unique source d'état. Un fichier manquant, corrompu ou contradictoire provoque une erreur explicite ; aucune reconstruction approximative n'est tentée.
+`events.jsonl` est l'unique source d'état. Un fichier manquant, corrompu ou contradictoire provoque une erreur explicite. Aucune reconstruction approximative n'est tentée.
 
 ## Historique et rapport
 
@@ -84,9 +84,10 @@ Le tableau et le rapport HTML sont générés à partir des événements validé
 
 - Une nouvelle exécution exige une branche Git nommée et propre.
 - Une exécution gère un dépôt, une mesure et une cible.
-- Chaque expérience est commitée ; un échec est annulé avec `git revert`.
-- Les modifications hors périmètre, dérives Git, mesures invalides, échecs de commande, timeouts et rollbacks impossibles arrêtent l'exécution avec un chemin de log.
+- Chaque expérience est commitée. Un échec est annulé avec `git revert`, y compris lorsque la commande de mesure plante ou dépasse son délai. Trois plantages consécutifs arrêtent l'exécution.
+- Les modifications hors périmètre, dérives Git, mesures invalides et rollbacks impossibles arrêtent l'exécution avec un chemin de log.
 - Tant qu'elle tourne, l'exécution occupe ce checkout : les modifications dans le périmètre sont commitées avec l'expérience en cours. Pour continuer à travailler, utilisez un `git worktree` séparé.
+- Un dépassement de délai du guard compte comme un échec. La mesure et le guard doivent réussir au point de départ.
 - Le statut devient `complete` uniquement lorsque la mesure conservée atteint la cible.
 
 ## Prérequis

@@ -30,7 +30,7 @@ $codex-autoresearch reduce error_count de `python3 scripts/score.py` a 0
 
 Antes de escribir, Codex confirma el objetivo, el alcance, la línea base, la meta, el comando de medida, el guard opcional y foreground/background.
 
-Codex conserva las decisiones y autorizaciones que ya has dado. Tras iniciar, continúa los experimentos sin pedir confirmación en cada iteración. Para retomar una ejecución en segundo plano detenida, basta con pedir «reanudar»; una nueva dirección es opcional.
+Codex conserva las decisiones y autorizaciones que ya has dado. Tras iniciar, continúa los experimentos sin pedir confirmación en cada iteración. Para retomar una ejecución en segundo plano detenida, basta con pedir «reanudar». Una nueva dirección es opcional.
 
 ## Bucle
 
@@ -54,7 +54,7 @@ Codex decide las hipótesis y modifica el código. El script de control posee lo
 | Uso | Observar y dirigir | Ejecuciones largas o nocturnas |
 | Control | Pausa/reanudación del Goal | Status/stop/resume con `$codex-autoresearch` |
 
-Foreground continúa mediante el Goal oficial. Background no crea un Goal; el controller mantiene la ejecución. La instalación no cambia la configuración de Codex.
+Foreground continúa mediante el Goal oficial. Background no crea un Goal. El controller mantiene la ejecución. La instalación no cambia la configuración de Codex.
 
 ## Resultados
 
@@ -68,7 +68,7 @@ Los archivos no confirmados viven en `autoresearch-results/`:
 | `runtime.json` | Estado del proceso background |
 | `runtime.log` | Ciclo de vida del controller |
 
-`events.jsonl` es la única fuente del estado. Los datos ausentes, dañados o contradictorios producen un error explícito; nunca se reconstruyen por aproximación.
+`events.jsonl` es la única fuente del estado. Los datos ausentes, dañados o contradictorios producen un error explícito. Nunca se reconstruyen por aproximación.
 
 ## Historial e informe
 
@@ -84,9 +84,10 @@ La tabla y el informe HTML se generan desde eventos validados. La instantánea H
 
 - Una ejecución nueva exige una rama Git limpia y con nombre.
 - Cada ejecución gestiona un repositorio, una métrica y una meta.
-- Cada experimento se confirma; los fallos se revierten con `git revert`.
-- Cambios fuera de alcance, deriva Git, métricas inválidas, fallos de comandos, tiempos agotados y errores de rollback detienen el proceso con una ruta de log.
+- Cada experimento se confirma. Los fallos se revierten con `git revert`, también cuando el comando de métrica se cae o agota el tiempo. Tres caídas seguidas detienen el proceso.
+- Cambios fuera de alcance, deriva Git, métricas inválidas y errores de rollback detienen el proceso con una ruta de log.
 - Mientras se ejecuta, el proceso ocupa este checkout: los cambios dentro del alcance se confirman con el experimento actual. Para seguir trabajando, usa un `git worktree` aparte.
+- Un timeout del guard cuenta como fallo. La medición y el guard deben pasar en la línea base.
 - Solo se marca `complete` cuando la métrica conservada alcanza la meta.
 
 ## Requisitos
