@@ -183,6 +183,7 @@ Errors tell you exactly which rule was broken and, for commands, where the full 
 - Dirty or out-of-scope files: put them back. Don't widen the scope just to make the error go away.
 - Command creates files: change it so measuring leaves the repository untouched.
 - Worker records nothing: read its worker log. The controller stops instead of blindly starting another worker.
+- Worker stuck: a stop waits for the current experiment, so it can't take effect. End the worker PID that `status` shows. The run then stops with `error`. Undo what the worker left in the checkout before you resume.
 - Controller disappears: check in `status` whether the controller and worker are still alive before you recover.
 - Rollback fails: fix Git by hand and archive the run. An experiment that was never verified can't become the starting point of a resumed run.
 

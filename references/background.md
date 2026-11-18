@@ -26,4 +26,6 @@ A simple request to continue does not require a new strategy. For an error or bl
 
 If the controller is gone but its worker is alive, report the worker PID and log path. Do not resume or archive until that worker exits or is explicitly terminated. Once no worker remains, `stop` can close an orphaned active run before resume.
 
+If a worker is stuck, a stop cannot take effect. Report the worker PID from `status`. If the user ends that worker, the run stops with `error`, and the checkout must be restored to the retained commit before resume.
+
 Missing worker events, unexpected exits, invalid state, or controller failures stop continuation with diagnostics. Full worker output is in `autoresearch-results/logs/`. Controller events are in `runtime.log`. Use these to explain failures rather than inferring success from process exit alone.

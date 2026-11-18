@@ -267,6 +267,11 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
     repo = Path(args.repo).expanduser().resolve()
     require_git_repo(repo)
     require_git_identity(repo)
+    if os.name != "nt" and shutil.which("ps") is None:
+        raise AutoresearchError(
+            "The ps command is required to stop timed-out commands and their child processes. "
+            "Install it (procps on Debian or Ubuntu) and retry"
+        )
     require_artifacts_untracked(repo)
     require_clean_repo(repo)
     require_no_staged_artifacts(repo)
