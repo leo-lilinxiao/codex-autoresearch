@@ -39,7 +39,7 @@ Do not introduce a second state snapshot or reconstruct events from logs. Logs e
 - A trial verify failure or timeout is recorded as `crash` after successful cleanup and rollback. Three consecutive crashes stop the run. Baseline, state, encoding, cleanup, and rollback failures remain errors.
 - A guard timeout discards the trial. Crash counts are derived from events and reset by a measured trial or resume.
 - Do not add custom Codex hooks. Foreground continuity belongs to official Goals. Background continuity belongs to the controller.
-- The background controller owns each worker process tree and must terminate it before stopping or failing.
+- A background stop takes effect between experiments, so every run stops on a recorded, clean state. The controller terminates a worker process tree only when the controller itself fails.
 - Do not add compatibility branches for unreleased schemas. A schema change must fail clearly and require an explicit fresh run.
 
 ## Validate

@@ -1119,17 +1119,18 @@ def run_controller(repo: Path) -> int:
                     raise AutoresearchError("Worker stdin pipe was not created")
                 child.stdin.write(prompt)
                 child.stdin.close()
+                # A stop request lets the current experiment finish and record its result.
                 while child.poll() is None:
                     if consume_stop_request(paths, run):
                         stopping = True
-                    if stopping:
-                        runtime_event(paths, "worker_stop_requested", pid=child.pid)
-                        terminate_process_tree(child)
-                        runtime_event(
+                        runtime_event(paths, "stop_requested", worker=iteration)
+                        write_runtime(
                             paths,
-                            "worker_terminated",
-                            pid=child.pid,
-                            returncode=child.returncode,
+                            run,
+                            controller_pid=controller_pid,
+                            child_pid=child.pid,
+                            state="stopping",
+                            started_at=started_at,
                         )
                     time.sleep(0.1)
                 returncode = child.returncode
@@ -1177,19 +1178,6 @@ def run_controller(repo: Path) -> int:
         )
 
         paths, run, after_events, after_state = load_context(repo)
-        if stopping:
-            if after_state.status == "active":
-                require_clean_repo(repo, expected_head=after_state.head, expected_branch=run["branch"])
-                append_event(
-                    paths,
-                    run,
-                    after_events,
-                    event="stopped",
-                    reason="stopped by user",
-                    head=after_state.head,
-                    metric=decimal_json(after_state.metric),
-                )
-            continue
         if returncode != 0:
             record_controller_error(
                 repo,
@@ -1494,20 +1482,12 @@ def stop_background(args: argparse.Namespace) -> dict[str, Any]:
         )
         return {"status": "stopped", "controller_pid": None}
 
-    pid = controller_pid
     write_stop_request(paths, run)
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        if not process_alive(pid):
-            _, _, _, final_state = load_context(repo)
-            if final_state.status == "active":
-                raise AutoresearchError(
-                    f"Controller {pid} exited without recording a terminal event. "
-                    f"Inspect {paths.runtime_log}"
-                )
-            return {"status": final_state.status, "controller_pid": pid}
-        time.sleep(0.1)
-    raise AutoresearchError(f"Controller {pid} did not stop within 15 seconds")
+    return {
+        "status": "stopping",
+        "controller_pid": controller_pid,
+        "message": "The current experiment will finish and be recorded, then the run stops.",
+    }
 
 
 def resume_run(args: argparse.Namespace) -> dict[str, Any]:

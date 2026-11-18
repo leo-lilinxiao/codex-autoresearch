@@ -89,7 +89,7 @@ Run `status` to validate the saved configuration and history.
 - For `blocked` or `error`, first resolve the cause. Resume requires consistent Git state and no unreverted trial. Record what changed with `--note`.
 - A completed run or a run at its iteration limit needs archiving before a new experiment.
 
-For a new goal, stop a live background run first. Clear a conflicting foreground Goal through Codex controls. `archive --repo <repo>` preserves prior artifacts. Include archiving in the new-run confirmation, and carry it out without an extra question when already authorized.
+For a new goal, stop a live background run first and wait until `status` shows `stopped`. Clear a conflicting foreground Goal through Codex controls. `archive --repo <repo>` preserves prior artifacts. Include archiving in the new-run confirmation, and carry it out without an extra question when already authorized.
 
 ## Errors
 

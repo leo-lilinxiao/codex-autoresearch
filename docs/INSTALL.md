@@ -4,7 +4,7 @@
 
 - a current Codex CLI release with Skills and Goals.
 - Python 3.11 or newer.
-- Git and system process tools (`ps` on macOS/Linux or `taskkill` on Windows).
+- Git.
 - a configured Git author and committer identity.
 - a clean, named branch for each new run.
 

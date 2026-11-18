@@ -101,6 +101,8 @@ $codex-autoresearch resume the background run
 $codex-autoresearch resume with this direction: focus on parser allocation
 ```
 
+Stop lets the current experiment finish and record its result, then the run stops, so the checkout is always left clean. If a worker is stuck, end it with the PID that status shows; the run then stops with `error`.
+
 Resume picks up the same experiment. Add a direction if you want to steer it. Your own Codex task doesn't need to keep watching the controller.
 
 ## Run States
