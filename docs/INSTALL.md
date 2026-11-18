@@ -36,7 +36,7 @@ cp -R codex-autoresearch your-project/.agents/skills/codex-autoresearch
 
 ## Manual User Install
 
-Use this for all projects owned by the current user:
+Use this to make it available in all your projects:
 
 ```bash
 git clone https://github.com/leo-lilinxiao/codex-autoresearch.git
@@ -44,7 +44,7 @@ mkdir -p ~/.agents/skills
 cp -R codex-autoresearch ~/.agents/skills/codex-autoresearch
 ```
 
-Do not install both a repository copy and a user copy unless you intentionally want two independently discovered versions.
+Don't install both a repository copy and a user copy unless you want Codex to see two separate versions.
 
 ## Development Symlink
 
@@ -54,22 +54,22 @@ mkdir -p your-project/.agents/skills
 ln -s "$(pwd)/codex-autoresearch" your-project/.agents/skills/codex-autoresearch
 ```
 
-Edits to the source checkout are then visible through the symlink.
+Edits in your checkout are visible through the symlink.
 
 ## Verify
 
-Open Codex in the target repository, type `$`, and select `codex-autoresearch`. A valid installation should:
+Open Codex in the target repository, type `$`, and select `codex-autoresearch`. If it's installed correctly, Codex should:
 
-1. inspect the repository without editing it;
+1. look through the repository without editing it;
 2. propose a metric, target, scope, guard, and run mode;
-3. obtain any missing launch approval before creating `autoresearch-results/`.
+3. ask for any missing choices or approval before creating `autoresearch-results/`.
 
 The skill does not modify Codex configuration.
 
 ## Update
 
-- Skill installer: run the installer again with the same repository URL.
+- Skill installer: move the existing `codex-autoresearch` directory outside the skills directories as a backup, then run the installation command again. The installer does not overwrite an existing installation.
 - Copied install: replace the installed `codex-autoresearch` directory with a fresh checkout.
 - Symlink: run `git pull` in the source checkout.
 
-Keep only one discovered copy for a given scope to avoid duplicate skill entries.
+Keep backups outside the skills directories so Codex doesn't discover them as duplicate skills.
