@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 RESULTS_DIR = "autoresearch-results"
 RUN_FILE = "run.json"
 EVENTS_FILE = "events.jsonl"
@@ -28,10 +28,15 @@ PROTECTED_PREFIXES = (
     ".agents/skills/codex-autoresearch",
 )
 TERMINAL_EVENTS = {"blocked", "complete", "error", "stopped"}
+MAX_CONSECUTIVE_CRASHES = 3
 
 
 class AutoresearchError(RuntimeError):
     """A user-actionable contract violation."""
+
+
+class CommandTimeout(AutoresearchError):
+    """A command exceeded its timeout and its process tree was terminated."""
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,7 @@ class RunState:
     head: str
     iterations: int
     last_event: dict[str, Any]
+    consecutive_crashes: int
 
 
 @dataclass(frozen=True)
@@ -191,7 +197,7 @@ def decimal_json(value: Decimal) -> int | float:
         raise AutoresearchError(f"Metric {value} cannot be represented as JSON")
     if Decimal(str(converted)) != value:
         raise AutoresearchError(
-            f"Metric {value} would lose precision in JSON; use a representable decimal"
+            f"Metric {value} would lose precision in JSON. Use a representable decimal"
         )
     return converted
 
@@ -212,7 +218,7 @@ def require_exact_keys(
             details.append("missing " + ", ".join(missing))
         if unknown:
             details.append("unknown " + ", ".join(unknown))
-        raise AutoresearchError(f"Invalid schema in {source}: {'; '.join(details)}")
+        raise AutoresearchError(f"Invalid schema in {source}: {', '.join(details)}")
 
 
 RUN_KEYS = {
@@ -241,8 +247,8 @@ def validate_run(payload: Any, *, source: str) -> dict[str, Any]:
     require_exact_keys(payload, required=RUN_KEYS, source=source)
     if payload["schema_version"] != SCHEMA_VERSION:
         raise AutoresearchError(
-            f"Unsupported run schema {payload['schema_version']!r} in {source}; "
-            f"expected {SCHEMA_VERSION}. Archive the old run and start a new one."
+            f"Unsupported run schema {payload['schema_version']!r} in {source}. "
+            f"Expected {SCHEMA_VERSION}. Archive the old run and start a new one."
         )
     for key in ("run_id", "created_at", "repo", "branch", "mode", "goal"):
         if not isinstance(payload[key], str) or not payload[key].strip():
@@ -352,7 +358,10 @@ def validate_event(payload: Any, *, run_id: str, expected_seq: int, source: str)
         if key in payload and (not isinstance(payload[key], str) or not payload[key]):
             raise AutoresearchError(f"{source}.{key} must be a non-empty string")
     for key in ("metric", "previous_metric", "trial_metric", "retained_metric"):
-        if key in payload:
+        if key == "trial_metric" and payload.get("outcome") == "crash":
+            if payload[key] is not None:
+                raise AutoresearchError(f"{source}.trial_metric must be null for a crash")
+        elif key in payload:
             parse_decimal(payload[key], field=f"{source}.{key}")
     if event_type == "baseline":
         if not isinstance(payload["verify_log"], str) or not payload["verify_log"]:
@@ -362,8 +371,8 @@ def validate_event(payload: Any, *, run_id: str, expected_seq: int, source: str)
         ):
             raise AutoresearchError(f"{source}.guard_log must be null or a non-empty string")
     if event_type == "iteration":
-        if payload["outcome"] not in {"keep", "discard"}:
-            raise AutoresearchError(f"{source}.outcome must be keep or discard")
+        if payload["outcome"] not in {"keep", "discard", "crash"}:
+            raise AutoresearchError(f"{source}.outcome must be keep, discard, or crash")
         if payload["guard"] not in {"pass", "fail", "not_run"}:
             raise AutoresearchError(f"{source}.guard is invalid")
         if not isinstance(payload["iteration"], int) or payload["iteration"] <= 0:
@@ -447,6 +456,7 @@ def derive_state(run: dict[str, Any], events: list[dict[str, Any]]) -> RunState:
     if run["guard"] is not None and events[0]["guard_log"] is None:
         raise AutoresearchError("Baseline is missing its configured guard log")
     iterations = 0
+    consecutive_crashes = 0
     status = "active"
     last_terminal: str | None = None
     last_terminal_event: dict[str, Any] | None = None
@@ -480,7 +490,6 @@ def derive_state(run: dict[str, Any], events: list[dict[str, Any]]) -> RunState:
             previous_metric = parse_decimal(
                 event["previous_metric"], field="iteration.previous_metric"
             )
-            trial_metric = parse_decimal(event["trial_metric"], field="iteration.trial_metric")
             retained_metric = parse_decimal(
                 event["retained_metric"], field="iteration.retained_metric"
             )
@@ -488,6 +497,20 @@ def derive_state(run: dict[str, Any], events: list[dict[str, Any]]) -> RunState:
                 raise AutoresearchError(
                     f"Iteration {iterations} previous_metric does not match retained state"
                 )
+            if event["outcome"] == "crash":
+                if retained_metric != metric or event["guard"] != "not_run" or event["guard_log"] is not None:
+                    raise AutoresearchError(
+                        f"Iteration {iterations} crash must keep the retained metric and skip the guard"
+                    )
+                if event["revert_commit"] is None or event["head"] != event["revert_commit"]:
+                    raise AutoresearchError(
+                        f"Iteration {iterations} crash must point at its revert commit"
+                    )
+                consecutive_crashes += 1
+                head = event["head"]
+                continue
+            consecutive_crashes = 0
+            trial_metric = parse_decimal(event["trial_metric"], field="iteration.trial_metric")
             trial_improved = improved(trial_metric, metric, run["metric"]["direction"])
             if event["outcome"] == "keep":
                 if not trial_improved:
@@ -568,6 +591,7 @@ def derive_state(run: dict[str, Any], events: list[dict[str, Any]]) -> RunState:
         elif event_type == "resumed":
             if parse_decimal(event["metric"], field="resumed.metric") != metric or event["head"] != head:
                 raise AutoresearchError("resumed event does not match retained state")
+            consecutive_crashes = 0
 
     if status == "active":
         target = parse_decimal(run["target"], field="run.target")
@@ -577,6 +601,10 @@ def derive_state(run: dict[str, Any], events: list[dict[str, Any]]) -> RunState:
             raise AutoresearchError(
                 "Active event history reached the iteration limit but lacks a stopped event"
             )
+        if consecutive_crashes >= MAX_CONSECUTIVE_CRASHES:
+            raise AutoresearchError(
+                "Active event history reached the crash limit but lacks an error event"
+            )
 
     return RunState(
         status=status,
@@ -584,6 +612,7 @@ def derive_state(run: dict[str, Any], events: list[dict[str, Any]]) -> RunState:
         head=head,
         iterations=iterations,
         last_event=events[-1],
+        consecutive_crashes=consecutive_crashes,
     )
 
 
@@ -897,8 +926,9 @@ def run_command(
             details.append("output was not valid UTF-8")
         if termination_error is not None:
             details.append(f"process-tree termination failed: {termination_error}")
-        suffix = f"; {'; '.join(details)}" if details else ""
-        raise AutoresearchError(
+        suffix = f". {', '.join(details)}" if details else ""
+        error_type = CommandTimeout if termination_error is None and not encoding_errors else AutoresearchError
+        raise error_type(
             f"Command timed out after {timeout_seconds}s: {command}{suffix}. "
             f"Full output: {log_path}"
         )
@@ -915,7 +945,7 @@ def run_command(
     )
     if encoding_errors:
         raise AutoresearchError(
-            f"Command produced non-UTF-8 output ({'; '.join(encoding_errors)}): {command}. "
+            f"Command produced non-UTF-8 output ({', '.join(encoding_errors)}): {command}. "
             f"Raw output is base64-encoded in {log_path}"
         )
     if stdout is None or stderr is None:

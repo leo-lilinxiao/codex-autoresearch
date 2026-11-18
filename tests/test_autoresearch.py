@@ -100,10 +100,14 @@ class AutoresearchTest(unittest.TestCase):
         last: dict | None = None
         while time.monotonic() < deadline:
             last = self.status()
-            if last["status"] == expected:
+            if (
+                last["status"] == expected
+                and not last["runtime"]["controller_alive"]
+                and not last["runtime"]["child_alive"]
+            ):
                 return last
             time.sleep(0.05)
-        self.fail(f"Timed out waiting for {expected}; last status: {last}")
+        self.fail(f"Timed out waiting for {expected}. Last status: {last}")
 
     def test_keep_reaches_target_and_commits(self) -> None:
         self.assertEqual("not_initialized", self.status()["status"])
@@ -248,32 +252,201 @@ class AutoresearchTest(unittest.TestCase):
         self.assertEqual("fail", self.status()["last_event"]["guard"])
         self.assertEqual("3\n", (self.repo / "src" / "value.txt").read_text(encoding="utf-8"))
 
-    def test_metric_command_failure_records_error_and_reverts(self) -> None:
+    def test_crashing_trials_are_reverted_and_repeated_crashes_stop_the_run(self) -> None:
         (self.repo / "score.py").write_text(
             "from pathlib import Path\n"
+            "import time\n"
             "value = int(Path('src/value.txt').read_text(encoding='utf-8').strip())\n"
+            "if value == 5:\n"
+            "    time.sleep(30)\n"
             "print(value)\n"
             "raise SystemExit(7 if value == 2 else 0)\n",
             encoding="utf-8",
         )
         self.git("add", "score.py")
         self.git("commit", "-m", "conditional score")
-        self.init()
-        self.set_value(2)
-        completed = self.cli(
-            "finish",
-            "--repo",
-            str(self.repo),
-            "--description",
-            "trigger score failure",
-            check=False,
-        )
-        self.assertNotEqual(0, completed.returncode)
-        self.assertIn("Metric command exited 7", completed.stderr)
+        self.init("--timeout-seconds", "2")
+
+        def finish_with(value: int) -> dict:
+            self.set_value(value)
+            completed = self.cli("finish", "--repo", str(self.repo), "--description", f"try {value}")
+            return json.loads(completed.stdout)
+
+        crashed = finish_with(2)
+        self.assertEqual("crash", crashed["outcome"])
+        self.assertEqual("active", crashed["status"])
+        self.assertIsNone(crashed["trial_metric"])
+        self.assertIn("Metric command exited 7", crashed["crash"])
+        self.assertEqual("3\n", (self.repo / "src" / "value.txt").read_text(encoding="utf-8"))
+        self.assertTrue(self.status()["repository"]["consistent"])
+
+        timed_out = finish_with(5)
+        self.assertEqual("crash", timed_out["outcome"])
+        self.assertIn("timed out", timed_out["crash"])
+
+        self.assertEqual("error", finish_with(2)["status"])
         status = self.status()
         self.assertEqual("error", status["status"])
-        self.assertIsNotNone(status["last_event"]["revert_commit"])
+        self.assertIn("3 consecutive trials crashed", status["last_event"]["reason"])
+        self.assertIn("crash", self.cli("history", "--repo", str(self.repo)).stdout)
+        report = Path(json.loads(self.cli("report", "--repo", str(self.repo)).stdout)["report"])
+        self.assertIn('class="event-label crash"', report.read_text(encoding="utf-8"))
+
+        self.cli("resume", "--repo", str(self.repo), "--note", "metric command fixed")
+        self.assertEqual("active", finish_with(2)["status"])
+
+    def test_guard_timeout_discards_improvement(self) -> None:
+        (self.repo / "guard.py").write_text(
+            "from pathlib import Path\n"
+            "import time\n"
+            "if int(Path('src/value.txt').read_text(encoding='utf-8').strip()) == 1:\n"
+            "    time.sleep(30)\n",
+            encoding="utf-8",
+        )
+        self.git("add", "guard.py")
+        self.git("commit", "-m", "slow guard")
+        self.init("--guard", "python3 guard.py", "--timeout-seconds", "2")
+        self.set_value(1)
+        result = json.loads(
+            self.cli("finish", "--repo", str(self.repo), "--description", "hang the guard").stdout
+        )
+        self.assertEqual("discard", result["outcome"])
+        self.assertEqual("active", result["status"])
+        self.assertEqual("fail", self.status()["last_event"]["guard"])
         self.assertEqual("3\n", (self.repo / "src" / "value.txt").read_text(encoding="utf-8"))
+
+    def test_measured_trials_reset_crash_streak(self) -> None:
+        with (self.repo / "score.py").open("a", encoding="utf-8") as handle:
+            handle.write("raise SystemExit(7 if int(Path('src/value.txt').read_text()) < 0 else 0)\n")
+        self.git("add", "score.py")
+        self.git("commit", "-m", "reject negative candidates")
+        self.init()
+        for value, expected_outcome, expected_streak in (
+            (-1, "crash", 1), (-1, "crash", 2), (4, "discard", 0),
+            (-1, "crash", 1), (-1, "crash", 2), (2, "keep", 0), (-1, "crash", 1),
+        ):
+            with self.subTest(value=value, streak=expected_streak):
+                self.set_value(value)
+                result = json.loads(self.cli("finish", "--repo", str(self.repo), "--description", f"try {value}").stdout)
+                self.assertEqual(expected_outcome, result["outcome"])
+                self.assertEqual("active", result["status"])
+                state = autoresearch_core.load_context(self.repo)[3]
+                self.assertEqual(expected_streak, state.consecutive_crashes)
+
+    def test_crash_counts_toward_iteration_limit(self) -> None:
+        self.init("--max-iterations", "1")
+        (self.repo / "src" / "value.txt").write_text("not a number\n", encoding="utf-8")
+        result = json.loads(self.cli("finish", "--repo", str(self.repo), "--description", "invalid candidate").stdout)
+        self.assertEqual("crash", result["outcome"])
+        self.assertEqual("stopped", result["status"])
+        self.assertEqual(1, self.status()["iterations"])
+        self.assertTrue(self.status()["repository"]["consistent"])
+
+    def test_crash_history_requires_reverted_unmeasured_trial(self) -> None:
+        self.init()
+        (self.repo / "src" / "value.txt").write_text("invalid\n", encoding="utf-8")
+        self.cli("finish", "--repo", str(self.repo), "--description", "invalid candidate")
+        events_path = self.repo / "autoresearch-results" / "events.jsonl"
+        original = events_path.read_text(encoding="utf-8")
+        for field, value, expected in (
+            ("trial_metric", 0, "must be null"),
+            ("retained_metric", 0, "keep the retained metric"),
+            ("guard", "pass", "skip the guard"),
+            ("revert_commit", None, "revert commit"),
+        ):
+            with self.subTest(field=field):
+                events = [json.loads(line) for line in original.splitlines()]
+                events[-1][field] = value
+                events_path.write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+                result = self.cli("status", "--repo", str(self.repo), check=False)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(expected, result.stderr)
+        events_path.write_text(original, encoding="utf-8")
+
+    def test_non_utf8_timeout_is_fatal_and_preserves_output(self) -> None:
+        (self.repo / "score.py").write_text(
+            "from pathlib import Path\n"
+            "import sys, time\n"
+            "value = int(Path('src/value.txt').read_text())\n"
+            "if value == 2:\n"
+            "    sys.stdout.buffer.write(b'\\xff\\n')\n"
+            "    sys.stdout.buffer.flush()\n"
+            "    time.sleep(30)\n"
+            "print(value)\n",
+            encoding="utf-8",
+        )
+        self.git("add", "score.py")
+        self.git("commit", "-m", "invalid output before timeout")
+        self.init("--timeout-seconds", "1")
+        self.set_value(2)
+        result = self.cli("finish", "--repo", str(self.repo), "--description", "invalid output", check=False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("output was not valid UTF-8", result.stderr)
+        status = self.status()
+        self.assertEqual("error", status["status"])
+        self.assertEqual(0, status["iterations"])
+        self.assertTrue(status["repository"]["consistent"])
+        log = self.repo / "autoresearch-results" / status["last_event"]["log"]
+        diagnostic = json.loads(log.read_text(encoding="utf-8"))
+        self.assertTrue(diagnostic["timed_out"])
+        self.assertEqual("/wo=", diagnostic["stdout_base64"])
+
+    def test_failed_baselines_remain_fatal(self) -> None:
+        for flag, code in (
+            ("--verify", "raise SystemExit(7)"),
+            ("--verify", "import time\ntime.sleep(30)"),
+            ("--guard", "import time\ntime.sleep(30)"),
+        ):
+            with self.subTest(flag=flag, code=code):
+                command = shlex.join([sys.executable, "-c", code])
+                with self.assertRaises(subprocess.CalledProcessError):
+                    self.init(flag, command, "--timeout-seconds", "1")
+                self.assertEqual("initialization_failed", self.status()["status"])
+                self.assertFalse((self.repo / "autoresearch-results" / "run.json").exists())
+                self.cli("archive", "--repo", str(self.repo))
+
+    def test_cleanup_failure_is_not_a_recoverable_timeout(self) -> None:
+        log_path = Path(self.temp.name) / "timeout.json"
+        terminate = autoresearch_core.terminate_process_tree
+
+        def fail_cleanup(process: subprocess.Popen) -> None:
+            terminate(process)
+            raise autoresearch_core.AutoresearchError("injected cleanup failure")
+
+        with mock.patch.object(autoresearch_core, "terminate_process_tree", side_effect=fail_cleanup):
+            with self.assertRaises(autoresearch_core.AutoresearchError) as raised:
+                autoresearch_core.run_command(
+                    command=shlex.join([sys.executable, "-c", "import time\ntime.sleep(30)"]),
+                    cwd=self.repo,
+                    timeout_seconds=1,
+                    log_path=log_path,
+                )
+        self.assertNotIsInstance(raised.exception, autoresearch_core.CommandTimeout)
+        diagnostic = json.loads(log_path.read_text(encoding="utf-8"))
+        self.assertTrue(diagnostic["timed_out"])
+        self.assertEqual("injected cleanup failure", diagnostic["termination_error"])
+
+    def test_old_run_schema_can_be_archived_without_conversion(self) -> None:
+        self.init()
+        root = self.repo / "autoresearch-results"
+        run_path = root / "run.json"
+        run = json.loads(run_path.read_text(encoding="utf-8"))
+        run["schema_version"] = 1
+        run_path.write_text(json.dumps(run), encoding="utf-8")
+        events_path = root / "events.jsonl"
+        events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+        for event in events:
+            event["schema_version"] = 1
+        events_path.write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+        before = {path.name: path.read_bytes() for path in (run_path, events_path)}
+        result = self.cli("status", "--repo", str(self.repo), check=False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Unsupported run schema 1", result.stderr)
+        archive = Path(json.loads(self.cli("archive", "--repo", str(self.repo)).stdout)["destination"])
+        for name, content in before.items():
+            self.assertEqual(content, (archive / name).read_bytes())
+        self.init()
+        self.assertEqual(2, json.loads(run_path.read_text(encoding="utf-8"))["schema_version"])
 
     def test_non_utf8_metric_output_is_preserved_in_diagnostic_log(self) -> None:
         (self.repo / "score.py").write_text(
@@ -488,7 +661,7 @@ class AutoresearchTest(unittest.TestCase):
         events[0]["guard_log"] = "logs/0000-baseline-guard.json"
         events.append(
             {
-                "schema_version": 1,
+                "schema_version": events[0]["schema_version"],
                 "run_id": events[0]["run_id"],
                 "seq": 1,
                 "time": "2026-01-01T00:00:00Z",
@@ -671,6 +844,35 @@ class AutoresearchTest(unittest.TestCase):
         status = self.wait_for_status("error")
         self.assertIn("one-iteration contract", status["last_event"]["reason"])
 
+    def test_background_crash_limit_and_resume(self) -> None:
+        fake = Path(self.temp.name) / "fake-codex-crash"
+        fake.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, pathlib, subprocess, sys\n"
+            "args = sys.argv[1:]\n"
+            "repo = pathlib.Path(args[args.index('-C') + 1])\n"
+            "sys.stdin.read()\n"
+            f"script = {str(SCRIPT)!r}\n"
+            "status = json.loads(subprocess.check_output([sys.executable, script, 'status', '--repo', str(repo)], text=True))\n"
+            "candidate = 'invalid' if status['iterations'] < 3 else '0'\n"
+            "(repo / 'src' / 'value.txt').write_text(candidate + '\\n', encoding='utf-8')\n"
+            "subprocess.check_call([sys.executable, script, 'finish', '--repo', str(repo), '--description', 'test candidate'])\n",
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
+        self.init("--codex-bin", str(fake), mode="launch")
+        status = self.wait_for_status("error")
+        self.assertEqual(3, status["iterations"])
+        self.assertIn("3 consecutive trials crashed", status["last_event"]["reason"])
+        runtime_log = Path(status["runtime_log"]).read_text(encoding="utf-8")
+        self.assertEqual(3, runtime_log.count('"event":"worker_started"'))
+        self.assertNotIn("worker_contract_violation", runtime_log)
+        self.cli("resume", "--repo", str(self.repo), "--note", "use a valid integer candidate")
+        status = self.wait_for_status("complete")
+        self.assertEqual(4, status["iterations"])
+        self.assertEqual(0, status["metric"]["current"])
+        self.assertTrue(status["repository"]["consistent"])
+
     def test_background_launch_surfaces_missing_codex_binary(self) -> None:
         completed = self.cli(
             "launch",
@@ -754,7 +956,8 @@ class AutoresearchTest(unittest.TestCase):
         self.assertIn("moved HEAD", failed.stderr)
         status = self.status()
         self.assertEqual("error", status["status"])
-        self.assertIn("automatic rollback was not attempted", status["last_event"]["reason"])
+        self.assertIn("automatic rollback was not attempted", status["last_event"]["reason"].lower())
+        self.assertIsNone(status["last_event"]["revert_commit"])
         self.assertEqual(status["last_event"]["trial_commit"], status["head"])
         self.assertFalse(status["repository"]["consistent"])
         self.assertNotEqual(
