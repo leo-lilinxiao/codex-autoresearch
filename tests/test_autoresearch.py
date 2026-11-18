@@ -1227,6 +1227,38 @@ class AutoresearchTest(unittest.TestCase):
         stopped = json.loads(self.cli("stop", "--repo", str(self.repo)).stdout)
         self.assertEqual("stopped", stopped["status"])
 
+    @unittest.skipIf(os.name == "nt", "ps is only required on POSIX")
+    def test_init_requires_ps_before_creating_artifacts(self) -> None:
+        args = autoresearch_runtime.build_parser().parse_args(
+            [
+                "init",
+                "--repo",
+                str(self.repo),
+                "--goal",
+                "goal",
+                "--scope",
+                "src",
+                "--metric-name",
+                "value",
+                "--direction",
+                "lower",
+                "--verify",
+                "python3 score.py",
+                "--target",
+                "0",
+            ]
+        )
+        real_which = autoresearch_runtime.shutil.which
+
+        def which_without_ps(name: str) -> str | None:
+            return None if name == "ps" else real_which(name)
+
+        with mock.patch.object(autoresearch_runtime.shutil, "which", side_effect=which_without_ps):
+            with self.assertRaises(autoresearch_runtime.AutoresearchError) as raised:
+                autoresearch_runtime.initialize_run(args)
+        self.assertIn("ps command is required", str(raised.exception))
+        self.assertFalse((self.repo / "autoresearch-results").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
