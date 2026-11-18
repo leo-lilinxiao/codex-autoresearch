@@ -30,7 +30,7 @@ $codex-autoresearch error_count aus `python3 scripts/score.py` auf 0 senken
 
 Vor dem ersten Schreibzugriff bestätigt Codex Ziel, Bereich, Ausgangswert, Zielwert, Messbefehl, optionalen Guard und foreground/background.
 
-Bereits getroffene Entscheidungen und erteilte Zustimmung gelten weiter. Nach dem Start laufen die Experimente ohne erneute Bestätigung jeder Iteration. Ein gestoppter Hintergrundlauf lässt sich mit „resume“ mit den bisherigen Einstellungen fortsetzen; eine neue Richtung ist optional.
+Bereits getroffene Entscheidungen und erteilte Zustimmung gelten weiter. Nach dem Start laufen die Experimente ohne erneute Bestätigung jeder Iteration. Ein gestoppter Hintergrundlauf lässt sich mit „resume“ mit den bisherigen Einstellungen fortsetzen. Eine neue Richtung ist optional.
 
 ## Schleife
 
@@ -54,7 +54,7 @@ Codex verantwortet Hypothesen und Codeänderungen. Das Kontrollskript verantwort
 | Geeignet für | Live beobachten und lenken | Lange oder nächtliche Läufe |
 | Steuerung | Goal pausieren/fortsetzen | Status/stop/resume mit `$codex-autoresearch` |
 
-Foreground wird durch das offizielle Goal fortgesetzt. Background erstellt kein Goal; der Controller setzt den Lauf fort. Die Installation ändert keine Codex-Einstellungen.
+Foreground wird durch das offizielle Goal fortgesetzt. Background erstellt kein Goal. Der Controller setzt den Lauf fort. Die Installation ändert keine Codex-Einstellungen.
 
 ## Ergebnisse
 
@@ -84,8 +84,10 @@ Tabelle und HTML-Bericht werden aus validierten Ereignissen erzeugt. Der HTML-Sc
 
 - Neue Läufe benötigen einen sauberen, benannten Git-Branch.
 - Ein Lauf verwaltet ein Repository, eine Metrik und einen Zielwert.
-- Jedes Experiment wird committed; Fehlschläge werden mit `git revert` rückgängig gemacht.
-- Änderungen außerhalb des Bereichs, Git-Drift, ungültige Metriken, Befehlsfehler, Timeouts und Rollback-Fehler stoppen mit Log-Pfad.
+- Jedes Experiment wird committed. Fehlschläge werden mit `git revert` rückgängig gemacht, auch wenn der Metrikbefehl abstürzt oder in ein Timeout läuft. Drei Abstürze in Folge stoppen den Lauf.
+- Änderungen außerhalb des Bereichs, Git-Drift, ungültige Metriken und Rollback-Fehler stoppen mit Log-Pfad.
+- Bis zum Ende belegt der Lauf sein Checkout: Änderungen im Bereich werden mit dem aktuellen Experiment committed. Zum Weiterarbeiten einen separaten `git worktree` nutzen.
+- Ein Guard-Timeout gilt als fehlgeschlagene Prüfung. Beim Ausgangszustand müssen Messung und Guard erfolgreich sein.
 - `complete` wird nur gesetzt, wenn die behaltene Metrik den Zielwert erreicht.
 
 ## Voraussetzungen

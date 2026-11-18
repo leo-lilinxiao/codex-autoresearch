@@ -1,92 +1,98 @@
 # User Guide
 
-Codex Autoresearch runs one measurable experiment loop in one Git repository. It is deliberately smaller than a general task orchestrator: Codex reasons about the code, while the skill enforces measurement, commit ownership, rollback, and a durable audit trail.
+Codex Autoresearch runs one experiment loop in one Git repository, and that's all it does. Codex does the thinking about the code. The skill does the bookkeeping: it measures, commits, rolls back, and keeps a record you can check later.
 
 ## Start A Run
 
-Invoke the skill with a result, not an implementation plan:
+Tell the skill the result you want, not how to get there:
 
 ```text
 $codex-autoresearch reduce scripts/score.py error_count to 0
 ```
 
-Codex scans the repository and confirms seven values before writing:
+Codex looks through the repository and confirms seven things before it changes anything:
 
 | Value | Meaning | Example |
 |---|---|---|
-| Goal | Desired repository outcome | Eliminate type errors |
-| Scope | Relative files or directories it may edit | `src`, `tests/types` |
-| Metric | Numeric outcome | type error count |
+| Goal | What you want to achieve | Eliminate type errors |
+| Scope | Files or directories Codex may edit | `src`, `tests/types` |
+| Metric | The number being improved | type error count |
 | Direction | Whether lower or higher is better | lower |
 | Verify | Command that prints the metric | `python3 scripts/score.py` |
-| Target | Number that means done | `0` |
-| Guard | Optional baseline-passing regression check | `npm test` |
+| Target | The number that means done | `0` |
+| Guard | Optional check that must keep passing | `npm test` |
 
-You also choose foreground or background and may set an iteration limit.
+You also pick foreground or background, and you can set an iteration limit.
 
-Choices and approval already given carry forward. Codex asks about missing launch decisions, then continues without repeated confirmation. Requests for status, history, or a report go directly to the requested result.
+Codex won't ask again about anything you've already decided. It asks only for what's missing, then keeps going without checking in after every experiment. Asking for status, history, or a report just shows you that. It doesn't start anything.
 
-Autoresearch requires a clean named branch. Commit or stash existing changes before launch. Scope entries are path prefixes, not globs: use `src` rather than `src/**/*.ts`.
+You need a clean, named branch, so commit or stash your changes first. Scope entries are paths, not globs: write `src`, not `src/**/*.ts`.
 
 ## Metric Output
 
-The final non-empty stdout line must be a finite number:
+The last non-empty stdout line must be a finite number:
 
 ```text
 0
 ```
 
-Or it may be a JSON object when one key is selected explicitly:
+Or a JSON object, if you name the key to read:
 
 ```json
 {"error_count": 0, "passed": 42}
 ```
 
-In that case Codex configures `error_count` as the metric key. The command must exit zero when measurement succeeds, even if the metric is currently poor.
+Here Codex would use `error_count` as the metric key. The command must exit with code 0 whenever it measured successfully, even if the number is bad. If the same code gives different numbers from run to run, report an aggregate such as the median of several runs to reduce noise.
 
-A failing test command is therefore usually a guard, not a scalar metric command. For error-reduction work, prefer a small project-owned score script that always exits zero and reports the count.
+That's why a failing test command usually makes a better guard than a metric. To count errors, use a small score script that exits 0 when measurement succeeds and prints the count, even if some tests failed.
 
 ## Verify And Guard
 
-Verify answers: **did the target metric improve?**
+Verify answers: **did the metric improve?**
 
-Guard answers: **did the trial preserve required behavior?**
+Guard answers: **does the required behavior still work?**
 
 ```text
 Verify: python3 scripts/score.py       -> JSON error_count
 Guard:  python3 -m pytest -q          -> exit code 0
 ```
 
-The guard is optional, but if configured it must pass at baseline. An improved metric with a failing guard is reverted.
+The guard is optional, but if you set one, it must pass before the run starts. An improvement that fails the guard is rolled back. A guard timeout also counts as a failure.
+
+Keep the verify script and its data out of the scope, so experiments can't change how they are measured.
 
 ## Foreground
 
-Foreground stays in the current Codex task. After you approve the run, the skill initializes the baseline and creates or reuses an official Codex Goal. Goal continuation keeps the loop moving and supports Codex's normal pause and resume experience.
+Foreground runs inside your current Codex task. Once you approve, the skill measures the baseline and sets up a Codex Goal, or reuses a matching one. The Goal keeps the loop going, and you pause and resume it the way you normally would in Codex.
 
-Each iteration:
+Each experiment goes like this:
 
-1. Codex uses the measured results and previous experiments to choose a hypothesis.
-2. Codex changes one coherent thing inside scope.
-3. The control script creates a trial commit.
-4. It runs verify and, for an improvement, the guard.
-5. It keeps the commit or creates a revert commit.
-6. It appends the result and continues.
+1. Codex looks at the measurements and earlier experiments and picks an idea to try.
+2. Codex makes one coherent change inside the scope.
+3. The control script commits it.
+4. It runs verify, and the guard if the metric improved.
+5. It keeps the commit or adds a revert commit.
+6. It records the result, and the loop continues.
 
-The Goal is marked complete only after the retained metric reaches the confirmed target.
+The Goal is marked complete only when the kept result reaches the target.
 
 ## Background
 
-Background launches a detached controller and returns the TUI to you. The controller starts one fresh `codex exec` worker for one experiment, validates its event, then starts the next worker if the run remains active.
+Background starts a separate controller and gives the TUI back to you. The controller runs one fresh `codex exec` worker per experiment, checks what it recorded, and starts the next one if the run is still active.
 
-This process hierarchy is intentional:
+The chain looks like this:
 
 ```text
 your Codex task -> controller -> one worker at a time
 ```
 
-Background defaults to Full Access so the worker can commit and revert. You may explicitly choose `workspace-write`, but sandbox restrictions around `.git` can stop the run. There is no automatic permission fallback.
+Background defaults to Full Access so workers can commit and revert. You can choose `workspace-write` instead, but if the sandbox blocks writes to `.git`, the run stops. It won't quietly switch permissions.
 
-Use the skill itself for control:
+Workers use your Codex configuration. `--model` overrides the model for the run.
+
+Leave the run's checkout alone until it stops. Anything you edit inside the scope gets committed with the current experiment, so if you want to keep working, use a separate `git worktree`.
+
+Control the run through the skill:
 
 ```text
 $codex-autoresearch show the background status
@@ -95,25 +101,27 @@ $codex-autoresearch resume the background run
 $codex-autoresearch resume with this direction: focus on parser allocation
 ```
 
-Resume continues the existing configuration. Add a direction when you want to steer the strategy. The foreground task does not need to poll the controller.
+Resume picks up the same experiment. Add a direction if you want to steer it. Your own Codex task doesn't need to keep watching the controller.
 
 ## Run States
 
 | Status | Meaning |
 |---|---|
-| `not_initialized` | No current run exists |
-| `initialization_failed` | Baseline setup failed; inspect diagnostics and archive before retrying |
-| `active` | More experiments may run |
-| `complete` | Retained metric reached target |
-| `stopped` | User stop or iteration limit |
-| `blocked` | Progress requires an external change |
-| `error` | A command, Git, state, or worker contract failed |
+| `not_initialized` | No run yet |
+| `initialization_failed` | Setup failed. Read the diagnostics and archive before retrying |
+| `active` | More experiments can run |
+| `complete` | The kept result reached the target |
+| `stopped` | You stopped it, or it hit the iteration limit |
+| `blocked` | It needs something from outside, such as credentials or data |
+| `error` | A runtime check failed, or three experiments crashed in a row |
 
-An unsuccessful hypothesis is `discard`, not `blocked`. Background `orphaned` means events still say active but the recorded controller is gone. Inspect the reported worker PID and runtime log. If no worker is alive, stop can close the event state; a live orphaned worker must exit or be terminated before stop, resume, or archive.
+An idea that doesn't improve the metric is a `discard`. If a trial's verify command exits nonzero or times out, it is rolled back and recorded as `crash`, then the next experiment can run. Three crashes in a row stop the run with `error`. A measured trial or an explicit resume resets that count. Neither a discard nor a crash makes the run `blocked`.
+
+In the background, `orphaned` means the record says the run is active but its controller is gone. Check the worker PID and runtime log that status reports. If no worker is still alive, `stop` closes the run. If one is, let it finish or kill it before you stop, resume, or archive.
 
 ## Artifacts
 
-All state is under `autoresearch-results/`:
+Everything lives under `autoresearch-results/`:
 
 ```text
 autoresearch-results/
@@ -125,15 +133,15 @@ autoresearch-results/
 └── report.html        # generated on request
 ```
 
-`run.json` is immutable configuration. `events.jsonl` is the append-only source of truth for current state. Logs contain complete command and worker output.
+`run.json` holds the settings you confirmed and never changes. `events.jsonl` records everything that happened and is only ever appended to. The logs keep the full output of every command and worker.
 
-Do not edit these files. A malformed or inconsistent file stops the run instead of being reconstructed. To start a different goal, ask the skill to archive the current run first; archives remain below `autoresearch-results/archive/`.
+Please don't edit these files. If one is damaged or doesn't add up, the run stops instead of trying to rebuild it. To start a different goal, ask the skill to archive the current run first. Old runs stay under `autoresearch-results/archive/`.
 
-If the current run is still active, stop a background run first. For foreground, clear the old Codex Goal with `/goal clear`, then ask the skill to archive the run and start the new goal.
+If the current run is still active, stop it first (background) or clear its Goal with `/goal clear` (foreground). Then ask the skill to archive it and start the new goal.
 
 ## History And Reports
 
-Use the same skill entry to inspect any initialized run:
+These work for any run, active or finished:
 
 ```text
 $codex-autoresearch show experiment history
@@ -141,42 +149,43 @@ $codex-autoresearch export experiment history as TSV
 $codex-autoresearch generate an HTML report
 ```
 
-History renders a terminal table from the fully validated event log. TSV is emitted on request for spreadsheets or scripts. The HTML command writes a self-contained snapshot to `autoresearch-results/report.html` with the metric trajectory, keep/discard timeline, commits, and log links.
+History prints a table straight from the event log. Ask for TSV when you want the data in a spreadsheet or script. The HTML report is one self-contained file, `autoresearch-results/report.html`, with the metric over time, experiment outcomes, commits, and links to the logs. A crashed trial has no metric, so its retained value stays unchanged.
 
-These views never replace or update `events.jsonl`. Delete or regenerate the HTML report at any time; an active run requires a fresh report command to include later iterations.
+None of these change `events.jsonl`, so you can delete or regenerate the report any time. It's a snapshot, though: run the command again to include newer experiments.
 
 ## Git History
 
-Kept trial:
+A kept experiment:
 
 ```text
 autoresearch: remove parser allocation
 ```
 
-Discarded trial:
+A discarded one:
 
 ```text
 Revert "autoresearch: cache parser nodes"
 autoresearch: cache parser nodes
 ```
 
-The extra revert commit is the cost of a non-destructive, traceable rollback. Autoresearch never stages its result directory and rejects concurrent branch, HEAD, or out-of-scope changes.
+The extra revert commit is the price of rolling back without rewriting history: you can always see what was tried. Autoresearch never stages its results folder, and it stops if someone switches branches, moves HEAD, or edits files outside the scope during a run.
 
 ## Errors And Recovery
 
-Errors name the exact invariant and, for commands, the full log path. Status also reports expected/current Git state and dirty paths. Fix the cause before resume.
+Errors tell you exactly which rule was broken and, for commands, where the full log is. `status` also shows the expected and actual Git state and any changed files. Fix the cause, then resume.
 
-- Bad metric output: make the final line a scalar or configure one JSON key.
-- Verify exits nonzero: make measurement success return zero.
-- Baseline guard fails: repair the baseline or choose a valid guard.
-- Dirty or out-of-scope files: restore ownership boundaries; do not widen scope merely to hide the problem.
-- Command creates files: change the command so measurement is side-effect-free.
-- Worker produces no event: inspect its worker log; the controller stops rather than relaunching blindly.
-- Controller disappears: inspect both controller and worker liveness in status before recovery.
-- Rollback fails: recover Git manually and archive the run. An unverified trial cannot be resumed as retained state.
+- Bad metric output: make the last line a number, or name one JSON key.
+- Verify exits nonzero: inspect the command log before the next experiment. At baseline, this prevents launch. During a run, the trial is recorded as `crash`. Exit 0 only when measurement succeeds, even if the result is poor.
+- Three consecutive crashes: inspect the failed trials and their logs, address the cause, then resume.
+- Baseline guard fails: fix the code first, or choose a different guard.
+- Dirty or out-of-scope files: put them back. Don't widen the scope just to make the error go away.
+- Command creates files: change it so measuring leaves the repository untouched.
+- Worker records nothing: read its worker log. The controller stops instead of blindly starting another worker.
+- Controller disappears: check in `status` whether the controller and worker are still alive before you recover.
+- Rollback fails: fix Git by hand and archive the run. An experiment that was never verified can't become the starting point of a resumed run.
 
 ## Choosing A Task
 
-Good tasks have a repeatable metric and a meaningful target. Examples include zero failing cases, at least 90% coverage, p95 below 200 ms, no critical findings in a deterministic scanner, or a project-specific score above a threshold.
+Good tasks have a measurement you can repeat and a target that means something: zero failing cases, at least 90% coverage, p95 at most 200 ms, no critical findings from a deterministic scanner, or a project-specific score at or above a threshold.
 
-For subjective design, one-time migrations, releases, or deployment, use ordinary Codex. If the goal is open-ended, first work with Codex to define a stable benchmark, then invoke autoresearch.
+For design taste, one-off migrations, releases, or deployments, use Codex normally. If the goal is still fuzzy, work with Codex to build a stable benchmark first, then start autoresearch.

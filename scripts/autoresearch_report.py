@@ -276,9 +276,10 @@ def _metric_chart(run: dict[str, Any], events: list[dict[str, Any]]) -> str:
         retained.append(
             (index, parse_decimal(event["retained_metric"], field="retained metric"))
         )
-        trials.append(
-            (index, parse_decimal(event["trial_metric"], field="trial metric"), event["outcome"])
-        )
+        if event["trial_metric"] is not None:
+            trials.append(
+                (index, parse_decimal(event["trial_metric"], field="trial metric"), event["outcome"])
+            )
 
     target = parse_decimal(run["target"], field="target")
     values = [value for _, value in retained] + [value for _, value, _ in trials] + [target]
@@ -378,6 +379,7 @@ def render_html_report(
         "baseline",
         "keep",
         "discard",
+        "crash",
         "complete",
         "blocked",
         "error",
@@ -461,7 +463,7 @@ def render_html_report(
     tbody tr:hover {{ background: #fafcff; }} .numeric {{ text-align: right; font-variant-numeric: tabular-nums; }} .retained {{ font-weight: 700; }}
     .description {{ min-width: 240px; max-width: 420px; overflow-wrap: anywhere; }} .time {{ white-space: nowrap; color: var(--muted); font-size: 12px; }}
     .event-label {{ display: inline-block; min-width: 66px; padding: 2px 6px; border-radius: 4px; background: #edf1f6; color: #465268; font-size: 12px; font-weight: 700; text-align: center; }}
-    .event-label.keep, .event-label.complete {{ color: var(--green); background: #e9f8ee; }} .event-label.discard, .event-label.error {{ color: var(--red); background: #fdf0ef; }}
+    .event-label.keep, .event-label.complete {{ color: var(--green); background: #e9f8ee; }} .event-label.discard, .event-label.crash, .event-label.error {{ color: var(--red); background: #fdf0ef; }}
     .event-label.blocked, .event-label.stopped {{ color: var(--amber); background: #fff4d8; }} .event-label.resumed {{ color: var(--blue); background: #eaf2ff; }}
     code {{ font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; overflow-wrap: anywhere; }}
     a {{ color: #175cd3; text-decoration-thickness: 1px; text-underline-offset: 2px; }} .muted {{ color: #8a94a5; }} .commit-separator {{ margin-left: 5px; color: var(--muted); font-size: 11px; }}

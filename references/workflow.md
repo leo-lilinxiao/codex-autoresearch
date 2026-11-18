@@ -2,23 +2,23 @@
 
 ## Start A Run
 
-1. Locate the Git repository and run `status --repo <repo>`. Only `not_initialized` is fresh; handle existing runs below.
+1. Locate the Git repository and run `status --repo <repo>`. Only `not_initialized` is fresh. Handle existing runs below.
 2. Inspect the relevant code and commands. Establish a repeatable baseline and choose the configuration below.
-3. Show the conditions in one concise confirmation. Reuse choices and authorization already given; ask only for missing launch decisions.
+3. Show the conditions in one concise confirmation. Reuse explicit choices and authorization already given. If the user has not chosen foreground or background, ask and wait for their answer. The execution mode is a user decision, not an implementation default.
 4. If foreground work remains, check that Goal tools are available and that no different unfinished Goal conflicts with this run. Surface a conflict before writing run artifacts.
 5. Initialize or launch with the approved values.
 
 Configuration:
 
 - Goal: the user's intended research or engineering outcome.
-- Scope: repository-relative file or directory prefixes; no globs. Initialization requires a clean named branch and a working Git identity.
+- Scope: repository-relative file or directory prefixes. No globs. Initialization requires a clean named branch and a working Git identity.
 - Verify: a repeatable command whose final non-empty stdout line is a finite number, or a JSON object with one explicit `--metric-key`.
 - Direction and target: lower or higher, and the number that means the user's goal is reached.
-- Guard: optional pass/fail command protecting behavior outside the metric; it must pass at baseline.
+- Guard: optional pass/fail command protecting behavior outside the metric. It must pass at baseline.
 - Mode: foreground with a Codex Goal, or background with a detached controller. Include the Goal and background Full Access policy in the corresponding launch confirmation.
 - Iteration limit: only when requested.
 
-The verify command must exit zero when measurement succeeds, even if the result is poor. Verify and guard must emit UTF-8 and leave Git-visible project files unchanged; ignored build output is fine. Stabilize datasets, evaluation, and per-experiment compute budgets so comparisons remain meaningful. Keep measurement and guard behavior fixed during experiments.
+The verify command must exit zero when measurement succeeds, even if the result is poor. Verify and guard must emit UTF-8 and leave Git-visible project files unchanged. Ignored build output is fine. Stabilize datasets, evaluation, and per-experiment compute budgets so comparisons remain meaningful. For noisy measurements, compare repeated baseline runs and agree on an aggregation method before launch. Keep the measurement script and evaluation data outside the editable scope, and do not weaken guard checks.
 
 A useful confirmation is:
 
@@ -33,7 +33,7 @@ Stop: target ..., iteration limit ..., or user stop
 Failed trials are committed and reverted.
 ```
 
-An explicit request to execute a fully specified experiment is approval; no special keyword is required. Obtain any missing launch approval, including the mode, before writing project files, initializing artifacts, or creating a Goal or controller. If measurement needs setup, include that work in the approval.
+An explicit request to execute a fully specified experiment is approval. No special keyword is required. Obtain any missing launch approval, including the mode, before writing project files, initializing artifacts, or creating a Goal or controller. If measurement needs setup, include that work in the approval.
 
 ## Foreground
 
@@ -49,29 +49,29 @@ python3 <control> init \
 
 If initialization returns `complete`, report the measured result without creating a Goal. Otherwise reuse the matching unfinished Goal or call `create_goal`. Its objective identifies codex-autoresearch, the run id, metric, target, and any iteration limit, and requires the experiment workflow while run status is active.
 
-Use Codex's native Goal controls for pause, resume, and clear. Follow the available Goal tool contract; do not create a replacement for a paused or blocked Goal.
+Use Codex's native Goal controls for pause, resume, and clear. Follow the available Goal tool contract. Do not create a replacement for a paused or blocked Goal.
 
 ## Run Experiments
 
 Launch approval covers subsequent experiments within the agreed scope, evaluation, stopping conditions, and permissions. For an approved foreground run, continue while status is `active`, including after partial improvements or discarded hypotheses. Answer side questions without abandoning the run unless the user pauses it or changes direction. Ask again only when a new decision falls outside the agreement.
 
-Use the validated status at entry or resume. Within an uninterrupted loop, the latest `finish` result supplies the current status and metric; consult earlier events as needed.
+Use the validated status at entry or resume. Within an uninterrupted loop, the latest `finish` result supplies the current status and metric. Consult earlier events as needed.
 
-1. Choose one coherent hypothesis from code, results, and relevant research. Pursue promising directions, learn from failed attempts, and change approach when the evidence warrants it.
-2. Modify only the approved scope. Keep the experiment independently measurable and reversible.
-3. Finalize with a description of the hypothesis:
+1. Choose one coherent hypothesis from code, results, and relevant research. Pursue promising directions, learn from failed attempts, and change approach when the evidence warrants it. Use `history --repo <repo>` when earlier experiments or resume notes are no longer in context. Consult their logs when needed.
+2. Modify only the approved scope. Keep the experiment independently measurable and reversible. Before `finish`, ensure any delegated edits are done, stop processes started for this experiment, and remove its scratch files. `finish` commits every changed path in scope.
+3. Finalize with a short description of the change and its hypothesis so later experiments can learn from it:
 
    ```bash
-   python3 <control> finish --repo <repo> --description <hypothesis>
+   python3 <control> finish --repo <repo> --description <change-and-hypothesis>
    ```
 
-`finish` validates scope and Git provenance, commits the trial, measures it, runs the guard on an improvement, keeps or reverts the trial, and appends the result. Use those measurements for progress and completion; additional checks should answer an unresolved question. Interpret that evidence before choosing the next experiment. Use the returned `status` to decide whether more experiments may run; `outcome` describes only the trial's keep/discard decision.
+`finish` validates scope and Git provenance, commits the trial, measures it, runs the guard on an improvement, keeps or reverts the trial, and appends the result. A verify command that exits nonzero or times out is reverted and recorded as `crash`. Inspect its log before choosing the next experiment. Three consecutive crashes stop the run with `error`. A guard timeout counts as a failed guard and the trial is discarded. Use the returned `status` to decide whether more experiments may run. The trial's `outcome` is `keep`, `discard`, or `crash`.
 
 | Status | Next action |
 |---|---|
 | `active` | Continue from the retained result with another hypothesis. |
 | `complete` | Mark the matching foreground Goal complete and report the result. |
-| `stopped` | End experiments and report the stopping reason and best retained result. If the foreground Goal is still active, direct the user to its native pause controls; do not mark it complete or blocked merely because a limit was reached. |
+| `stopped` | End experiments and report the stopping reason and best retained result. If the foreground Goal is still active, direct the user to its native pause controls. Do not mark it complete or blocked merely because a limit was reached. |
 | `blocked` | Report the external dependency and what must change to resume. |
 | `error` | Inspect diagnostics and the validated repository state before recovery. |
 
@@ -86,14 +86,14 @@ Run `status` to validate the saved configuration and history.
 - An active foreground run continues with its matching Goal after any native pause is lifted.
 - An active background run with a running controller needs no relaunch.
 - A user-stopped run can resume with `resume --repo <repo>`. Add `--note <direction>` when the user supplies a new direction.
-- For `blocked` or `error`, first resolve the cause. Resume requires consistent Git state and no unreverted trial; record what changed with `--note`.
+- For `blocked` or `error`, first resolve the cause. Resume requires consistent Git state and no unreverted trial. Record what changed with `--note`.
 - A completed run or a run at its iteration limit needs archiving before a new experiment.
 
-For a new goal, stop a live background run first; clear a conflicting foreground Goal through Codex controls. `archive --repo <repo>` preserves prior artifacts. Include archiving in the new-run confirmation, and carry it out without an extra question when already authorized.
+For a new goal, stop a live background run first. Clear a conflicting foreground Goal through Codex controls. `archive --repo <repo>` preserves prior artifacts. Include archiving in the new-run confirmation, and carry it out without an extra question when already authorized.
 
 ## Errors
 
-A failed command is not a completed experiment. Inspect its error, logs, and `status`; correct an invalid invocation when possible within the approved task. Do not continue experiments while status is terminal or Git ownership is uncertain.
+A failed control command has not completed the requested operation. Inspect its error, logs, and `status`. Correct an invalid invocation when possible within the approved task. Do not continue experiments while status is terminal or Git ownership is uncertain.
 
 `run.json` is immutable configuration and `events.jsonl` is the append-only state history. Unknown schemas, invalid or partial events, malformed metrics, Git drift, and rollback failures must remain visible errors. Never repair these files by guessing from logs or summaries.
 

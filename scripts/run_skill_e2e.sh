@@ -206,11 +206,15 @@ while time.monotonic() < deadline:
             encoding="utf-8",
         )
     )
-    if last["status"] in {"complete", "blocked", "error", "stopped"}:
+    if (
+        last["status"] in {"complete", "blocked", "error", "stopped"}
+        and not last["runtime"]["controller_alive"]
+        and not last["runtime"]["child_alive"]
+    ):
         print(json.dumps(last, sort_keys=True))
         raise SystemExit(0)
     time.sleep(0.2)
-raise SystemExit(f"timed out waiting for terminal status; last={last}")
+raise SystemExit(f"timed out waiting for terminal status. Last={last}")
 PY
 }
 

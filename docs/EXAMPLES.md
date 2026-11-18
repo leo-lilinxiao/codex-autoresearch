@@ -1,6 +1,6 @@
 # Examples
 
-These examples show the user prompt and the measurement contract Codex should confirm. Users normally provide only the prompt; Codex discovers the commands from the repository.
+Each example shows what you type and the setup Codex should confirm with you. Usually you only write the prompt. Codex finds the commands in your repository.
 
 ## Fix Failing Cases
 
@@ -18,7 +18,7 @@ Target: 0
 Guard: none
 ```
 
-The score script should exit zero and report a numeric count even before the defects are fixed. Add a separate regression guard only if it already passes at baseline.
+The score script should exit 0 and print a count even while the defects are still there. Add a separate guard only if it already passes before the run starts.
 
 ## Remove Type Errors
 
@@ -26,8 +26,6 @@ The score script should exit zero and report a numeric count even before the def
 $codex-autoresearch
 Eliminate TypeScript errors under src without changing generated clients.
 ```
-
-Useful contract:
 
 ```text
 Scope: src
@@ -37,7 +35,7 @@ Target: 0
 Guard: npm test
 ```
 
-A project-owned counting script is more reliable than parsing changing compiler prose in the skill prompt.
+A small counting script in your project is more reliable than having Codex read compiler messages, which change from version to version.
 
 ## Raise Coverage
 
@@ -54,13 +52,13 @@ Target: 90
 Guard: python3 -m pytest -q
 ```
 
-Coverage is the metric; the full test suite is the guard.
+Coverage is the metric. The full test suite is the guard.
 
 ## Reduce Latency
 
 ```text
 $codex-autoresearch
-Bring the search benchmark p95 below 200 ms without changing responses.
+Bring the search benchmark p95 to at most 200 ms without changing responses.
 ```
 
 ```text
@@ -71,7 +69,7 @@ Target: 200
 Guard: python3 -m pytest tests/search -q
 ```
 
-Stabilize fixtures, warmup, sample count, and machine load before launch. A noisy benchmark produces untrustworthy keeps and discards.
+Pin down fixtures, warmup, sample count, and machine load before you start. With a noisy benchmark, changes get kept or discarded by luck, so report the median of several runs (see the patterns at the end).
 
 ## Optimize a Noisy Multi-Metric Scheduler
 
@@ -81,7 +79,7 @@ Raise judge_score to at least 0.80 while keeping hard schedule conflicts at zero
 ```
 
 ```text
-Scope: src/scheduler, tests/cases
+Scope: src/scheduler
 Verify: python3 scripts/schedule_metrics.py
 Metric parser: JSON key judge_score
 Direction: higher
@@ -89,13 +87,13 @@ Target: 0.80
 Guard: python3 scripts/check_schedule_constraints.py
 ```
 
-The verify command may emit other numeric fields for diagnosis, but only `judge_score` drives keep or discard. The guard enforces feasibility. Fix seeds and representative cases before optimizing so noise does not decide which experiments survive.
+The verify command can print other numbers for diagnosis, but only `judge_score` decides keep or discard. The guard makes sure every schedule stays feasible. Fix the seeds and keep the test cases out of the scope, so neither noise nor edited cases decide which experiments survive.
 
 ## Reduce Binary Size
 
 ```text
 $codex-autoresearch
-Reduce the release binary below 12 MB while all tests pass.
+Reduce the release binary to at most 12 MB while all tests pass.
 ```
 
 ```text
@@ -106,7 +104,7 @@ Target: 12
 Guard: cargo test --quiet
 ```
 
-The verify command may build artifacts, but it must not modify tracked or untracked project files seen by Git. Put build output in ignored directories.
+The verify command may build things, but it must not change any file Git can see, tracked or untracked. Put build output in ignored directories.
 
 ## Reproducible Security Findings
 
@@ -123,7 +121,7 @@ Target: 0
 Guard: npm test
 ```
 
-Use only a scanner or test harness whose numeric output is stable. A broad subjective audit is better handled as ordinary Codex work.
+Only use a scanner or test harness that gives the same number every time. A broad, judgment-heavy audit is better done with Codex directly.
 
 ## Foreground With Steering
 
@@ -133,7 +131,7 @@ Codex: [shows baseline, target, scope, verify, guard, and mode]
 You: Foreground. Go.
 ```
 
-Pause through the normal Codex Goal controls when you want to redirect the strategy. On resume, the skill validates the event log before continuing.
+Pause with the normal Codex Goal controls whenever you want to change direction. When you resume, the skill checks the event log before carrying on.
 
 ## Background Overnight
 
@@ -155,10 +153,10 @@ After a user stop, continue with:
 $codex-autoresearch resume
 ```
 
-You can also supply a new direction. If blocked, first resolve the reported cause:
+You can also give it a new direction. If the run is blocked, fix the reported cause first:
 
 ```text
-$codex-autoresearch resume; generated files are authoritative, do not edit them
+$codex-autoresearch resume with this direction: generated files are authoritative, do not edit them
 ```
 
 ## Review A Run
@@ -167,23 +165,23 @@ $codex-autoresearch resume; generated files are authoritative, do not edit them
 $codex-autoresearch show experiment history
 ```
 
-The history table includes baselines, retained experiments, discarded trials, terminal events, metrics, and descriptions. For a shareable visual snapshot:
+The history table shows the baseline, every kept, discarded, or crashed experiment, and how the run ended. Crashed trials have no metric and link to their command logs in the HTML report. For something you can share:
 
 ```text
 $codex-autoresearch generate an HTML report
 ```
 
-The report is regenerated from validated events and does not participate in resume or recovery.
+The report is rebuilt from the event log each time and plays no part in resume or recovery.
 
 ## Metric Script Patterns
 
-Scalar final line:
+A number on the last line:
 
 ```python
 print(error_count)
 ```
 
-JSON final line:
+JSON on the last line:
 
 ```python
 import json
@@ -191,4 +189,12 @@ import json
 print(json.dumps({"error_count": error_count, "passed": passed}))
 ```
 
-The JSON form requires an explicit metric key such as `error_count`. Extra fields remain diagnostic and do not become hidden secondary acceptance rules.
+With JSON, you name the metric key, such as `error_count`. The other fields are only for diagnosis. They never quietly turn into extra pass/fail rules.
+
+The median of several runs, for noisy measurements:
+
+```python
+import statistics
+
+print(statistics.median(run_benchmark() for _ in range(5)))
+```

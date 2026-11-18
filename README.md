@@ -28,9 +28,9 @@
 
 ---
 
-Tell Codex what measurable result you want. Codex inspects the repository, confirms the experiment with you, changes one thing, verifies it, keeps improvements, reverts failures, and repeats until the target is reached.
+Tell Codex which number you want to move and where it should end up. Codex looks through your repository, confirms the plan with you, and then works one change at a time: measure it, keep it if it helps, roll it back if it doesn't, and repeat until the target is reached.
 
-Autoresearch works for test failures, coverage, type errors, warnings, latency, binary size, reproducible security findings, and any other outcome a command can measure.
+It works for anything a command can measure: failing tests, coverage, type errors, warnings, latency, binary size, reproducible security findings, and so on.
 
 ## Quick Start
 
@@ -62,16 +62,16 @@ Codex: Baseline: 5
 You:   Background. Go.
 ```
 
-Codex launches the confirmed run. No Codex configuration changes or special prompt syntax are required.
+Codex starts the run you confirmed. You don't need to change any Codex settings or learn special syntax.
 
 See [Installation](docs/INSTALL.md) for manual and development installs.
 
 ## The Loop
 
 ```text
-inspect evidence
+look at the evidence
       |
-change one focused thing
+change one thing
       |
 commit and measure
       |
@@ -79,12 +79,12 @@ commit and measure
       |
       +-- otherwise ---------------> revert
       |
-append an audit event
+record the result
       |
 repeat until target
 ```
 
-The control script owns commits, verification, rollback, and state. Codex owns the hypotheses and code changes.
+Codex decides what to try and writes the code. A small control script does the bookkeeping: commits, measurement, rollback, and the record of every experiment.
 
 ## Foreground And Background
 
@@ -95,41 +95,41 @@ The control script owns commits, verification, rollback, and state. Codex owns t
 | Best for | Watching and steering live | Long or overnight runs |
 | Control | Codex Goal pause/resume | Ask `$codex-autoresearch` for status, stop, or resume |
 
-Foreground and background use the same experiment rules. A run uses one mode at a time. Foreground continuation uses a Codex Goal; background continuation belongs to the detached controller.
+Both modes follow the same rules. What differs is what keeps the loop going: in the foreground, a Codex Goal in your current task. In the background, a separate controller that starts a fresh worker for each experiment. A run uses one mode at a time.
 
 ## What Gets Confirmed
 
-Before the first write, Codex shows:
+Before it changes anything, Codex shows you:
 
-- the goal and numeric target;
-- repository-relative paths it may change;
-- the metric command and explicit parser;
-- an optional regression guard;
-- foreground or background mode;
+- the goal and numeric target.
+- repository-relative paths it may change.
+- the command that measures the metric, and how to read its output.
+- an optional regression guard.
+- foreground or background mode.
 - an optional iteration limit.
 
-Initialization requires a clean named Git branch. One run manages one repository.
+You need a clean, named Git branch to start, and each run covers one repository.
 
-Codex reuses choices and approval you have already given. Once the experiment is confirmed, it keeps working without asking you to approve each iteration.
+Codex won't ask again about anything you've already decided. Once you confirm, it keeps going without asking you to approve each experiment.
 
 ## Results
 
-Run artifacts live in `autoresearch-results/` and stay uncommitted:
+Everything the run records goes in `autoresearch-results/`, which is never committed:
 
 | Path | Purpose |
 |---|---|
-| `run.json` | Immutable confirmed configuration |
-| `events.jsonl` | Append-only baseline, iteration, stop, and completion history |
+| `run.json` | The settings you confirmed. Never changes |
+| `events.jsonl` | Every baseline, experiment, stop, and completion, in order. Only appended to |
 | `logs/` | Full metric, guard, and background worker output |
 | `runtime.json` | Background process state |
-| `runtime.log` | Background controller lifecycle events |
-| `report.html` | Optional, regenerated visual snapshot |
+| `runtime.log` | What the background controller did |
+| `report.html` | Optional visual report, rebuilt on request |
 
-`events.jsonl` is the state history. Missing, malformed, contradictory, or partial state is an error; the skill never guesses a result from old files or conversational memory.
+`events.jsonl` is the source of truth. If it's missing or damaged, the skill stops and says so. It never guesses results from old files or from the conversation.
 
 ## Review Results
 
-Ask the skill to show the validated experiment history:
+Ask the skill for the history:
 
 ```text
 $codex-autoresearch show experiment history
@@ -149,14 +149,14 @@ SEQ  ITER  EVENT     PREVIOUS  TRIAL  RETAINED  DESCRIPTION
   4     3  complete         -      -         0  retained metric satisfies the target
 ```
 
-The same validated events can be exported as TSV or rendered as a self-contained static report:
+You can also export it as TSV or get a self-contained HTML report:
 
 ```text
 $codex-autoresearch export experiment history as TSV
 $codex-autoresearch generate an HTML report
 ```
 
-The report is written to `autoresearch-results/report.html`. It is a replaceable snapshot, not runtime state.
+The report goes to `autoresearch-results/report.html`. It's only a snapshot, so delete or regenerate it whenever you like.
 
 <p align="center">
   <img src="image/autoresearch-report.png" width="900" alt="Codex Autoresearch HTML report showing metric trajectory and experiment history">
@@ -164,18 +164,20 @@ The report is written to `autoresearch-results/report.html`. It is a replaceable
 
 ## Safety Model
 
-- Every trial is a Git commit.
-- A non-improving trial or failed guard is reverted with `git revert`.
-- Out-of-scope edits, branch changes, HEAD drift, malformed metrics, command failures, timeouts, and generated byproducts stop the run with an exact error and log path.
-- Autoresearch artifacts are never staged.
-- A run reports `complete` only when the retained metric reaches the confirmed target.
-- A genuine external blocker is reported explicitly; a difficult or unsuccessful hypothesis is not treated as blocked.
+- Every experiment is a Git commit.
+- If it doesn't improve the metric or fails the guard, it is rolled back with `git revert`. A guard timeout counts as a failure.
+- If the verify command exits nonzero or times out, the trial is rolled back and recorded as `crash`. A single crash does not stop the run. Three consecutive crashes do.
+- Edits outside the scope, a switched branch or moved HEAD, invalid metric output, failed cleanup or rollback, and commands that leave files behind stop the run with diagnostics. Baseline measurement must succeed before a run starts.
+- Leave the run's checkout alone until it stops: anything you edit inside the scope gets committed with the current experiment. To keep working, use a separate `git worktree`.
+- The results folder is never staged.
+- A run is `complete` only when the kept result actually reaches the target.
+- `blocked` is reserved for real outside problems, such as missing credentials or data. A hard problem or a failed idea is not a blocker.
 
-This strictness is intentional. Silent recovery makes long autonomous runs impossible to trust.
+This is strict on purpose. If a long unattended run quietly papered over problems, you couldn't trust its results.
 
 ## Good Metrics
 
-The verify command must exit successfully and place one finite number on its final non-empty stdout line. It may instead print a JSON object on that line when Codex names one numeric key explicitly.
+The verify command has to exit successfully and print one finite number on its last non-empty stdout line. It can print a JSON object there instead, as long as Codex names the numeric key to read.
 
 ```text
 7
@@ -185,14 +187,16 @@ The verify command must exit successfully and place one finite number on its fin
 {"error_count": 7, "passed": 12}
 ```
 
-Use a guard for behavior the metric does not protect, such as a test suite around a latency benchmark. The guard must pass at baseline.
+Use a guard for anything the metric doesn't cover, such as running the test suite while you optimize latency. The guard has to pass before the run starts.
+
+Keep the verify script and its data out of the scope, so experiments can't change how they are measured. If the same code gives different numbers from run to run, report the median of several runs.
 
 ## Documentation
 
 | Guide | Contents |
 |---|---|
 | [Installation](docs/INSTALL.md) | Install, update, and verify the skill |
-| [User Guide](docs/GUIDE.md) | Configuration, lifecycle, state, and troubleshooting |
+| [User Guide](docs/GUIDE.md) | Setup, how runs work, and troubleshooting |
 | [Examples](docs/EXAMPLES.md) | Practical prompts and metric patterns |
 | [Contributing](CONTRIBUTING.md) | Architecture and validation for contributors |
 
@@ -200,23 +204,23 @@ Use a guard for behavior the metric does not protect, such as a test suite aroun
 
 **Does installation change my Codex settings?**
 
-No. Installation copies the skill files. Use a current Codex release so foreground runs can use the built-in Goal capability.
+No. It only copies the skill files. You do need a recent Codex release, because foreground runs rely on Codex Goals.
 
 **Why Full Access?**
 
-Each iteration creates or reverts a Git commit. Restricted sandboxes may block writes under `.git`. Background runs therefore default to Full Access; `workspace-write` remains an explicit option when its limitations are acceptable.
+Every experiment makes or reverts a Git commit, and restricted sandboxes may block writes under `.git`. So background runs default to Full Access. You can still choose `workspace-write` if you accept that Git writes may fail.
 
 **Can I stop and resume?**
 
-Yes. Interrupt or pause a foreground Goal. For background, invoke `$codex-autoresearch` and ask for status, stop, or resume. A new direction is optional; "resume" continues the confirmed experiment.
+Yes. In the foreground, interrupt or pause the Goal. In the background, ask `$codex-autoresearch` for status, stop, or resume. Just saying "resume" continues the same experiment. You can add a new direction if you like.
 
 **Can it run without Git or across several repos?**
 
-No. Git is the experiment memory and rollback boundary. Use one run per repository so commit ownership and metrics remain unambiguous.
+No. Git is how the run remembers what it tried and how it rolls back. One run per repository keeps it clear which commits and numbers belong to which run.
 
 **Is this only for small changes?**
 
-No. One experiment should test one coherent hypothesis. Its size should match the hypothesis, while still being independently measurable and reversible.
+No. Each experiment tests one idea, and it can be as big as that idea needs, as long as it can be measured and rolled back on its own.
 
 ## Acknowledgments
 

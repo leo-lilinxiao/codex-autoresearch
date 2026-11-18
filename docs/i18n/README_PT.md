@@ -30,7 +30,7 @@ $codex-autoresearch reduza error_count de `python3 scripts/score.py` para 0
 
 Antes da primeira escrita, Codex confirma objetivo, escopo, linha de base, meta, comando de métrica, guard opcional e foreground/background.
 
-O Codex mantém as escolhas e autorizações já fornecidas. Após iniciar, continua os experimentos sem pedir confirmação a cada iteração. Para retomar uma execução em segundo plano interrompida, basta pedir para retomar; uma nova direção é opcional.
+O Codex mantém as escolhas e autorizações já fornecidas. Após iniciar, continua os experimentos sem pedir confirmação a cada iteração. Para retomar uma execução em segundo plano interrompida, basta pedir para retomar. Uma nova direção é opcional.
 
 ## Ciclo
 
@@ -54,7 +54,7 @@ Codex cuida das hipóteses e mudanças de código. O script de controle cuida do
 | Uso | Observar e orientar | Execuções longas ou noturnas |
 | Controle | Pausar/retomar Goal | Status/stop/resume via `$codex-autoresearch` |
 
-Foreground continua por meio do Goal oficial. Background não cria Goal; o controller mantém a execução. A instalação não altera a configuração do Codex.
+Foreground continua por meio do Goal oficial. Background não cria Goal. O controller mantém a execução. A instalação não altera a configuração do Codex.
 
 ## Resultados
 
@@ -84,8 +84,10 @@ A tabela e o relatório HTML são gerados a partir de eventos validados. O snaps
 
 - Uma nova execução exige uma branch Git limpa e nomeada.
 - Cada execução gerencia um repositório, uma métrica e uma meta.
-- Cada experimento vira commit; falhas são revertidas com `git revert`.
-- Alterações fora do escopo, desvio Git, métricas inválidas, falhas de comando, timeout e erro de rollback interrompem com caminho de log.
+- Cada experimento vira commit. Falhas são revertidas com `git revert`, inclusive quando o comando da métrica quebra ou estoura o tempo. Três quebras seguidas interrompem a execução.
+- Alterações fora do escopo, desvio Git, métricas inválidas e erro de rollback interrompem com caminho de log.
+- Enquanto roda, a execução ocupa este checkout: alterações dentro do escopo entram no commit do experimento atual. Para continuar trabalhando, use um `git worktree` separado.
+- Timeout do guard conta como falha. A medição e o guard precisam passar na linha de base.
 - O estado só vira `complete` quando a métrica mantida atinge a meta.
 
 ## Requisitos
