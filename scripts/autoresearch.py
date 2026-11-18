@@ -24,7 +24,8 @@ from autoresearch_core import (
     RunState,
     SCHEMA_VERSION,
     append_event,
-    append_json_line,
+    append_events,
+    append_json_lines,
     commit_trial,
     decimal_json,
     git_branch,
@@ -386,31 +387,27 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
         }
         validate_run(run, source="new run")
         write_json_atomic(paths.run, run)
-        events: list[dict[str, Any]] = []
-        baseline_event = append_event(
-            paths,
-            run,
-            events,
-            event="baseline",
-            head=head,
-            metric=decimal_json(baseline),
-            verify_log=relative_log_path(paths, verify_result.log_path),
-            guard_log=relative_log_path(paths, guard_log),
-        )
-        events.append(baseline_event)
+        new_events = [
+            {
+                "event": "baseline",
+                "head": head,
+                "metric": decimal_json(baseline),
+                "verify_log": relative_log_path(paths, verify_result.log_path),
+                "guard_log": relative_log_path(paths, guard_log),
+            }
+        ]
         status = "active"
         if target_reached(baseline, target, args.direction):
-            complete_event = append_event(
-                paths,
-                run,
-                events,
-                event="complete",
-                reason="baseline already satisfies the target",
-                head=head,
-                metric=decimal_json(baseline),
+            new_events.append(
+                {
+                    "event": "complete",
+                    "reason": "baseline already satisfies the target",
+                    "head": head,
+                    "metric": decimal_json(baseline),
+                }
             )
-            events.append(complete_event)
             status = "complete"
+        append_events(paths, run, [], *new_events)
         return {
             "run_id": run_id,
             "mode": args.mode,
@@ -698,66 +695,48 @@ def finish_iteration(args: argparse.Namespace) -> dict[str, Any]:
             raise
         head = revert_commit
 
-    event = append_event(
-        paths,
-        run,
-        events,
-        event="iteration",
-        iteration=iteration,
-        outcome=outcome,
-        description=" ".join(args.description.split()),
-        previous_metric=decimal_json(state.metric),
-        trial_metric=None if trial_metric is None else decimal_json(trial_metric),
-        retained_metric=decimal_json(retained_metric),
-        trial_commit=trial_commit,
-        head=head,
-        revert_commit=revert_commit,
-        guard=guard_status,
-        verify_log=relative_log_path(paths, verify_log),
-        guard_log=relative_log_path(paths, guard_log),
-    )
-    events.append(event)
-
+    new_events: list[dict[str, Any]] = [
+        {
+            "event": "iteration",
+            "iteration": iteration,
+            "outcome": outcome,
+            "description": " ".join(args.description.split()),
+            "previous_metric": decimal_json(state.metric),
+            "trial_metric": None if trial_metric is None else decimal_json(trial_metric),
+            "retained_metric": decimal_json(retained_metric),
+            "trial_commit": trial_commit,
+            "head": head,
+            "revert_commit": revert_commit,
+            "guard": guard_status,
+            "verify_log": relative_log_path(paths, verify_log),
+            "guard_log": relative_log_path(paths, guard_log),
+        }
+    ]
+    retained = {"head": head, "metric": decimal_json(retained_metric)}
     status = "active"
     target = parse_decimal(run["target"], field="run.target")
     if target_reached(retained_metric, target, run["metric"]["direction"]):
-        complete = append_event(
-            paths,
-            run,
-            events,
-            event="complete",
-            reason="retained metric satisfies the target",
-            head=head,
-            metric=decimal_json(retained_metric),
-        )
-        events.append(complete)
         status = "complete"
+        new_events.append({"event": "complete", "reason": "retained metric satisfies the target", **retained})
     elif outcome == "crash" and state.consecutive_crashes + 1 >= MAX_CONSECUTIVE_CRASHES:
-        append_error(
-            paths=paths,
-            run=run,
-            events=events,
-            state=state,
-            reason=(
-                f"{MAX_CONSECUTIVE_CRASHES} consecutive trials crashed. Inspect the failed "
-                f"trials and command logs before resuming. Last crash: {crash}"
-            ),
-            head=head,
-            log=verify_log,
-        )
         status = "error"
-    elif run["max_iterations"] is not None and iteration >= run["max_iterations"]:
-        stopped = append_event(
-            paths,
-            run,
-            events,
-            event="stopped",
-            reason="configured iteration limit reached",
-            head=head,
-            metric=decimal_json(retained_metric),
+        new_events.append(
+            {
+                "event": "error",
+                "reason": (
+                    f"{MAX_CONSECUTIVE_CRASHES} consecutive trials crashed. Inspect the failed "
+                    f"trials and command logs before resuming. Last crash: {crash}"
+                ),
+                "trial_commit": None,
+                "revert_commit": None,
+                "log": relative_log_path(paths, verify_log),
+                **retained,
+            }
         )
-        events.append(stopped)
+    elif run["max_iterations"] is not None and iteration >= run["max_iterations"]:
         status = "stopped"
+        new_events.append({"event": "stopped", "reason": "configured iteration limit reached", **retained})
+    append_events(paths, run, events, *new_events)
 
     if run["mode"] == "background":
         instruction = "Iteration recorded. Exit this worker now."
@@ -898,9 +877,9 @@ def generate_report(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def runtime_event(paths: Paths, event: str, **fields: Any) -> None:
-    append_json_line(
+    append_json_lines(
         paths.runtime_log,
-        {"time": utc_now(), "source": "controller", "event": event, **fields},
+        [{"time": utc_now(), "source": "controller", "event": event, **fields}],
     )
 
 
