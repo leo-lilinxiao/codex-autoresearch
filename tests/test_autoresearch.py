@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import tempfile
@@ -128,6 +129,36 @@ class AutoresearchTest(unittest.TestCase):
         self.assertEqual(3, status["event_count"])
         self.assertEqual("0\n", (self.repo / "src" / "value.txt").read_text(encoding="utf-8"))
         self.assertIn("autoresearch: set value to target", self.git("log", "-1", "--format=%s").stdout)
+
+    def test_related_events_are_visible_as_one_transition(self) -> None:
+        events_path = self.repo / "autoresearch-results" / "events.jsonl"
+        observed = []
+        append = autoresearch_core.append_json_lines
+
+        def append_and_read(path: Path, payloads: list[dict]) -> None:
+            append(path, payloads)
+            if path == events_path.resolve():
+                state = autoresearch_core.load_context(self.repo)[3]
+                observed.append(([event["event"] for event in payloads], state.status))
+
+        args = autoresearch_runtime.build_parser().parse_args([
+            "init", "--repo", str(self.repo), "--goal", "Already at target",
+            "--scope", "src", "--metric-name", "value", "--direction", "lower",
+            "--verify", "python3 score.py", "--target", "3",
+        ])
+        with mock.patch.object(autoresearch_core, "append_json_lines", side_effect=append_and_read):
+            autoresearch_runtime.initialize_run(args)
+        self.assertEqual([(["baseline", "complete"], "complete")], observed)
+        self.cli("archive", "--repo", str(self.repo))
+        self.init()
+        self.set_value(0)
+        observed.clear()
+        args = autoresearch_runtime.build_parser().parse_args([
+            "finish", "--repo", str(self.repo), "--description", "reach target",
+        ])
+        with mock.patch.object(autoresearch_core, "append_json_lines", side_effect=append_and_read):
+            autoresearch_runtime.finish_iteration(args)
+        self.assertEqual([(["iteration", "complete"], "complete")], observed)
 
     def test_non_improving_trial_is_reverted_and_recorded(self) -> None:
         self.init()
@@ -360,6 +391,69 @@ class AutoresearchTest(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(expected, result.stderr)
         events_path.write_text(original, encoding="utf-8")
+
+    def test_non_utf8_timeout_records_crash_and_preserves_output(self) -> None:
+        (self.repo / "score.py").write_text(
+            "from pathlib import Path\n"
+            "import sys, time\n"
+            "value = int(Path('src/value.txt').read_text())\n"
+            "if value == 2:\n"
+            "    sys.stdout.buffer.write(b'\\xff\\n')\n"
+            "    sys.stdout.buffer.flush()\n"
+            "    time.sleep(30)\n"
+            "print(value)\n",
+            encoding="utf-8",
+        )
+        self.git("add", "score.py")
+        self.git("commit", "-m", "invalid output before timeout")
+        self.init("--timeout-seconds", "1")
+        self.set_value(2)
+        result = json.loads(self.cli("finish", "--repo", str(self.repo), "--description", "invalid output").stdout)
+        self.assertEqual("crash", result["outcome"])
+        self.assertIsNone(result["trial_metric"])
+        status = self.status()
+        self.assertEqual("active", status["status"])
+        self.assertEqual(1, status["iterations"])
+        self.assertTrue(status["repository"]["consistent"])
+        log = self.repo / "autoresearch-results" / status["last_event"]["verify_log"]
+        diagnostic = json.loads(log.read_text(encoding="utf-8"))
+        self.assertTrue(diagnostic["timed_out"])
+        self.assertEqual("/wo=", diagnostic["stdout_base64"])
+
+    @unittest.skipIf(os.name == "nt", "POSIX detached process groups")
+    def test_timeout_terminates_detached_descendant(self) -> None:
+        ready = Path(self.temp.name) / "descendant-pid"
+        command = shlex.join([
+            sys.executable,
+            "-c",
+            "import pathlib, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time\\ntime.sleep(30)'], "
+            "start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+            f"pathlib.Path({str(ready)!r}).write_text(str(child.pid), encoding='utf-8')\n"
+            "time.sleep(30)\n",
+        ])
+        try:
+            with self.assertRaises(autoresearch_core.CommandTimeout):
+                autoresearch_core.run_command(
+                    command=command,
+                    cwd=self.repo,
+                    timeout_seconds=1,
+                    log_path=Path(self.temp.name) / "timeout.json",
+                )
+            self.assertTrue(ready.exists(), "descendant did not start")
+            pid = int(ready.read_text(encoding="utf-8"))
+            process = subprocess.run(
+                ["ps", "-p", str(pid), "-o", "stat="], capture_output=True, text=True,
+            )
+            self.assertIn(process.returncode, (0, 1), process.stderr)
+            status = process.stdout.strip()
+            self.assertTrue(not status or status.startswith("Z"), f"descendant {pid} is still running")
+        finally:
+            if ready.exists():
+                try:
+                    os.kill(int(ready.read_text(encoding="utf-8")), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     def test_failed_baselines_remain_fatal(self) -> None:
         for flag, code in (
@@ -945,7 +1039,8 @@ class AutoresearchTest(unittest.TestCase):
             "args = sys.argv[1:]\n"
             "repo = pathlib.Path(args[args.index('-C') + 1])\n"
             "sys.stdin.read()\n"
-            "(repo / 'src' / 'value.txt').write_text('2\\n', encoding='utf-8')\n"
+            "value = repo / 'src' / 'value.txt'\n"
+            "value.write_text('2\\n' if value.read_text().strip() == '3' else '0\\n', encoding='utf-8')\n"
             f"pathlib.Path({str(ready)!r}).write_text('ready', encoding='utf-8')\n"
             f"while not pathlib.Path({str(release)!r}).exists():\n"
             "    time.sleep(0.05)\n"
@@ -954,19 +1049,26 @@ class AutoresearchTest(unittest.TestCase):
             encoding="utf-8",
         )
         fake.chmod(0o755)
-        self.init("--codex-bin", str(fake), mode="launch")
-        deadline = time.monotonic() + 5
-        while not ready.exists() and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertTrue(ready.exists(), "background worker never started")
-        stopping = json.loads(self.cli("stop", "--repo", str(self.repo)).stdout)
-        self.assertEqual("stopping", stopping["status"])
-        release.write_text("go", encoding="utf-8")
-        status = self.wait_for_status("stopped")
-        self.assertEqual(1, status["iterations"])
-        self.assertEqual("stopped", status["last_event"]["event"])
-        self.assertEqual(2, status["metric"]["current"])
-        self.assertTrue(status["repository"]["consistent"])
+        for iteration, expected, metric in ((1, "stopped", 2), (2, "complete", 0)):
+            ready.unlink(missing_ok=True)
+            release.unlink(missing_ok=True)
+            if iteration == 1:
+                self.init("--codex-bin", str(fake), mode="launch")
+            else:
+                self.cli("resume", "--repo", str(self.repo))
+            deadline = time.monotonic() + 5
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(ready.exists(), "background worker never started")
+            stopping = json.loads(self.cli("stop", "--repo", str(self.repo)).stdout)
+            self.assertEqual("stopping", stopping["status"])
+            self.assertTrue(self.status()["runtime"]["child_alive"])
+            release.write_text("go", encoding="utf-8")
+            status = self.wait_for_status(expected)
+            self.assertEqual(iteration, status["iterations"])
+            self.assertEqual(expected, status["last_event"]["event"])
+            self.assertEqual(metric, status["metric"]["current"])
+            self.assertTrue(status["repository"]["consistent"])
 
     def test_controller_error_terminates_active_worker(self) -> None:
         fake = Path(self.temp.name) / "fake-codex-controller-error"

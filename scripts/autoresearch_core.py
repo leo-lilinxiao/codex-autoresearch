@@ -629,7 +629,7 @@ def append_events(
     events: list[dict[str, Any]],
     *field_sets: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Append related events in one write so readers never see half of a transition."""
+    """Batch related events into one append."""
     new_events: list[dict[str, Any]] = []
     for fields in field_sets:
         seq = len(events) + len(new_events)
@@ -1046,12 +1046,28 @@ def process_alive(pid: int) -> bool:
     return True
 
 
-def process_group_alive(process_group_id: int) -> bool:
+def _posix_process_table() -> dict[int, tuple[int, int, str]]:
     try:
-        os.killpg(process_group_id, 0)
-    except ProcessLookupError:
-        return False
-    return True
+        completed = subprocess.run(
+            ["ps", "-A", "-o", "pid=,ppid=,pgid=,stat="],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise AutoresearchError(f"Cannot inspect processes for cleanup: {exc}") from exc
+    if completed.returncode != 0:
+        raise AutoresearchError(f"Cannot inspect processes for cleanup: {completed.stderr.strip()}")
+    processes = {}
+    for line in completed.stdout.splitlines():
+        try:
+            pid, parent, group, status = line.split()
+            processes[int(pid)] = (int(parent), int(group), status)
+        except ValueError as exc:
+            raise AutoresearchError(f"Invalid process record from ps: {line!r}") from exc
+    return processes
 
 
 def terminate_process_tree(
@@ -1088,22 +1104,50 @@ def terminate_process_tree(
                 ) from final_exc
             return
 
-    # Commands and workers start in their own session, so their process group is their tree.
+    # Capture descendants before killing parents, including commands in new sessions.
+    processes = _posix_process_table()
+    children: dict[int, list[int]] = {}
+    for pid, (parent, _, _) in processes.items():
+        children.setdefault(parent, []).append(pid)
+    owned = {process.pid}
+    pending = [process.pid]
+    while pending:
+        for pid in children.get(pending.pop(), []):
+            owned.add(pid)
+            pending.append(pid)
+    groups = {process.pid}
+    groups.update(group for pid, (_, group, _) in processes.items() if pid in owned and group in owned)
+
     for stop_signal in (signal.SIGTERM, signal.SIGKILL):
-        try:
-            os.killpg(process.pid, stop_signal)
-        except ProcessLookupError:
-            break
+        for group in groups:
+            try:
+                os.killpg(group, stop_signal)
+            except ProcessLookupError:
+                pass
+        for pid in owned:
+            if pid in processes and processes[pid][1] not in groups:
+                try:
+                    os.kill(pid, stop_signal)
+                except ProcessLookupError:
+                    pass
         deadline = time.monotonic() + grace_seconds
-        while process_group_alive(process.pid) and time.monotonic() < deadline:
+        while True:
             process.poll()
+            processes = _posix_process_table()
+            alive = sorted(
+                pid for pid, (_, group, status) in processes.items()
+                if not status.startswith("Z") and (pid in owned or group in groups)
+            )
+            if not alive:
+                try:
+                    process.wait(timeout=grace_seconds)
+                except subprocess.TimeoutExpired as exc:
+                    raise AutoresearchError(f"Process {process.pid} was not reaped after cleanup") from exc
+                return
+            if time.monotonic() >= deadline:
+                break
             time.sleep(0.05)
-        if not process_group_alive(process.pid):
-            break
-    try:
-        process.wait(timeout=grace_seconds)
-    except subprocess.TimeoutExpired as exc:
-        raise AutoresearchError(f"Process {process.pid} did not exit after TERM and KILL") from exc
+    raise AutoresearchError(f"Process tree {process.pid} still has live processes after TERM and KILL: {alive}")
 
 
 def load_runtime(paths: Paths, *, run_id: str | None = None) -> dict[str, Any] | None:

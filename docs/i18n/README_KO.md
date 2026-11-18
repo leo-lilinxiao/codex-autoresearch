@@ -56,6 +56,8 @@ Codex는 가설과 코드 수정을 담당하고, 제어 스크립트는 Git 경
 
 Foreground는 공식 Goal로 계속 실행됩니다. Background는 Goal 없이 controller가 지속 실행합니다. 설치 과정에서 Codex 설정은 변경되지 않습니다.
 
+백그라운드 실행을 중지하면 현재 실험을 마치고 결과를 기록한 뒤 종료합니다.
+
 ## 결과
 
 커밋되지 않는 `autoresearch-results/`에 저장됩니다.

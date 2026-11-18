@@ -56,6 +56,8 @@ Codex が仮説とコード変更を担当し、制御スクリプトが Git 境
 
 Foreground は公式 Goal で継続します。Background は Goal を作らず controller が継続します。インストールによって Codex 設定は変更されません。
 
+バックグラウンド実行を停止すると、進行中の実験を完了して結果を記録してから終了します。
+
 ## 結果
 
 未コミットの `autoresearch-results/` に保存されます。

@@ -36,6 +36,7 @@ Before starting or resuming an experiment, read the applicable workflow unless i
 ## Experiment Boundary
 
 - One run owns one Git repository, one numeric metric, one confirmed target, and approved path scopes.
+- The user chooses foreground or background. If neither is specified, ask and wait before changing project files, initializing artifacts, or creating a Goal or controller.
 - For a new foreground run, initialize successfully before creating its Goal. The Goal identifies the returned run id. If initialization reports `complete`, no Goal is needed.
 - Use `finish` to finalize each coherent experiment. Do not manually commit, revert, or edit run artifacts during an active run.
 - Only a verified target can mean `complete`. An iteration limit, error, or external blocker has its own status.
