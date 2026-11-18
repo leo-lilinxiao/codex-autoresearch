@@ -594,6 +594,8 @@ class AutoresearchTest(unittest.TestCase):
         history = self.cli("history", "--repo", str(self.repo)).stdout
         self.assertIn("blocked", history)
         self.assertIn("resumed", history)
+        self.assertIn("missing external fixture", history)
+        self.assertIn(resumed["note"], history)
         archived = json.loads(self.cli("archive", "--repo", str(self.repo)).stdout)
         self.assertEqual("archived", archived["status"])
         self.assertFalse((self.repo / "autoresearch-results" / "run.json").exists())

@@ -926,12 +926,13 @@ Guard command: {guard}
 Allowed paths: {', '.join(run['scope'])}
 
 Rules:
-1. Run `{python_command} {script_command} status --repo {repo_argument}` and inspect the repository and prior events.
+1. Run `{python_command} {script_command} status --repo {repo_argument}` and inspect the repository. Use `{python_command} {script_command} history --repo {repo_argument}` to review prior experiments and resume notes; consult their logs when needed.
 2. Choose one coherent hypothesis from the code and prior results. Keep the evaluation method fixed.
 3. Modify only allowed paths. Do not commit, revert, or edit autoresearch-results yourself.
-4. Finalize exactly once with `{python_command} {script_command} finish --repo {repo_argument} --description <short-description>`.
-5. If and only if no experiment is possible without external input or an environment change, leave the repo clean and run `{python_command} {script_command} block --repo {repo_argument} --reason <precise-reason>`.
-6. Do not ask the user questions and do not create or update a Codex Goal. Exit immediately after finish or block.
+4. Before finishing, ensure any delegated edits are done, stop processes started for this experiment, and remove its scratch files. Finish commits every changed path in scope.
+5. Finalize exactly once with `{python_command} {script_command} finish --repo {repo_argument} --description <change-and-hypothesis>`. This description helps later workers learn from the result.
+6. If and only if no experiment is possible without external input or an environment change, leave the repo clean and run `{python_command} {script_command} block --repo {repo_argument} --reason <precise-reason>`.
+7. Do not ask the user questions and do not create or update a Codex Goal. Exit immediately after finish or block.
 """
 
 

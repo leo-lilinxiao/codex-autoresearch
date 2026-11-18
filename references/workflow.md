@@ -18,7 +18,7 @@ Configuration:
 - Mode: foreground with a Codex Goal, or background with a detached controller. Include the Goal and background Full Access policy in the corresponding launch confirmation.
 - Iteration limit: only when requested.
 
-The verify command must exit zero when measurement succeeds, even if the result is poor. Verify and guard must emit UTF-8 and leave Git-visible project files unchanged; ignored build output is fine. Stabilize datasets, evaluation, and per-experiment compute budgets so comparisons remain meaningful. Keep measurement and guard behavior fixed during experiments.
+The verify command must exit zero when measurement succeeds, even if the result is poor. Verify and guard must emit UTF-8 and leave Git-visible project files unchanged; ignored build output is fine. Stabilize datasets, evaluation, and per-experiment compute budgets so comparisons remain meaningful. For noisy measurements, compare repeated baseline runs and agree on an aggregation method before launch. Keep the measurement script and evaluation data outside the editable scope, and do not weaken guard checks.
 
 A useful confirmation is:
 
@@ -57,12 +57,12 @@ Launch approval covers subsequent experiments within the agreed scope, evaluatio
 
 Use the validated status at entry or resume. Within an uninterrupted loop, the latest `finish` result supplies the current status and metric; consult earlier events as needed.
 
-1. Choose one coherent hypothesis from code, results, and relevant research. Pursue promising directions, learn from failed attempts, and change approach when the evidence warrants it.
-2. Modify only the approved scope. Keep the experiment independently measurable and reversible.
-3. Finalize with a description of the hypothesis:
+1. Choose one coherent hypothesis from code, results, and relevant research. Pursue promising directions, learn from failed attempts, and change approach when the evidence warrants it. Use `history --repo <repo>` when earlier experiments or resume notes are no longer in context; consult their logs when needed.
+2. Modify only the approved scope. Keep the experiment independently measurable and reversible. Before `finish`, ensure any delegated edits are done, stop processes started for this experiment, and remove its scratch files; `finish` commits every changed path in scope.
+3. Finalize with a short description of the change and its hypothesis so later experiments can learn from it:
 
    ```bash
-   python3 <control> finish --repo <repo> --description <hypothesis>
+   python3 <control> finish --repo <repo> --description <change-and-hypothesis>
    ```
 
 `finish` validates scope and Git provenance, commits the trial, measures it, runs the guard on an improvement, keeps or reverts the trial, and appends the result. Use those measurements for progress and completion; additional checks should answer an unresolved question. Interpret that evidence before choosing the next experiment. Use the returned `status` to decide whether more experiments may run; `outcome` describes only the trial's keep/discard decision.

@@ -4,7 +4,7 @@ Launch with the configuration approved in [Workflow](workflow.md), using `launch
 
 `danger-full-access` is the default because experiments create Git commits and reverts. Use `workspace-write` when the user chooses it; restricted Git writes cause a visible error.
 
-After launch, return the run id, baseline, results path, and controller status. Wait or monitor when the user requests it.
+After launch, return the run id, baseline, results path, and controller status. Remind the user to leave this checkout to the run; use a separate `git worktree` for other work. Wait or monitor when the user requests it.
 
 ## Controller And Workers
 
