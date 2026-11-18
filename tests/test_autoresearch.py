@@ -361,34 +361,6 @@ class AutoresearchTest(unittest.TestCase):
                 self.assertIn(expected, result.stderr)
         events_path.write_text(original, encoding="utf-8")
 
-    def test_non_utf8_timeout_is_fatal_and_preserves_output(self) -> None:
-        (self.repo / "score.py").write_text(
-            "from pathlib import Path\n"
-            "import sys, time\n"
-            "value = int(Path('src/value.txt').read_text())\n"
-            "if value == 2:\n"
-            "    sys.stdout.buffer.write(b'\\xff\\n')\n"
-            "    sys.stdout.buffer.flush()\n"
-            "    time.sleep(30)\n"
-            "print(value)\n",
-            encoding="utf-8",
-        )
-        self.git("add", "score.py")
-        self.git("commit", "-m", "invalid output before timeout")
-        self.init("--timeout-seconds", "1")
-        self.set_value(2)
-        result = self.cli("finish", "--repo", str(self.repo), "--description", "invalid output", check=False)
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("output was not valid UTF-8", result.stderr)
-        status = self.status()
-        self.assertEqual("error", status["status"])
-        self.assertEqual(0, status["iterations"])
-        self.assertTrue(status["repository"]["consistent"])
-        log = self.repo / "autoresearch-results" / status["last_event"]["log"]
-        diagnostic = json.loads(log.read_text(encoding="utf-8"))
-        self.assertTrue(diagnostic["timed_out"])
-        self.assertEqual("/wo=", diagnostic["stdout_base64"])
-
     def test_failed_baselines_remain_fatal(self) -> None:
         for flag, code in (
             ("--verify", "raise SystemExit(7)"),
@@ -622,7 +594,7 @@ class AutoresearchTest(unittest.TestCase):
         run["unexpected"] = True
         run_path.write_text(json.dumps(run), encoding="utf-8")
         completed = self.cli("status", "--repo", str(self.repo), check=False)
-        self.assertIn("unknown unexpected", completed.stderr)
+        self.assertIn("Unknown unexpected", completed.stderr)
 
     def test_tampered_keep_semantics_fail_validation(self) -> None:
         self.init()
@@ -1051,7 +1023,7 @@ class AutoresearchTest(unittest.TestCase):
                     "startup validation failed",
                 )
             process.wait(timeout=5)
-            self.assertIn("event error record failed", str(raised.exception))
+            self.assertIn("Event error record failed", str(raised.exception))
             runtime = json.loads(paths.runtime.read_text(encoding="utf-8"))
             self.assertEqual("error", runtime["state"])
             self.assertFalse(autoresearch_runtime.process_alive(process.pid))

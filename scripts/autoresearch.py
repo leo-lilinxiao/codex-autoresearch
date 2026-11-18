@@ -14,11 +14,12 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, Callable, NoReturn
 
 from autoresearch_core import (
     MAX_CONSECUTIVE_CRASHES,
     AutoresearchError,
+    CommandResult,
     CommandTimeout,
     Paths,
     RunState,
@@ -309,47 +310,30 @@ def initialize_run(args: argparse.Namespace) -> dict[str, Any]:
     ensure_new_results_root(repo)
     paths = paths_for(repo)
 
-    try:
-        verify_result = run_command(
-            command=verify,
+    def run_baseline(command: str, kind: str, name: str) -> CommandResult:
+        result = run_command(
+            command=command,
             cwd=repo,
             timeout_seconds=args.timeout_seconds,
-            log_path=next_command_log(paths, 0, "baseline-verify"),
+            log_path=next_command_log(paths, 0, f"baseline-{kind}"),
         )
-        require_no_initialized_state(
-            paths,
-            command_name="Baseline metric command",
-            log_path=verify_result.log_path,
-        )
+        require_no_initialized_state(paths, command_name=name, log_path=result.log_path)
         require_command_preserved_repository(
             repo,
             expected_head=head,
             expected_branch=branch,
-            command_name="Baseline metric command",
-            log_path=verify_result.log_path,
+            command_name=name,
+            log_path=result.log_path,
         )
+        return result
+
+    try:
+        verify_result = run_baseline(verify, "verify", "Baseline metric command")
         baseline = parse_metric_output(verify_result, json_key=metric_key)
         guard_log = None
         if guard:
-            guard_result = run_command(
-                command=guard,
-                cwd=repo,
-                timeout_seconds=args.timeout_seconds,
-                log_path=next_command_log(paths, 0, "baseline-guard"),
-            )
+            guard_result = run_baseline(guard, "guard", "Baseline guard command")
             guard_log = guard_result.log_path
-            require_no_initialized_state(
-                paths,
-                command_name="Baseline guard command",
-                log_path=guard_result.log_path,
-            )
-            require_command_preserved_repository(
-                repo,
-                expected_head=head,
-                expected_branch=branch,
-                command_name="Baseline guard command",
-                log_path=guard_result.log_path,
-            )
             if guard_result.returncode != 0:
                 raise AutoresearchError(
                     f"Baseline guard exited {guard_result.returncode}: {guard}. "
@@ -516,7 +500,7 @@ def safely_revert_after_error(
             state=state,
             reason=(
                 f"{reason}. Rollback failed: {revert_error}. "
-                f"current HEAD is {current_head}"
+                f"Current HEAD is {current_head}"
             ),
             head=trial_commit,
             trial_commit=trial_commit,
@@ -534,6 +518,60 @@ def safely_revert_after_error(
         revert_commit=revert_commit,
         log=log,
     )
+
+
+def run_trial_command(
+    *,
+    repo: Path,
+    paths: Paths,
+    run: dict[str, Any],
+    events: list[dict[str, Any]],
+    state: RunState,
+    trial_commit: str,
+    command: str,
+    name: str,
+    log_path: Path,
+) -> tuple[CommandResult | None, str | None]:
+    """Run verify or guard on a trial. On timeout, return no result and the timeout reason.
+
+    A command that changes run state or the repository stops the run, after reverting the
+    trial when that is safe.
+    """
+    snapshot = control_state_snapshot(paths)
+    try:
+        try:
+            result = run_command(
+                command=command,
+                cwd=repo,
+                timeout_seconds=run["timeout_seconds"],
+                log_path=log_path,
+            )
+            timeout = None
+        except CommandTimeout as exc:
+            result = None
+            timeout = str(exc)
+        require_control_state_unchanged(paths, snapshot, command_name=name, log_path=log_path)
+        require_command_preserved_repository(
+            repo,
+            expected_head=trial_commit,
+            expected_branch=run["branch"],
+            command_name=name,
+            log_path=log_path,
+        )
+    except AutoresearchError as exc:
+        require_control_state_unchanged(paths, snapshot, command_name=name, log_path=log_path)
+        safely_revert_after_error(
+            repo=repo,
+            paths=paths,
+            run=run,
+            events=events,
+            state=state,
+            trial_commit=trial_commit,
+            reason=str(exc),
+            log=log_path,
+        )
+        raise
+    return result, timeout
 
 
 def finish_iteration(args: argparse.Namespace) -> dict[str, Any]:
@@ -556,64 +594,32 @@ def finish_iteration(args: argparse.Namespace) -> dict[str, Any]:
     require_paths_in_scope(changed, run["scope"])
 
     trial_commit = commit_trial(repo, paths=changed, description=args.description)
+    trial: dict[str, Any] = {
+        "repo": repo,
+        "paths": paths,
+        "run": run,
+        "events": events,
+        "state": state,
+        "trial_commit": trial_commit,
+    }
     iteration = state.iterations + 1
     verify_log = next_command_log(paths, iteration, "verify")
     guard_log: Path | None = None
-    control_snapshot = control_state_snapshot(paths)
+    verify_result, crash = run_trial_command(
+        **trial, command=run["metric"]["command"], name="Metric command", log_path=verify_log
+    )
     trial_metric = None
-    crash: str | None = None
-    try:
+    if verify_result is not None and verify_result.returncode != 0:
+        crash = (
+            f"Metric command exited {verify_result.returncode}: {verify_result.command}. "
+            f"Full output: {verify_log}"
+        )
+    elif verify_result is not None:
         try:
-            verify_result = run_command(
-                command=run["metric"]["command"],
-                cwd=repo,
-                timeout_seconds=run["timeout_seconds"],
-                log_path=verify_log,
-            )
-        except CommandTimeout as timeout:
-            verify_result = None
-            crash = str(timeout)
-        require_control_state_unchanged(
-            paths,
-            control_snapshot,
-            command_name="Metric command",
-            log_path=verify_log,
-        )
-        require_command_preserved_repository(
-            repo,
-            expected_head=trial_commit,
-            expected_branch=run["branch"],
-            command_name="Metric command",
-            log_path=verify_log,
-        )
-        if verify_result is not None and verify_result.returncode != 0:
-            crash = (
-                f"Metric command exited {verify_result.returncode}: {verify_result.command}. "
-                f"Full output: {verify_log}"
-            )
-        elif verify_result is not None:
-            trial_metric = parse_metric_output(
-                verify_result,
-                json_key=run["metric"]["json_key"],
-            )
-    except AutoresearchError as exc:
-        require_control_state_unchanged(
-            paths,
-            control_snapshot,
-            command_name="Metric command",
-            log_path=verify_log,
-        )
-        safely_revert_after_error(
-            repo=repo,
-            paths=paths,
-            run=run,
-            events=events,
-            state=state,
-            trial_commit=trial_commit,
-            reason=str(exc),
-            log=verify_log,
-        )
-        raise
+            trial_metric = parse_metric_output(verify_result, json_key=run["metric"]["json_key"])
+        except AutoresearchError as exc:
+            safely_revert_after_error(**trial, reason=str(exc), log=verify_log)
+            raise
 
     outcome = "discard" if crash is None else "crash"
     guard_status = "not_run"
@@ -621,55 +627,14 @@ def finish_iteration(args: argparse.Namespace) -> dict[str, Any]:
     revert_commit: str | None = None
     head = trial_commit
     if trial_metric is not None and improved(trial_metric, state.metric, run["metric"]["direction"]):
+        guard_status = "pass"
         if run["guard"]:
             guard_log = next_command_log(paths, iteration, "guard")
-            try:
-                control_snapshot = control_state_snapshot(paths)
-                try:
-                    guard_result = run_command(
-                        command=run["guard"],
-                        cwd=repo,
-                        timeout_seconds=run["timeout_seconds"],
-                        log_path=guard_log,
-                    )
-                except CommandTimeout:
-                    guard_result = None
-                require_control_state_unchanged(
-                    paths,
-                    control_snapshot,
-                    command_name="Guard command",
-                    log_path=guard_log,
-                )
-                require_command_preserved_repository(
-                    repo,
-                    expected_head=trial_commit,
-                    expected_branch=run["branch"],
-                    command_name="Guard command",
-                    log_path=guard_log,
-                )
-            except AutoresearchError as exc:
-                require_control_state_unchanged(
-                    paths,
-                    control_snapshot,
-                    command_name="Guard command",
-                    log_path=guard_log,
-                )
-                safely_revert_after_error(
-                    repo=repo,
-                    paths=paths,
-                    run=run,
-                    events=events,
-                    state=state,
-                    trial_commit=trial_commit,
-                    reason=str(exc),
-                    log=guard_log,
-                )
-                raise
-            guard_passed = guard_result is not None and guard_result.returncode == 0
-            guard_status = "pass" if guard_passed else "fail"
-        else:
-            guard_status = "pass"
-
+            guard_result, _ = run_trial_command(
+                **trial, command=run["guard"], name="Guard command", log_path=guard_log
+            )
+            if guard_result is None or guard_result.returncode != 0:
+                guard_status = "fail"
         if guard_status == "pass":
             outcome = "keep"
             retained_metric = trial_metric
@@ -686,7 +651,7 @@ def finish_iteration(args: argparse.Namespace) -> dict[str, Any]:
                 state=state,
                 reason=(
                     f"Experiment should be reverted but rollback failed: {exc}. "
-                    f"current HEAD is {current_head}"
+                    f"Current HEAD is {current_head}"
                 ),
                 head=trial_commit,
                 trial_commit=trial_commit,
@@ -1094,8 +1059,6 @@ def run_controller(repo: Path) -> int:
                     state="running",
                     started_at=started_at,
                 )
-                if child.stdin is None:
-                    raise AutoresearchError("Worker stdin pipe was not created")
                 child.stdin.write(prompt)
                 child.stdin.close()
                 # A stop request lets the current experiment finish and record its result.
@@ -1113,30 +1076,16 @@ def run_controller(repo: Path) -> int:
                         )
                     time.sleep(0.1)
                 returncode = child.returncode
-                if returncode is None:
-                    raise AutoresearchError("Worker exited without a return code")
             except Exception as worker_error:
-                cleanup_errors: list[str] = []
-                try:
-                    terminate_process_tree(child)
-                except Exception as cleanup_error:
-                    cleanup_errors.append(f"process cleanup failed: {cleanup_error}")
-                try:
-                    runtime_event(
-                        paths,
-                        "worker_cleanup_after_controller_error",
-                        pid=child.pid,
-                        returncode=child.returncode,
-                        error_type=type(worker_error).__name__,
-                        message=str(worker_error),
-                        cleanup_errors=cleanup_errors,
-                    )
-                except Exception as log_error:
-                    cleanup_errors.append(f"cleanup logging failed: {log_error}")
-                if cleanup_errors:
-                    raise AutoresearchError(
-                        f"Worker control failed: {worker_error}. " + ". ".join(cleanup_errors)
-                    ) from worker_error
+                terminate_process_tree(child)
+                runtime_event(
+                    paths,
+                    "worker_cleanup_after_controller_error",
+                    pid=child.pid,
+                    returncode=child.returncode,
+                    error_type=type(worker_error).__name__,
+                    message=str(worker_error),
+                )
                 raise
         child = None
         write_runtime(
@@ -1177,8 +1126,8 @@ def run_controller(repo: Path) -> int:
         )
         if event_types not in allowed:
             reason = (
-                f"worker {iteration} violated the one-iteration contract. "
-                f"new events: {event_types}"
+                f"Worker {iteration} violated the one-iteration contract. "
+                f"New events: {event_types}"
             )
             runtime_event(
                 paths,
@@ -1190,6 +1139,17 @@ def run_controller(repo: Path) -> int:
             if after_state.status != "active":
                 raise AutoresearchError(reason)
             record_controller_error(repo, reason, worker_log)
+
+
+def best_effort(*steps: tuple[str, Callable[[], object]]) -> list[str]:
+    """Run every cleanup step after a failure and report the ones that failed."""
+    failures = []
+    for label, step in steps:
+        try:
+            step()
+        except Exception as exc:
+            failures.append(f"{label} failed: {exc}")
+    return failures
 
 
 def controller_entry(repo: Path) -> int:
@@ -1204,36 +1164,25 @@ def controller_entry(repo: Path) -> int:
             message=str(exc),
             traceback=traceback.format_exc(),
         )
-        try:
-            record_controller_error(repo, f"controller failed: {exc}", paths.runtime_log)
-        except Exception as record_error:
-            runtime_event(
-                paths,
-                "controller_error_record_failed",
-                error_type=type(record_error).__name__,
-                message=str(record_error),
-                traceback=traceback.format_exc(),
-            )
-        try:
-            paths_loaded, run = load_run(repo)
-            runtime = load_runtime(paths_loaded, run_id=run["run_id"])
-            started_at = utc_now() if runtime is None else runtime["started_at"]
+
+        def mark_runtime_error() -> None:
+            loaded_paths, run = load_run(repo)
+            runtime = load_runtime(loaded_paths, run_id=run["run_id"])
             write_runtime(
-                paths_loaded,
+                loaded_paths,
                 run,
                 controller_pid=os.getpid(),
                 child_pid=None,
                 state="error",
-                started_at=started_at,
+                started_at=utc_now() if runtime is None else runtime["started_at"],
             )
-        except Exception as runtime_error:
-            runtime_event(
-                paths,
-                "runtime_error_record_failed",
-                error_type=type(runtime_error).__name__,
-                message=str(runtime_error),
-                traceback=traceback.format_exc(),
-            )
+
+        failures = best_effort(
+            ("Error event record", lambda: record_controller_error(repo, f"Controller failed: {exc}", paths.runtime_log)),
+            ("Runtime state write", mark_runtime_error),
+        )
+        if failures:
+            runtime_event(paths, "controller_error_cleanup_failed", failures=failures)
         return 1
 
 
@@ -1244,60 +1193,43 @@ def fail_controller_start(
     started_at: str,
     reason: str,
 ) -> NoReturn:
-    failures: list[str] = []
+    failures = []
     if process.poll() is None:
-        try:
-            terminate_process_tree(process)
-        except Exception as exc:
-            failures.append(f"controller process cleanup failed: {exc}")
-    failure_reason = reason
-    if failures:
-        failure_reason += ". " + ". ".join(failures)
-
-    try:
-        runtime_event(
-            paths,
-            "controller_start_failed",
-            pid=process.pid,
-            returncode=process.returncode,
-            reason=failure_reason,
-            cleanup_failed=bool(failures),
-        )
-    except Exception as exc:
-        failures.append(f"runtime log write failed: {exc}")
-    try:
-        record_controller_error(paths.repo, failure_reason, paths.runtime_log)
-    except Exception as exc:
-        failures.append(f"event error record failed: {exc}")
-    try:
-        write_runtime(
-            paths,
-            run,
-            controller_pid=process.pid,
-            child_pid=None,
-            state="error",
-            started_at=started_at,
-        )
-    except Exception as exc:
-        failures.append(f"runtime state write failed: {exc}")
-    if failures:
-        failure_reason = reason + ". " + ". ".join(failures)
-    raise AutoresearchError(f"{failure_reason}. Inspect {paths.runtime_log}")
+        failures = best_effort(("Controller process cleanup", lambda: terminate_process_tree(process)))
+    detail = ". ".join([reason, *failures])
+    failures += best_effort(
+        (
+            "Runtime log write",
+            lambda: runtime_event(
+                paths,
+                "controller_start_failed",
+                pid=process.pid,
+                returncode=process.returncode,
+                reason=detail,
+            ),
+        ),
+        ("Event error record", lambda: record_controller_error(paths.repo, detail, paths.runtime_log)),
+        (
+            "Runtime state write",
+            lambda: write_runtime(
+                paths,
+                run,
+                controller_pid=process.pid,
+                child_pid=None,
+                state="error",
+                started_at=started_at,
+            ),
+        ),
+    )
+    raise AutoresearchError(". ".join([reason, *failures]) + f". Inspect {paths.runtime_log}")
 
 
 def fail_controller_spawn(paths: Paths, reason: str) -> NoReturn:
-    failures: list[str] = []
-    try:
-        runtime_event(paths, "controller_spawn_failed", reason=reason)
-    except Exception as exc:
-        failures.append(f"runtime log write failed: {exc}")
-    try:
-        record_controller_error(paths.repo, reason, paths.runtime_log)
-    except Exception as exc:
-        failures.append(f"event error record failed: {exc}")
-    if failures:
-        reason += ". " + ". ".join(failures)
-    raise AutoresearchError(f"{reason}. Inspect {paths.runtime_log}")
+    failures = best_effort(
+        ("Runtime log write", lambda: runtime_event(paths, "controller_spawn_failed", reason=reason)),
+        ("Event error record", lambda: record_controller_error(paths.repo, reason, paths.runtime_log)),
+    )
+    raise AutoresearchError(". ".join([reason, *failures]) + f". Inspect {paths.runtime_log}")
 
 
 def spawn_controller(repo: Path) -> dict[str, Any]:
